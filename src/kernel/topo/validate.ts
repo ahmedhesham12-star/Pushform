@@ -84,7 +84,8 @@ export function validate(t: Topology): string[] {
       bad(`face ${id} uses a missing vertex`);
       continue;
     }
-    if (new Set(all).size !== all.length) bad(`face ${id} visits a vertex twice`);
+    // A hole may touch the outer loop or another hole at a single vertex, but no loop visits a vertex twice.
+    if (loops.some((l) => new Set(l).size !== l.length)) bad(`face ${id} has a loop that visits a vertex twice`);
     for (const loop of loops) {
       for (let i = 0; i < loop.length; i++) {
         if (!pairs.has(pairKey(loop[i]!, loop[(i + 1) % loop.length]!))) bad(`face ${id} has a loop step without an edge`);
@@ -99,7 +100,11 @@ export function validate(t: Topology): string[] {
     const b = planeBasis(f.normal);
     const outer2 = f.outer.map((v) => to2(b, P(v)));
     const holes2 = f.holes.map((h) => h.map((v) => to2(b, P(v))));
-    for (const h of holes2) if (!pointInPolygon(h[0]!, outer2)) bad(`face ${id} has a hole outside its outer loop`);
+    const outerSet = new Set(f.outer);
+    f.holes.forEach((h, i) => {
+      const probe = h.findIndex((v) => !outerSet.has(v));
+      if (probe >= 0 && !pointInPolygon(holes2[i]![probe]!, outer2)) bad(`face ${id} has a hole outside its outer loop`);
+    });
     const segs: [Vec2, Vec2][] = [outer2, ...holes2].flatMap((l) => l.map((p, i) => [p, l[(i + 1) % l.length]!] as [Vec2, Vec2]));
     for (let i = 0; i < segs.length; i++) {
       for (let j = i + 1; j < segs.length; j++) {

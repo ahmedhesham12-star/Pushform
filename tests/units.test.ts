@@ -4,6 +4,7 @@ import {
   formatLength,
   parseLength,
   parseLengthList,
+  parseTypedValues,
   isValidSettings,
   type LengthUnit,
   type UnitSettings,
@@ -113,6 +114,35 @@ describe('parseLengthList', () => {
     expect(parseLengthList('3, ', 'm')).toEqual({ ok: true, mm: [3000] });
     expect(parseLengthList(', ', 'm')).toEqual({ ok: false, error: 'empty' });
     expect(parseLengthList('3, abc', 'm')).toEqual({ ok: false, error: 'invalid' });
+  });
+});
+
+describe('parseTypedValues', () => {
+  const typed = (text: string, unit: LengthUnit = 'm') => {
+    const r = parseTypedValues(text, unit);
+    if (!r.ok) throw new Error(`could not parse ${text}`);
+    return { lengths: r.lengths.map((v) => +v.toFixed(6)), counts: r.counts };
+  };
+
+  test('a count with an s suffix', () => {
+    expect(typed('48s')).toEqual({ lengths: [], counts: [48] });
+    expect(typed('48 s')).toEqual({ lengths: [], counts: [48] });
+    expect(typed('6S')).toEqual({ lengths: [], counts: [6] });
+  });
+
+  test('lengths and counts together, in any order and either unit system', () => {
+    expect(typed('500mm, 48s')).toEqual({ lengths: [500], counts: [48] });
+    expect(typed('12s; 2\' 6"')).toEqual({ lengths: [762], counts: [12] });
+    expect(typed('0.5', 'm')).toEqual({ lengths: [500], counts: [] });
+    expect(typed('600, 400', 'mm')).toEqual({ lengths: [600, 400], counts: [] });
+  });
+
+  test('Arabic-Indic digits work for counts too', () => {
+    expect(typed('٤٨s')).toEqual({ lengths: [], counts: [48] });
+  });
+
+  test.each(['s', '4.5s', '-3s', 'abc', ''])('rejects %j', (text) => {
+    expect(parseTypedValues(text, 'm').ok).toBe(false);
   });
 });
 

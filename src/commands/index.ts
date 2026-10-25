@@ -10,7 +10,7 @@ import { CommandSession } from './session';
 export * from './types';
 export * from './document';
 export { CommandRegistry } from './registry';
-export { applyAmendValues } from './amend';
+export { applyAmendValues, matchTypedValues, type AmendValues } from './amend';
 export * from './session';
 export * from './core';
 

@@ -46,6 +46,7 @@ export const en = {
   'measure.area': 'Area',
   'measure.inputLabel': 'Measurements',
   'measure.listSeparator': ', ',
+  'measure.count': '{count}s',
 
   'message.rectangleAdded': 'Rectangle {width} × {depth} added. Press P to push or pull it.',
   'message.pushed': 'Pushed/pulled {distance}.',

@@ -1,4 +1,4 @@
-import { applyAmendValues } from './amend';
+import { applyAmendValues, type AmendValues } from './amend';
 import type { PushformDocument } from './document';
 import type { CommandRegistry } from './registry';
 import type { AmendableField, CommandError, CommandId, InputOf, OutputOf } from './types';
@@ -93,11 +93,12 @@ export class CommandSession {
   }
 
   /**
-   * Re-run the last command with new values for its amendable fields (mm,
-   * in field order). The amended command replaces the original in history,
-   * so it stays one undo step. On error the original result is kept.
+   * Re-run the last command with new values for its amendable fields: all of
+   * them in field order, or some of them by key (lengths in mm, counts as
+   * whole numbers). The amended command replaces the original in history, so
+   * it stays one undo step. On error the original result is kept.
    */
-  amend(values: readonly number[]): Outcome<unknown> {
+  amend(values: AmendValues): Outcome<unknown> {
     const target = this.amendTarget();
     const entry = this.undoStack.at(-1);
     const def = target && this.registry.get(target.commandId);

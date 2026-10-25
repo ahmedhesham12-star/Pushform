@@ -45,6 +45,8 @@ export interface CommandDef<I = unknown, O = unknown> {
    * Omit for commands that cannot be amended.
    */
   readonly amendable?: readonly AmendableField<I>[];
+  /** What to type to amend this command, already translated; shown when typed values do not fit. */
+  readonly amendHint?: () => string;
   run(doc: PushformDocument, input: I): RunResult<O>;
 }
 
@@ -55,10 +57,13 @@ type NumberKeys<I> = { [K in keyof I]-?: I[K] extends number ? K : never }[keyof
  * the original input had, so the user does not have to retype signs.
  * - positive: the typed value must be greater than zero (sizes).
  * - signed: a negative typed value reverses the direction (distances).
+ * kind says what the user types: a length (mm, the default) or a whole count
+ * typed with an "s" suffix, like 48s for segments or 6s for sides.
  */
 export interface AmendableField<I> {
   readonly key: NumberKeys<I>;
   readonly mode: 'positive' | 'signed';
+  readonly kind?: 'length' | 'count';
 }
 
 /**

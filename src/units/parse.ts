@@ -82,6 +82,37 @@ function finish(mm: number): ParseResult {
 /** Separators between several typed values, e.g. "600, 400" or "24 x 36". Never spaces. */
 const LIST_SEPARATOR = /[,;x×،؛]/;
 
+export type TypedValuesResult = { ok: true; lengths: number[]; counts: number[] } | { ok: false; error: ParseError };
+
+/** A count typed with an "s" suffix, such as 48s for 48 segments or 6s for 6 sides. */
+const COUNT = /^(\d+)\s*s$/;
+
+/**
+ * Parse what the user typed into the measurements box: lengths (either unit
+ * system, see parseLength) and counts with an "s" suffix, in any order and
+ * separated like parseLengthList. "500mm, 48s" gives one length and one count.
+ */
+export function parseTypedValues(input: string, fileUnit: LengthUnit): TypedValuesResult {
+  const parts = normalize(input)
+    .split(LIST_SEPARATOR)
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (!parts.length) return { ok: false, error: 'empty' };
+  const lengths: number[] = [];
+  const counts: number[] = [];
+  for (const part of parts) {
+    const count = COUNT.exec(part);
+    if (count) {
+      counts.push(Number(count[1]));
+      continue;
+    }
+    const r = parseLength(part, fileUnit);
+    if (!r.ok) return r;
+    lengths.push(r.mm);
+  }
+  return { ok: true, lengths, counts };
+}
+
 /** Parse one or more lengths, such as the width and depth of a rectangle. */
 export function parseLengthList(input: string, fileUnit: LengthUnit): ParseListResult {
   const parts = normalize(input)

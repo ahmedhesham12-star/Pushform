@@ -1,4 +1,4 @@
-import { createSession, type CommandError, type CommandSession, type PushformDocument } from './commands';
+import { createSession, matchTypedValues, type CommandError, type CommandSession, type PushformDocument } from './commands';
 import { t, type MessageKey } from './i18n';
 import { bounds, edgeCount, faceCount, hasFace, snapPoints } from './kernel';
 import { saveAutosave } from './storage';
@@ -10,7 +10,7 @@ import { MeasurementsBox } from './ui/measurements';
 import { StatusBar } from './ui/statusBar';
 import { ActionBar, ToolBar, type ToolButtonSpec } from './ui/toolbar';
 import { UnitsMenu } from './ui/unitsMenu';
-import { defaultPrecision, formatLength, parseLengthList, type LengthUnit } from './units';
+import { defaultPrecision, formatLength, formatNumber, parseTypedValues, type LengthUnit } from './units';
 import { Viewport, type Highlight } from './viewport';
 
 /** Keys that switch tools (with no modifier). */
@@ -228,19 +228,18 @@ export class App {
   private amend(text: string): void {
     const target = this.session.amendTarget();
     if (!target) return;
-    const parsed = parseLengthList(text, this.session.doc.units.unit);
-    const r = parsed.ok ? this.session.amend(parsed.mm) : null;
+    const def = this.session.registry.get(target.commandId);
+    const parsed = parseTypedValues(text, this.session.doc.units.unit);
+    const matched = parsed.ok ? matchTypedValues(target.fields, parsed) : null;
+    const r = matched?.ok ? this.session.amend(matched.value) : null;
     if (r?.ok) {
-      const title = this.session.registry.get(target.commandId)?.title() ?? target.commandId;
-      this.status.flash(t('message.amended', { command: title, values: this.amendValuesText() }));
+      this.status.flash(t('message.amended', { command: def?.title() ?? target.commandId, values: this.amendValuesText() }));
       return;
     }
     if (r && !['amendValueCount', 'amendValueInvalid', 'invalidInput'].includes(r.error.code)) {
       return this.flashError(r.error);
     }
-    const count = target.fields.length;
-    const key: MessageKey = count === 1 ? 'error.typeOneDistance' : count === 2 ? 'error.typeTwoSizes' : 'error.typeValues';
-    this.status.flash(t(key, { count }), true);
+    this.status.flash(def?.amendHint?.() ?? t('error.typeValues', { count: target.fields.length }), true);
   }
 
   /** Current amendable values, formatted in the file's units. */
@@ -249,7 +248,11 @@ export class App {
     if (!target) return '';
     const units = this.session.doc.units;
     return target.values
-      .map((v, i) => formatLength(target.fields[i]!.mode === 'positive' ? Math.abs(v) : v, units))
+      .map((v, i) => {
+        const field = target.fields[i]!;
+        if (field.kind === 'count') return t('measure.count', { count: formatNumber(Math.abs(v)) });
+        return formatLength(field.mode === 'positive' ? Math.abs(v) : v, units);
+      })
       .join(t('measure.listSeparator'));
   }
 

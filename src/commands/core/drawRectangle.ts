@@ -30,6 +30,7 @@ export const drawRectangle: CommandDef<DrawRectangleInput, DrawRectangleOutput> 
     { key: 'width', mode: 'positive' },
     { key: 'depth', mode: 'positive' },
   ],
+  amendHint: () => t('error.typeTwoSizes'),
   run(doc, input) {
     const r = kernelDrawRectangle(doc.model, input);
     if (!r.ok) return { ok: false, error: { code: r.error } };

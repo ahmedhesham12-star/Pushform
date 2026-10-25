@@ -6,6 +6,7 @@ import {
   createSession,
   deserializeDocument,
   HISTORY_LIMIT,
+  matchTypedValues,
   newDocument,
   serializeDocument,
   type CommandDef,
@@ -22,7 +23,7 @@ import {
   listFaces,
   serialize,
 } from '../src/kernel';
-import { parseLengthList } from '../src/units';
+import { parseLengthList, parseTypedValues } from '../src/units';
 
 function boxSession(): { s: CommandSession; top: string } {
   const s = createSession();
@@ -377,6 +378,86 @@ describe('amend last operation', () => {
     s.amend([800]);
     expect(faceArea(s.doc.model, r.output.faceId)).toBeCloseTo(640000, 6);
     expect(s.history()).toHaveLength(1);
+  });
+});
+
+describe('amending counts', () => {
+  /** A row of `copies` squares of side `size`: one length field and one count field. */
+  function rowSession() {
+    const s = createSession();
+    const def: CommandDef<{ size: number; copies: number }, Record<string, never>> = {
+      id: 'example.row',
+      title: () => 'Row',
+      input: z.strictObject({ size: z.number().positive(), copies: z.number().int().min(1) }),
+      amendable: [
+        { key: 'size', mode: 'positive' },
+        { key: 'copies', mode: 'positive', kind: 'count' },
+      ],
+      amendHint: () => 'Type a size, or a count like 3s.',
+      run(doc, input) {
+        let model = doc.model;
+        for (let i = 0; i < input.copies; i++) {
+          const r = drawRectangle(model, { faceId: null, corner: [i * input.size * 2, 0, 0], width: input.size, depth: input.size });
+          if (!r.ok) return { ok: false, error: { code: r.error } };
+          model = r.model;
+        }
+        return { ok: true, doc: { ...doc, model }, output: {} };
+      },
+    };
+    s.registry.register(def);
+    s.executeUnchecked('example.row', { size: 500, copies: 2 });
+    return s;
+  }
+  const amendTyped = (s: CommandSession, text: string) => {
+    const typed = parseTypedValues(text, s.doc.units.unit);
+    if (!typed.ok) throw new Error(text);
+    const m = matchTypedValues(s.amendTarget()!.fields, typed);
+    return m.ok ? s.amend(m.value) : m;
+  };
+
+  test('a typed count changes only the count field', () => {
+    const s = rowSession();
+    expect(amendTyped(s, '3s')).toMatchObject({ ok: true });
+    expect(faceCount(s.doc.model)).toBe(3);
+    expect(s.history()[0]!.input).toEqual({ size: 500, copies: 3 });
+    expect(s.history()).toHaveLength(1);
+  });
+
+  test('a typed length changes only the length field', () => {
+    const s = rowSession();
+    amendTyped(s, '800mm');
+    expect(s.history()[0]!.input).toEqual({ size: 800, copies: 2 });
+  });
+
+  test('a length and a count together, in either order', () => {
+    const s = rowSession();
+    amendTyped(s, '4s, 300mm');
+    expect(s.history()[0]!.input).toEqual({ size: 300, copies: 4 });
+    expect(faceCount(s.doc.model)).toBe(4);
+    s.undo();
+    expect(faceCount(s.doc.model)).toBe(0);
+  });
+
+  test('the amend target shows counts as counts', () => {
+    const s = rowSession();
+    expect(s.amendTarget()).toMatchObject({ values: [500, 2] });
+    expect(s.amendTarget()!.fields[1]).toMatchObject({ kind: 'count' });
+  });
+
+  test('wrong numbers of values, fractional counts and unknown keys are rejected', () => {
+    const s = rowSession();
+    expect(amendTyped(s, '1s, 2s')).toMatchObject({ ok: false, error: { code: 'amendValueCount' } });
+    expect(amendTyped(s, '1m, 2m')).toMatchObject({ ok: false, error: { code: 'amendValueCount' } });
+    expect(s.amend({ copies: 2.5 })).toMatchObject({ ok: false, error: { code: 'amendValueInvalid' } });
+    expect(s.amend({ width: 3 })).toMatchObject({ ok: false, error: { code: 'amendValueCount' } });
+    expect(s.amend({ copies: 0 })).toMatchObject({ ok: false, error: { code: 'amendValueInvalid' } });
+    expect(s.history()[0]!.input).toEqual({ size: 500, copies: 2 });
+  });
+
+  test('a count typed for a command without count fields is rejected', () => {
+    const s = createSession();
+    s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 1000, depth: 1000 });
+    expect(amendTyped(s, '4s')).toMatchObject({ ok: false, error: { code: 'amendValueCount' } });
   });
 });
 

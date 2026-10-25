@@ -1,6 +1,7 @@
 /**
  * Guards the layer boundaries described in PROJECT.md by scanning imports.
- * - kernel: pure geometry, no three.js, no DOM, no imports from other layers.
+ * - kernel: pure geometry, no three.js, no DOM, no imports from other layers
+ *   (packages only from KERNEL_PACKAGES).
  * - commands: no three.js or DOM, so it can run headless (tests, MCP, plugins).
  * - Only src/commands may call kernel mutations, and only through src/kernel/index.ts.
  */
@@ -9,7 +10,9 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { describe, expect, test } from 'vitest';
 
 const SRC = resolve(__dirname, '../src');
-const KERNEL_MUTATIONS = ['createModel', 'drawRectangle', 'pushPull', 'deleteFace', 'deserialize'];
+/** Pure, DOM-free packages the kernel may use. */
+const KERNEL_PACKAGES = ['earcut'];
+const KERNEL_MUTATIONS =['createModel', 'drawRectangle', 'pushPull', 'deleteFace', 'deserialize'];
 const DOM_GLOBALS = /\b(window|document|localStorage|sessionStorage|navigator|requestAnimationFrame|HTMLElement)\b/;
 
 interface ImportInfo {
@@ -67,8 +70,10 @@ describe('architecture', () => {
     expect(all.length).toBeGreaterThan(10);
   });
 
-  test('kernel imports nothing outside src/kernel', () => {
-    const bad = all.filter((i) => i.layer === 'kernel' && i.target !== 'kernel');
+  test('kernel imports nothing outside src/kernel except allowed packages', () => {
+    const bad = all.filter(
+      (i) => i.layer === 'kernel' && i.target !== 'kernel' && !KERNEL_PACKAGES.includes(i.spec),
+    );
     expect(bad.map((i) => `${i.file} -> ${i.spec}`)).toEqual([]);
   });
 

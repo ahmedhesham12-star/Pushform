@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { t } from '../../i18n';
 import { drawRectangle as kernelDrawRectangle } from '../../kernel';
 import type { CommandDef } from '../types';
-import { faceId, point3 } from './schemas';
+import { faceId, length, point3 } from './schemas';
 
 export const drawRectangleInput = z.strictObject({
   /** Face to draw on, or null for the ground. */
@@ -10,8 +10,8 @@ export const drawRectangleInput = z.strictObject({
   /** First corner, on the target plane. */
   corner: point3,
   /** Signed sizes in mm along the plane axes (X and Z on the ground). */
-  width: z.number(),
-  depth: z.number(),
+  width: length,
+  depth: length,
 });
 export type DrawRectangleInput = z.infer<typeof drawRectangleInput>;
 export interface DrawRectangleOutput {

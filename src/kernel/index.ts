@@ -26,7 +26,7 @@ export type { FaceView, SnapPoint, SnapKind, Bounds } from './query';
 export type { RectangleError, RectangleSpec, SerializedModel };
 export { planeAxes } from './vec';
 export { GROUND_NORMAL } from './rectangle';
-export { EPSILON, MIN_RECT_SIDE } from './model';
+export { COORDINATE_PRECISION, EPSILON, MIN_RECT_SIDE, snapLength, snapPoint } from './model';
 
 /* ---------- mutations (commands only) ---------- */
 

@@ -4,6 +4,7 @@ import {
   INSET_MARGIN,
   MIN_RECT_SIDE,
   orient,
+  snapPoint,
   type ModelData,
   type Point3,
 } from './model';
@@ -27,12 +28,12 @@ export type RectangleError = 'noSuchFace' | 'tooSmall' | 'notOnPlane' | 'outside
 
 export type RectangleResult = { ok: true; model: ModelData; faceId: string } | { ok: false; error: RectangleError };
 
-/** The four corners of a rectangle on a plane with normal n. */
+/** The four corners of a rectangle on a plane with normal n, snapped to stored precision. */
 export function rectangleLoop(n: Vec3, corner: Point3, width: number, depth: number): Point3[] {
   const [u, v] = planeAxes(n);
   const U = scale(u, width);
   const V = scale(v, depth);
-  return [corner, add(corner, U), add(add(corner, U), V), add(corner, V)];
+  return [corner, add(corner, U), add(add(corner, U), V), add(corner, V)].map(snapPoint);
 }
 
 /**

@@ -2,12 +2,12 @@ import { z } from 'zod';
 import { t } from '../../i18n';
 import { hasFace, pushPull as kernelPushPull } from '../../kernel';
 import type { CommandDef } from '../types';
-import { faceId } from './schemas';
+import { faceId, length } from './schemas';
 
 export const pushPullInput = z.strictObject({
   faceId,
   /** Signed distance in mm along the face normal. */
-  distance: z.number(),
+  distance: length,
 });
 export type PushPullInput = z.infer<typeof pushPullInput>;
 export interface PushPullOutput {

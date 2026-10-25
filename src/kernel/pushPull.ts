@@ -7,6 +7,7 @@ import {
   EPSILON,
   key,
   orient,
+  snapPoint,
   type FaceData,
   type ModelData,
   type Point3,
@@ -85,7 +86,7 @@ export function pushPull(m0: ModelData, faceId: string, requested: number): Push
   const distance = Math.min(hi, Math.max(lo, requested));
   if (Math.abs(distance) < EPSILON) return { model: m0, distance: 0 };
   const off = scale(n, distance);
-  const mv = (p: Point3): Point3 => add(p, off);
+  const mv = (p: Point3): Point3 => snapPoint(add(p, off));
   const m = draft(m0);
 
   for (const [gid, keys] of stretch) {

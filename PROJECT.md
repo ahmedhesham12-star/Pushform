@@ -127,6 +127,7 @@ JSON: `{ format: 'pushform', version: 1, units: { unit, precision }, model: { ki
 | 2026-10-25 | Triangulation stays in the viewport (three ShapeUtils) | Rendering-only in milestone 1. It moves to the kernel when mesh export arrives. |
 | 2026-10-25 | Imperial files use a 1 ft grid, 2" snap step and 1/4" drag rounding; metric uses a 1 m grid, 50 mm snap and 10 mm drag rounding | Metric values come from the prototype; imperial values are their closest natural equivalents. |
 | 2026-10-25 | Autosave key `pushform.autosave.v1` in local storage | Same behavior as the prototype; there is no file open or save yet. |
+| 2026-10-25 | Lengths and coordinates are rounded to 1e-6 mm: command inputs on entry (zod `length` and `point3` schemas), and coordinates the kernel computes from them (rectangle corners, moved points) | Imperial input is rarely exact in floating point (24" is 609.5999999999999), and sums drift (304.8 + 609.6 is 914.4000000000001). Rounding stores equal decimals as identical numbers. Rounding only the inputs would not be enough, because of the sums. |
 | 2026-10-25 | "Amend last operation" lives in the command layer; commands declare amendable fields | Requested after testing (SketchUp behavior). One implementation serves every current and future tool, plugins and MCP. |
 
 ## Differences from the prototype
@@ -157,7 +158,7 @@ Done on branch `milestone-1`:
 - Command layer with undo/redo tests and plugin registration.
 - Architecture test enforcing the layer rules.
 - Amend last operation for rectangle and push/pull, through the command layer.
-- Verification: 154 unit tests pass and the production build succeeds. A scripted browser smoke test (not in the repo) drew, pushed, cut a pocket, used undo/redo, deleted, switched units and reloaded, with no console errors.
+- Verification: 162 unit tests pass and the production build succeeds. A scripted browser smoke test (not in the repo) drew, pushed, cut a pocket, used undo/redo, deleted, switched units and reloaded, with no console errors.
 
 ### Known limitations (inherited from the prototype)
 - Rectangles must sit fully inside a face; splitting a face along an edge is not implemented.

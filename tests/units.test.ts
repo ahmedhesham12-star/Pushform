@@ -1,0 +1,208 @@
+import { describe, expect, test } from 'vitest';
+import {
+  formatArea,
+  formatLength,
+  parseLength,
+  parseLengthList,
+  isValidSettings,
+  type LengthUnit,
+  type UnitSettings,
+} from '../src/units';
+
+const mm = (text: string, unit: LengthUnit = 'm') => {
+  const r = parseLength(text, unit);
+  if (!r.ok) throw new Error(`could not parse ${text}: ${r.error}`);
+  return r.mm;
+};
+
+describe('parseLength: metric', () => {
+  test.each([
+    ['600mm', 600],
+    ['600 mm', 600],
+    ['60cm', 600],
+    ['60 CM', 600],
+    ['0.6m', 600],
+    ['.6m', 600],
+    ['1.25 m', 1250],
+    ['-15mm', -15],
+    ['+2m', 2000],
+  ])('%s -> %f mm', (text, expected) => {
+    expect(mm(text)).toBeCloseTo(expected, 9);
+  });
+});
+
+describe('parseLength: imperial', () => {
+  test.each([
+    ['24"', 609.6],
+    ['24in', 609.6],
+    ['24 inches', 609.6],
+    ["2'", 609.6],
+    ['2ft', 609.6],
+    ['2 feet', 609.6],
+    ['2.5\'', 762],
+    ['2\' 6"', 762],
+    ['2\'6"', 762],
+    ['2\'-6"', 762],
+    ["2'6", 762],
+    ['2\' 6 1/2"', 774.7],
+    ['2ft 6 1/2in', 774.7],
+    ['6 1/2"', 165.1],
+    ['3/4"', 19.05],
+    ['3/4 in', 19.05],
+    ['1/16"', 1.5875],
+    ['-2\' 6"', -762],
+    ['2′ 6″', 762],
+  ])('%s -> %f mm', (text, expected) => {
+    expect(mm(text)).toBeCloseTo(expected, 9);
+  });
+});
+
+describe('parseLength: bare numbers use the file unit', () => {
+  test.each<[string, LengthUnit, number]>([
+    ['3', 'm', 3000],
+    ['3', 'cm', 30],
+    ['3', 'mm', 3],
+    ['3', 'in', 76.2],
+    ['3', 'ft-in', 76.2],
+    ['6 1/2', 'in-frac', 165.1],
+    ['3/4', 'ft-in', 19.05],
+    ['1/2', 'm', 500],
+  ])('%s in %s -> %f mm', (text, unit, expected) => {
+    expect(mm(text, unit)).toBeCloseTo(expected, 9);
+  });
+
+  test('suffixes override the file unit in either direction', () => {
+    expect(mm('600mm', 'ft-in')).toBeCloseTo(600, 9);
+    expect(mm('24"', 'mm')).toBeCloseTo(609.6, 9);
+  });
+});
+
+describe('parseLength: normalization and errors', () => {
+  test('Arabic-Indic digits and decimal separator', () => {
+    expect(mm('٦٠٠mm')).toBeCloseTo(600, 9);
+    expect(mm('١٫٥m')).toBeCloseTo(1500, 9);
+    expect(mm('۲۴"')).toBeCloseTo(609.6, 9);
+  });
+
+  test('unicode minus sign', () => {
+    expect(mm('−15mm')).toBeCloseTo(-15, 9);
+  });
+
+  test.each(['', '   '])('empty input %j', (text) => {
+    expect(parseLength(text, 'm')).toEqual({ ok: false, error: 'empty' });
+  });
+
+  test.each(['abc', '2 6', '5 km', '1/0"', 'mm', "'", '"', '1..2m', '3 4/5/6'])('invalid input %j', (text) => {
+    expect(parseLength(text, 'm')).toEqual({ ok: false, error: 'invalid' });
+  });
+});
+
+describe('parseLengthList', () => {
+  test('splits on commas, semicolons and x but not on spaces', () => {
+    const r = parseLengthList('2\' 6 1/2", 600mm', 'm');
+    expect(r.ok && r.mm.map((v) => +v.toFixed(4))).toEqual([774.7, 600]);
+    const x = parseLengthList('24 x 36', 'in');
+    expect(x.ok && x.mm.map((v) => +v.toFixed(4))).toEqual([609.6, 914.4]);
+    const semi = parseLengthList('3;2', 'm');
+    expect(semi.ok && semi.mm).toEqual([3000, 2000]);
+    const arabicComma = parseLengthList('3، 2', 'm');
+    expect(arabicComma.ok && arabicComma.mm).toEqual([3000, 2000]);
+  });
+
+  test('ignores empty parts and reports bad ones', () => {
+    expect(parseLengthList('3, ', 'm')).toEqual({ ok: true, mm: [3000] });
+    expect(parseLengthList(', ', 'm')).toEqual({ ok: false, error: 'empty' });
+    expect(parseLengthList('3, abc', 'm')).toEqual({ ok: false, error: 'invalid' });
+  });
+});
+
+describe('formatLength: metric', () => {
+  const f = (v: number, s: UnitSettings) => formatLength(v, s, { locale: 'en' });
+
+  test.each<[number, UnitSettings, string]>([
+    [600, { unit: 'mm', precision: 0 }, '600 mm'],
+    [600, { unit: 'cm', precision: 1 }, '60.0 cm'],
+    [600, { unit: 'm', precision: 2 }, '0.60 m'],
+    [1234567, { unit: 'mm', precision: 0 }, '1234567 mm'],
+    [-1500, { unit: 'm', precision: 2 }, '-1.50 m'],
+    [0, { unit: 'm', precision: 2 }, '0.00 m'],
+    [600.4, { unit: 'mm', precision: 0 }, '~600 mm'],
+    [1234, { unit: 'm', precision: 2 }, '~1.23 m'],
+    [1235, { unit: 'm', precision: 3 }, '1.235 m'],
+    [-0.001, { unit: 'mm', precision: 0 }, '~0 mm'],
+  ])('%f mm in %o -> %s', (value, settings, expected) => {
+    expect(f(value, settings)).toBe(expected);
+  });
+
+  test('approx marker can be disabled', () => {
+    expect(formatLength(600.4, { unit: 'mm', precision: 0 }, { locale: 'en', markApprox: false })).toBe('600 mm');
+  });
+
+  test('digits follow the locale through Intl', () => {
+    expect(formatLength(600, { unit: 'mm', precision: 0 }, { locale: 'ar-EG' })).toBe('٦٠٠ mm');
+  });
+});
+
+describe('formatLength: imperial', () => {
+  const f = (v: number, s: UnitSettings) => formatLength(v, s, { locale: 'en' });
+  const inch = 25.4;
+
+  test.each<[number, UnitSettings, string]>([
+    [24 * inch, { unit: 'in', precision: 2 }, '24.00"'],
+    [24.5 * inch, { unit: 'in', precision: 1 }, '24.5"'],
+    [30 * inch, { unit: 'ft-in', precision: 16 }, '2\' 6"'],
+    [30.5 * inch, { unit: 'ft-in', precision: 16 }, '2\' 6 1/2"'],
+    [24 * inch, { unit: 'ft-in', precision: 16 }, '2\' 0"'],
+    [6.5 * inch, { unit: 'ft-in', precision: 16 }, '6 1/2"'],
+    [0.75 * inch, { unit: 'ft-in', precision: 16 }, '3/4"'],
+    [0, { unit: 'ft-in', precision: 16 }, '0"'],
+    [-30.5 * inch, { unit: 'ft-in', precision: 16 }, '-2\' 6 1/2"'],
+    [23.5 * inch, { unit: 'in-frac', precision: 16 }, '23 1/2"'],
+    [30.5 * inch, { unit: 'in-frac', precision: 16 }, '30 1/2"'],
+    [(3 / 64) * inch, { unit: 'in-frac', precision: 64 }, '3/64"'],
+  ])('%f mm in %o -> %s', (value, settings, expected) => {
+    expect(f(value, settings)).toBe(expected);
+  });
+
+  test('rounds to the precision and carries into feet', () => {
+    // 11 63/64" at 1/16 rounds up to a full foot.
+    expect(f((11 + 63 / 64) * inch, { unit: 'ft-in', precision: 16 })).toBe('~1\' 0"');
+    // 600 mm is 23.622"; at 1/16 that is 23 5/8".
+    expect(f(600, { unit: 'in-frac', precision: 16 })).toBe('~23 5/8"');
+    expect(f(600, { unit: 'ft-in', precision: 8 })).toBe('~1\' 11 5/8"');
+    expect(f(600, { unit: 'ft-in', precision: 1 })).toBe('~2\' 0"');
+  });
+
+  test('round trip: formatted fractional values parse back exactly', () => {
+    for (const ticks of [0, 1, 7, 15, 16, 191, 192, 385, 1000]) {
+      const value = (ticks / 16) * inch;
+      for (const unit of ['ft-in', 'in-frac'] as const) {
+        const text = formatLength(value, { unit, precision: 16 }, { locale: 'en' });
+        expect(mm(text, unit)).toBeCloseTo(value, 9);
+      }
+    }
+  });
+});
+
+describe('formatArea', () => {
+  const f = (v: number, s: UnitSettings) => formatArea(v, s, { locale: 'en' });
+  test.each<[number, UnitSettings, string]>([
+    [6e6, { unit: 'm', precision: 2 }, '6.00 m²'],
+    [6e6, { unit: 'cm', precision: 0 }, '60000 cm²'],
+    [6e6, { unit: 'mm', precision: 0 }, '6000000 mm²'],
+    [144 * 645.16, { unit: 'in', precision: 1 }, '144.0 in²'],
+    [144 * 645.16, { unit: 'in-frac', precision: 16 }, '144.00 in²'],
+    [2 * 92903.04, { unit: 'ft-in', precision: 16 }, '2.00 ft²'],
+  ])('%f mm² in %o -> %s', (value, settings, expected) => {
+    expect(f(value, settings)).toBe(expected);
+  });
+});
+
+describe('settings', () => {
+  test('precision must match the unit kind', () => {
+    expect(isValidSettings({ unit: 'm', precision: 2 })).toBe(true);
+    expect(isValidSettings({ unit: 'ft-in', precision: 16 })).toBe(true);
+    expect(isValidSettings({ unit: 'ft-in', precision: 3 })).toBe(false);
+    expect(isValidSettings({ unit: 'mm', precision: 16 })).toBe(false);
+  });
+});

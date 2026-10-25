@@ -2,7 +2,7 @@
 
 Free, open-source 3D modeling in the browser, built around push/pull modeling. Draw shapes, push and pull them into solids, and export the result. No account and no install.
 
-Last updated: 2026-10-25.
+Last updated: 2026-10-26.
 
 ## Goals
 - A fast, precise push/pull modeler that runs as a static web page.
@@ -32,6 +32,7 @@ Last updated: 2026-10-25.
 | Exports: glTF, OBJ, STL, DXF | Planned |
 | No emojis in UI, code, comments, docs or commits | Rule |
 | Visual direction: plain, technical; no gradients, glows or stock AI styling | Rule |
+| New faces on the ground face up (SketchUp makes them face down) | Decided 2026-10-26, a deliberate improvement |
 
 ### Add-on strategy
 We build the most important extension-style features ourselves, in this order:
@@ -41,7 +42,10 @@ We build the most important extension-style features ourselves, in this order:
 
 Everything else comes from a plugin API built on the command layer.
 
-### Hardware and import (roadmap, not milestone 1)
+### Roadmap: properties panel (not milestone 2)
+A properties panel that shows a selected rectangle's width and depth and lets the user edit them, with a choice of which corner stays fixed. SketchUp does not offer this for plain faces; it is a planned advantage for woodworkers.
+
+### Hardware and import (roadmap)
 - Imports become components: one definition, many instances. Imported meshes are reference geometry: movable and snappable, but not push/pull editable. Show simplified versions when zoomed out.
 - Formats:
   - v1: OBJ, STL, glTF.
@@ -58,25 +62,73 @@ Everything else comes from a plugin API built on the command layer.
 ## Architecture
 ```
 src/
-  kernel/     pure geometry (mm), no three.js or DOM; public API in index.ts, opaque Model type
-  commands/   named commands, CommandSession (execute, preview, undo/redo, change events), document
+  kernel/     pure geometry (mm): shared topology, planar engine, push/pull, erase,
+              lines, shapes, triangulation; public API in index.ts, opaque Model type
+  commands/   named commands, CommandSession (execute, preview, amend, undo/redo,
+              change events), document
   units/      length settings, parsing and formatting (metric and imperial, Intl)
   i18n/       t(), locale and text direction; English catalog in en.ts
-  viewport/   three.js renderer, orbit camera, picking, snapping, previews, snap marker
-  tools/      one file per tool: select, rectangle, pushPull, erase, orbit, pan
+  viewport/   three.js renderer, orbit camera, face and edge picking, snapping and
+              axis inference, previews, snap marker
+  tools/      one file per tool: select, line, rectangle, circle, polygon, pushPull,
+              erase, orbit, pan (circle and polygon share radial.ts)
   ui/         tool bar, top actions, units menu, status bar, measurements box, intro
-  app.ts      wiring: input events, keyboard, refresh on document change
+  app.ts      wiring: input events, keyboard, selection, refresh on document change
   storage.ts  autosave to local storage
-tests/        units, kernel, commands and architecture tests
+tests/        units, kernel (topology, planar, erase, push/pull, lines, shapes),
+              commands, precision, measurements box and architecture tests;
+              fixtures/ holds a real milestone 1 autosave
 reference/    the original Blockout prototype (behavior spec for milestone 1)
 ```
 
 Data flow: a tool reads the viewport (picking, snapping) and calls `session.preview(...)` for live feedback, or `session.execute(...)` to commit. The session validates the input, runs the pure command, records an undo entry and emits a change event. The app then rebuilds the view and autosaves.
 
 ### Layer rules (checked by `tests/architecture.test.ts`)
-- The kernel imports nothing outside `src/kernel`, uses no DOM globals, and is imported only through `src/kernel/index.ts`.
-- Only `src/commands` may call kernel mutations. Everything else uses the read-only queries (`listFaces`, `getFace`, `faceArea`, `renderEdges`, `snapPoints`, `bounds`, `planeAxes`, `previewRectangle`).
+- The kernel imports nothing outside `src/kernel` except the `earcut` package, uses no DOM globals, and is imported only through `src/kernel/index.ts`.
+- Only `src/commands` may call kernel mutations (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawLine`, `pushPull`, `erase`, `deserialize`). Everything else uses the read-only queries, such as `listFaces`, `listEdges`, `edgeGroup`, `faceMeshes`, `snapPoints`, `bounds` and the preview helpers.
 - `src/commands` and `src/units` use no DOM, so commands can run headless for tests, plugins and MCP.
+
+### Kernel (milestone 2)
+**Data structure: shared topology with edge uses.**
+- A **Vertex** is a point.
+- An **Edge** joins two vertices and carries `soft` and `curve` data.
+- A **Face** has a normal, an outer loop (counter-clockwise around the normal) and holes (clockwise). Each loop is a cycle of shared vertex ids, and every consecutive pair is an existing edge.
+- A **Curve** groups the edges of a circle, polygon or (later) arc, and records its kind, segment count, center, normal and radius.
+
+An edge may bound zero faces (a loose line), one, two, or more (a partition inside a solid), which a strict half-edge structure cannot represent. Adjacency is derived and indexed per operation, not stored. Topologies are immutable: a `Draft` edits a working copy and shares unchanged entities with the previous model, so undo snapshots stay cheap.
+
+**Invariants**, checked by `validate()` after every operation in tests:
+- Loops are closed and simple with at least 3 vertices, and every loop step has an edge.
+- Faces are planar. Outer loops are counter-clockwise and holes clockwise; holes lie inside the outer loop and may touch it at a single vertex.
+- There are no duplicate vertices within 1e-3 mm, no duplicate or zero-length edges, and no orphan vertices.
+- In every face plane (and the ground), no two edges cross or overlap, and no vertex sits inside an edge.
+- Coplanar faces never overlap.
+- Curve and edge references agree.
+
+**Planar engine.** All drawing goes through two steps:
+1. **Inserting segments into a plane.** Points snap to existing vertices or split an edge they land on. Segments split the edges they cross, and parts that run along existing edges reuse them.
+2. **Rebuilding the plane's faces from its edges.** A region becomes a face when an old face covered it, or when a drawn edge lies on its outer boundary (automatic faces).
+   - A region covered by an old face keeps that face's orientation. When an old face splits, its largest piece keeps its id.
+   - Edges that do not separate regions (loose or dangling lines) stay as edges.
+
+**Push/pull**, generalized from the prototype rules:
+- **Stretch:** a vertex moves (stretching the faces around it) when every other face at it contains the push direction and the face's edges at it can stretch.
+- **Walls:** every other edge gets a wall. A wall that ends up coplanar with the face beside it merges into it.
+- **Bottom:** only a lone face (sharing no edge) leaves a bottom behind.
+- **Inner faces** stay in place when the outer face is pushed, as in SketchUp; the hole gets walls.
+- **Clamping:** stretched faces never collapse, and the face stops at a parallel face of the same solid ahead of it, so a pocket cannot pass through the bottom.
+- **Push through:** reaching that face exactly, with the pushed face inside its boundary, removes both and leaves a through-hole.
+- **Curves:** walls between consecutive circle or arc segments are joined by soft edges, so a pushed circle shades like a cylinder. Polygons stay faceted. The moved loop gets its own copy of the curve.
+
+**Erase** (SketchUp rules):
+- Erasing a face keeps its edges.
+- Erasing an edge between exactly two coplanar faces merges them; the larger face keeps its id and orientation. Any other edge takes the faces it bounds with it.
+- Any edge of a curve erases the whole curve.
+- Straight vertices left between two edges are healed.
+
+**Lines.** A line lying in the ground or a face plane is inserted there, splitting edges and faces. A line in open space snaps through existing vertices and splits an edge it ends on. Faces are rebuilt in the planes containing the line and the planes it spans with the edges meeting it, so closing any planar loop creates a face.
+
+**Triangulation** is in the kernel (earcut). `faceMeshes` provides render-ready triangles with smooth normals across soft edges, which mesh export will reuse.
 
 ### Commands
 Each command has:
@@ -86,11 +138,17 @@ Each command has:
 - a pure `run(doc, input)` that returns a new document plus a JSON output, or an error code.
 
 Core commands:
-- `core.drawRectangle`
-- `core.pushPull`
-- `core.deleteFace`
-- `core.clearModel`
-- `core.setDisplayUnits`
+
+| Command | Output | Amendable |
+| --- | --- | --- |
+| `core.drawRectangle` | `faceIds` created | width, depth |
+| `core.drawLine` (start, direction, length) | `edgeIds`, `faceIds` | length |
+| `core.drawCircle` (center, radius, segments, direction) | `faceIds` | radius, segments (count) |
+| `core.drawPolygon` (center, radius, sides, direction) | `faceIds` | radius, sides (count) |
+| `core.pushPull` | `distance`, `createdFaceIds`, `removedFaceIds` | distance |
+| `core.erase` (faceIds, edgeIds) | `removedFaceIds` | |
+| `core.clearModel` | | |
+| `core.setDisplayUnits` | | |
 
 How the session works:
 - `execute` is for typed callers. `executeUnchecked` is for untrusted JSON from plugins, MCP or replay.
@@ -100,14 +158,31 @@ How the session works:
 Plugins call `registry.register(def)` and extend the typed `CommandMap` through declaration merging.
 
 **Amend last operation.** After a command finishes, typed values replace its amendable inputs, as in SketchUp.
-- A command opts in by declaring `amendable` fields, for example `[{ key: 'width', mode: 'positive' }, { key: 'depth', mode: 'positive' }]`.
-- Typed values are magnitudes applied in the original direction. In `signed` mode (distances), a negative value reverses the direction.
-- `CommandSession.amend(values)` re-runs the command from the document before it and replaces that history entry, so it stays one undo step. If the amended command fails, the original result is kept.
-- Amending ends when any other command runs, on undo or redo, on load, or when the app calls `clearAmend()`. The app calls it on a left click in the viewport and on a tool switch. Navigation keeps it available.
-- Core amendable commands: `core.drawRectangle` (width, depth) and `core.pushPull` (distance). Future tools such as line, move, rotate, offset and arrays get it by declaring their fields.
+- A command opts in by declaring `amendable` fields: `positive` or `signed`, and kind `length` (the default) or `count`. Counts are typed with an `s` suffix, like `48s`.
+- Typed lengths fill the length fields in order and counts fill the count fields. Either group may be left out, so typing only `48s` changes only the segment count.
+- `CommandSession.amend` re-runs the command from the document before it and replaces that history entry, so it stays one undo step. If the amended command fails, the original result is kept.
+- Amending ends when any other command runs, on undo or redo, on load, on a left click in the viewport, and on a tool switch. Navigation keeps it available.
+- New tools get it by declaring their fields.
 
 ### Document format
-JSON: `{ format: 'pushform', version: 1, units: { unit, precision }, model: { kind: 'face-loop', version: 1, next, faces } }`. Both levels are validated on load.
+JSON, version 2:
+```
+{ format: 'pushform', version: 2, units: { unit, precision },
+  model: { kind: 'topology', version: 2, next,
+           vertices: { id: [x, y, z] },
+           edges: { id: { v: [a, b], soft?: true, curve?: id } },
+           faces: { id: { normal, outer: [vertex ids], holes: [[vertex ids]] } },
+           curves: { id: { kind, edges, segments, center, normal, radius } } } }
+```
+Both levels are validated on load.
+
+**Version 1 documents** (milestone 1 autosaves, face-loop models) are converted on load:
+- Corners at the same position become one shared vertex, and every loop side becomes a shared edge.
+- **Face ids are preserved, along with normals and areas.** Vertices and edges get new ids that never collide with them.
+- Seams between coplanar push/pull walls, which version 1 hid, become soft edges.
+- The conversion is tested against a real milestone 1 autosave (`tests/fixtures/milestone1-autosave.json`).
+
+**Face ids inside milestone 2:** a face keeps its id while it is moved, stretched or merged into. When it is split, the largest piece keeps the id and the other pieces get new ones.
 
 ## Technical decisions
 | Date | Decision | Why |
@@ -119,64 +194,84 @@ JSON: `{ format: 'pushform', version: 1, units: { unit, precision }, model: { ki
 | 2026-10-25 | Display unit and precision are stored per file; changing them is an undoable command | Per-file settings were required; making them a command keeps every document change in one place. |
 | 2026-10-25 | Typed input accepts either system with suffixes; a bare number uses the file's unit (inches for imperial files) | Required by the brief. Arabic-Indic digits are normalized now for the later Arabic locale. |
 | 2026-10-25 | Rounded displayed values get a leading `~` | Precision matters for woodworking; the user should know when a shown value is not exact. |
-| 2026-10-25 | Undo via immutable document snapshots with structural sharing | Same model as the prototype, simple and robust. Milestone 2 can move to inverse operations behind the same session API. |
+| 2026-10-25 | Undo via immutable document snapshots with structural sharing | Simple and robust; kept in milestone 2 with the topology kernel. |
 | 2026-10-25 | zod for command input validation | Inputs will come from plugins and MCP as untrusted JSON; zod v4 can also emit JSON Schema for MCP tool definitions. |
 | 2026-10-25 | No UI framework; plain TypeScript and DOM | The UI is small, and it matches the prototype. |
 | 2026-10-25 | three.js (0.186) set up to look like r128: color management off, linear output, light intensity times PI | Keeps the prototype's colors and shading. |
 | 2026-10-25 | Barlow font bundled via @fontsource (OFL) | Local-first: no Google Fonts request. Barlow has no Arabic glyphs (see open questions). |
-| 2026-10-25 | Triangulation stays in the viewport (three ShapeUtils) | Rendering-only in milestone 1. It moves to the kernel when mesh export arrives. |
 | 2026-10-25 | Imperial files use a 1 ft grid, 2" snap step and 1/4" drag rounding; metric uses a 1 m grid, 50 mm snap and 10 mm drag rounding | Metric values come from the prototype; imperial values are their closest natural equivalents. |
-| 2026-10-25 | Autosave key `pushform.autosave.v1` in local storage | Same behavior as the prototype; there is no file open or save yet. |
-| 2026-10-25 | Lengths and coordinates are rounded to 1e-6 mm: command inputs on entry (zod `length` and `point3` schemas), and coordinates the kernel computes from them (rectangle corners, moved points) | Imperial input is rarely exact in floating point (24" is 609.5999999999999), and sums drift (304.8 + 609.6 is 914.4000000000001). Rounding stores equal decimals as identical numbers. Rounding only the inputs would not be enough, because of the sums. |
-| 2026-10-25 | "Amend last operation" lives in the command layer; commands declare amendable fields | Requested after testing (SketchUp behavior). One implementation serves every current and future tool, plugins and MCP. |
+| 2026-10-25 | Autosave key `pushform.autosave.v1` in local storage | The key is the autosave slot; since milestone 2 it holds version 2 documents. |
+| 2026-10-25 | Lengths and coordinates are rounded to 1e-6 mm: command inputs on entry, and coordinates the kernel computes | Imperial input is rarely exact in floating point (24" is 609.5999999999999), and sums drift (304.8 + 609.6 is 914.4000000000001). Kept in milestone 2 for every new vertex. |
+| 2026-10-25 | "Amend last operation" lives in the command layer; commands declare amendable fields | One implementation serves every current and future tool, plugins and MCP. |
+| 2026-10-26 | Edge-use topology instead of a strict half-edge structure (approved) | SketchUp models need loose edges and edges shared by three or more faces. |
+| 2026-10-26 | One vertex tolerance of 1e-3 mm for merging points and for points lying on edges and planes | One number keeps the planar engine consistent; it is far below anything users model. |
+| 2026-10-26 | Triangulation moves into the kernel, using earcut (approved, ISC license); it replaces three's ShapeUtils | Needed for export; earcut is the same algorithm three.js uses. |
+| 2026-10-26 | Push/pull leaves an unpushed inner face in place (approved) | Matches SketchUp. Milestone 1 carried the inner face along. |
+| 2026-10-26 | New faces on the ground face up (approved) | A deliberate improvement over SketchUp, which makes them face down. |
+| 2026-10-26 | New faces in a plane with no faces: the largest normal component points the positive way; in a plane with faces they follow those faces | Deterministic and independent of the camera. |
+| 2026-10-26 | Automatic faces: a region becomes a face when a drawn edge lies on its outer boundary | Closing a loop creates a face, including when a rectangle closes off an area together with existing edges. A region bounded only by old edges stays empty. |
+| 2026-10-26 | Push through only when the face lands fully inside the opposite face; otherwise the push stops 1 mm short | A clean hole needs the pushed face inside the opposite face; partial cases need intersection logic (next steps). |
+| 2026-10-26 | One undo step per line segment (approved) | Matches SketchUp; amend changes the last segment. |
+| 2026-10-26 | Curves group circle and polygon edges; only circle and arc walls get soft edges | Requested: select and erase a curve as one, and shade a pushed circle as a cylinder. A pushed polygon should stay a faceted prism. |
+| 2026-10-26 | Circle and polygon radius goes to the corners; the first corner points toward the radius click | Matches SketchUp's default. |
+| 2026-10-26 | The measurements box is read-only unless an operation is in progress, the last one can be amended, or the tool takes idle input (a segment count) | Testing feedback: a read-only value looked editable. |
+| 2026-10-26 | happy-dom as a dev dependency, enabled per test file | Unit tests for DOM components without a browser. |
+
+## Differences from SketchUp
+- **Ground faces face up**, deliberately. SketchUp makes them face down.
+- **New faces in a free plane** use a fixed rule (largest normal component positive), not the camera or neighboring solids. There is no "reverse face" command yet.
+- **Push through** only happens when the face lands fully inside the opposite face. If it would only partly overlap it, or touch its edge, the push stops 1 mm short.
+- **Pushing a face level with a neighbor** does not merge the two coplanar faces, and walls of different solids do not intersect each other (there is no "intersect faces").
+- **Inference is simpler.** There are endpoints, midpoints, points on edges, points on faces, the three axes and arrow-key axis locks. Parallel, perpendicular and "from point" inference are not built yet.
+- **Erase has no modifiers** (no hide or soften while erasing).
+- **Push/pull has no "new face" modifier** (SketchUp's Ctrl).
 
 ## Differences from the prototype
-- **Bug fix:** pulling a lone face downward built its side walls facing inward, which showed the back-face color from outside. Walls of a lone face now always face outward. Covered by a kernel test.
+- **Bug fix:** pulling a lone face downward built its side walls facing inward. Walls of a lone face now always face outward.
 - New units menu (unit and precision) in the top bar.
 - Values are shown with unit symbols ("0.60 m") instead of a unit in the label ("Dimensions (m)").
 - Typed values accept units and both systems. A bare number uses the file's unit.
-- Typed values after a rectangle or push/pull is finished amend that operation (the prototype ignored them). After a command, the measurements box shows the values it would amend.
-- Brand is Pushform instead of Blockout; the intro text mentions typed units.
-- The autosave key and format changed, so models saved by the prototype are not loaded.
+- Typed values after a finished operation amend it.
+- Since milestone 2:
+  - rectangles may overlap or cross faces;
+  - pushing an outer face leaves an inner face in place;
+  - pockets stop at the bottom or push through;
+  - line, circle and polygon tools exist;
+  - edges can be selected and erased.
+- Brand is Pushform instead of Blockout. Models saved by the prototype itself are not loaded; milestone 1 autosaves are.
 
-## Status (milestone 1, 2026-10-25)
-Done on branch `milestone-1`:
-- The project is set up with strict TypeScript, Vite, Vitest and the current three.js.
-- Behavior is at parity with the prototype:
-  - rectangle tool, on the ground and inside faces (cutting holes)
-  - push/pull: stretches perpendicular neighbors, adds walls on open edges, leaves a bottom behind on lone faces, carries inset faces
-  - clamping
-  - endpoint and midpoint snapping
-  - typed exact dimensions
-  - select (with area), erase, Delete key
-  - orbit, pan, zoom to cursor, zoom to fit
-  - undo and redo
-  - front and back face colors
-  - autosave
-  - light and dark themes
-- Units module with parsing and formatting tests in both systems.
-- Command layer with undo/redo tests and plugin registration.
-- Architecture test enforcing the layer rules.
-- Amend last operation for rectangle and push/pull, through the command layer.
-- Verification: 162 unit tests pass and the production build succeeds. A scripted browser smoke test (not in the repo) drew, pushed, cut a pocket, used undo/redo, deleted, switched units and reloaded, with no console errors.
+## Status
+**Milestone 1** (2026-10-25): prototype parity, units, i18n, command layer and amend. Merged into `main` locally; the product owner pushes.
 
-### Known limitations (inherited from the prototype)
-- Rectangles must sit fully inside a face; splitting a face along an edge is not implemented.
-- A pocket can be pushed through the bottom of a solid. Only upward movement of a pocket floor is clamped.
+**Milestone 2** (2026-10-26), on branch `milestone-2`:
+- **Topology kernel:** shared topology with the invariant checker; overlapping shapes split faces; automatic faces; erase merges and removes faces; generalized push/pull with push-through and clamping at the opposite face; curves and soft edges; triangulation in the kernel.
+- **Tools:** line (axis inference, arrow-key locks, edge snapping, typed lengths), circle and polygon (typed radius and counts), rectangle on the new kernel.
+- **Selection:** faces and edges, curves as one, Shift to add or remove, and Delete with the erase rules.
+- **Amend:** for line length, circle radius and segments, polygon radius and sides, as well as rectangle and push/pull.
+- **Documents:** version 2 format, with version 1 conversion that keeps face ids.
+- **Testing feedback fixed:** overlapping rectangles split faces instead of failing, and the measurements box is read-only when there is nothing to type.
+- **Verification:**
+  - 277 unit tests pass and the production build succeeds. They include randomized overlapping rectangles (grid-aligned and arbitrary) with invariant checks after every step.
+  - Scripted browser checks (not in the repo) covered: overlaps, pockets and push-through, edge selection and erase, the line tool, circles and polygons, amend, autosave, and loading a milestone 1 autosave.
+
+### Known limitations
+- Push-through and partial overlaps, as listed under differences from SketchUp.
+- Each operation recomputes its whole plane and an adjacency index. That is fine for typical models; very large models may slow down.
 - Undo history is not kept across reloads.
-- No file open, save or export yet; the only persistence is the browser autosave.
-- No line tool, move, copy or components yet.
+- There is no file open, save or export yet; the only storage is the browser autosave.
+- No move, copy, rotate, offset or components yet.
 
 ## Next steps (proposed, not yet approved)
-1. Milestone 2: half-edge kernel behind the current `src/kernel/index.ts` API, with edge splitting and rectangles that touch or cross face edges.
-2. File open and save (`.pushform` JSON download and upload) and the first export (glTF or STL).
-3. Line tool, move and copy, and components (also needed for imports).
-4. Arabic locale: catalog, an Arabic-capable font, and an RTL layout pass.
-5. Tooling: ESLint and Prettier, browser end-to-end tests in CI, and code-splitting three.js.
-6. MCP bridge: expose the command layer to external AI clients (bring-your-own, local).
-   - Read-only query commands, so external callers can find geometry: list faces with id, center, normal, size and area. Today these queries exist only as kernel functions used inside the app.
-   - Every command that creates faces returns the new face ids in its output. `core.drawRectangle` already returns its face id. `core.pushPull` returns only the applied distance, not the ids of the walls and bottom it creates.
-   - Face ids must stay stable across the milestone 2 kernel swap (half-edge). If they cannot, the document format version must change, so saved files and recorded command inputs that refer to old ids are not misread.
+1. File open and save (`.pushform` JSON download and upload) and the first export (glTF or STL, from `faceMeshes`).
+2. Move, copy, rotate and offset tools, then components (also needed for imports).
+3. Kernel: push-through and push/pull for partial overlaps, merging coplanar faces when a push makes them level, and intersecting faces.
+4. Inference: parallel, perpendicular and "from point", and a reverse-face command.
+5. Arabic locale: catalog, an Arabic-capable font, and an RTL layout pass.
+6. Tooling: ESLint and Prettier, browser end-to-end tests in CI, and code-splitting three.js.
+7. MCP bridge: expose the command layer to external AI clients (bring-your-own, local).
+   - Read-only query commands so external callers can find geometry: list faces with id, center, normal, size and area. Today these queries exist only as kernel functions used inside the app.
+   - Every face-creating command now returns the ids of the faces it creates, including push/pull walls and bottoms (done in milestone 2).
+   - Face ids: kept across the milestone 2 conversion (see document format). Any future change that cannot keep them must bump the document format version.
 
 ## Open questions
 - License: GPL or MIT.

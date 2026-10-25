@@ -97,6 +97,7 @@ export class App {
       saveAutosave(this.session.doc);
       this.refresh();
       if (e.reason === 'execute' || e.reason === 'amend') this.showAmendValues();
+      this.syncMeasureEditable();
     });
     this.bindPointer();
     this.bindKeyboard();
@@ -139,7 +140,10 @@ export class App {
       applyHighlights: (kind) => this.applyHighlights(kind),
       showCommitted: () => this.refresh(),
       setMeasurement: (label, value) => this.measure.set(label, value),
-      hint: () => this.status.hint(),
+      hint: () => {
+        this.status.hint();
+        this.syncMeasureEditable();
+      },
       flash: (message, isError) => this.status.flash(message, isError),
       flashError: (error) => this.flashError(error),
       cancel: (quiet) => this.cancel(quiet),
@@ -161,6 +165,12 @@ export class App {
     this.measure.reset();
     if (hadOperation && !quiet) this.refresh();
     this.status.hint();
+    this.syncMeasureEditable();
+  }
+
+  /** The measurements box takes input only for an operation in progress or one that can be amended. */
+  private syncMeasureEditable(): void {
+    this.measure.setEditable(this.tool.busy() || this.session.canAmend);
   }
 
   setTool(id: ToolId): void {
@@ -174,6 +184,7 @@ export class App {
     this.measure.set(this.tool.measurementLabel(), '');
     this.viewport.canvas.style.cursor = this.tool.cursor;
     this.status.hint();
+    this.syncMeasureEditable();
   }
 
   private undo(): void {
@@ -270,6 +281,7 @@ export class App {
       this.down = { x: e.clientX, y: e.clientY };
       this.viewport.setPointer(e);
       this.tool.down?.(e);
+      this.syncMeasureEditable();
     });
 
     canvas.addEventListener('pointermove', (e) => {
@@ -300,6 +312,7 @@ export class App {
           this.tool.dragEnd?.();
         }
       }
+      this.syncMeasureEditable();
     });
 
     canvas.addEventListener('pointerleave', () => {

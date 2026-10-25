@@ -305,6 +305,14 @@ input {
   font-variant-numeric: tabular-nums;
   text-align: end;
 }
+/* Nothing to type into: show the value as plain text, not as a field. */
+.vcb.readonly input {
+  border-color: transparent;
+  background: transparent;
+  color: var(--ink-2);
+  cursor: default;
+  outline: none;
+}
 
 @media (max-width: 680px) {
   body {

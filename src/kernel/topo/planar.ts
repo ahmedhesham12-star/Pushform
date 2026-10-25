@@ -214,7 +214,8 @@ export interface RebuildResult {
  * edges is on its outer boundary (an automatic face, oriented by newNormal).
  * Edges that do not separate regions (loose lines, lines dangling into a face)
  * stay as edges. `merge` lists old faces whose ids should be treated as one
- * owner, used when an erased edge joins two faces.
+ * owner, and `ignore` lists edges to leave out of the region graph; together
+ * they join two faces across an edge that is about to be erased.
  */
 export function rebuildPlane(
   d: Draft,
@@ -222,6 +223,7 @@ export function rebuildPlane(
   newNormal: Vec3,
   drawn: ReadonlySet<EdgeId>,
   merge: { into: FaceId; from: FaceId[] } | null = null,
+  ignore: ReadonlySet<EdgeId> = new Set(),
 ): RebuildResult {
   const basis: Basis = planeBasis(pl.n);
   const P = (v: VertexId) => to2(basis, d.point(v));
@@ -232,7 +234,9 @@ export function rebuildPlane(
   const ownerId = (id: FaceId) => (merge && merge.from.includes(id) ? merge.into : id);
 
   // Edges that separate regions: drop, repeatedly, those with the same region on both sides.
-  let edges = inPlaneEdges(d, pl).map(([id, e]) => ({ id, a: e.v[0], b: e.v[1] }));
+  let edges = inPlaneEdges(d, pl)
+    .filter(([id]) => !ignore.has(id))
+    .map(([id, e]) => ({ id, a: e.v[0], b: e.v[1] }));
   let cycles: HalfEdge[][];
   for (;;) {
     cycles = traceCycles(edges, P);

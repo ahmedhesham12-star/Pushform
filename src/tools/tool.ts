@@ -4,11 +4,24 @@ import type { Highlight, Viewport } from '../viewport';
 
 export type ToolId = 'select' | 'rectangle' | 'pushPull' | 'erase' | 'orbit' | 'pan';
 
-/** Selected and hovered faces. Not part of the document, so not undoable. */
-export interface Selection {
-  selected: string | null;
-  hovered: string | null;
+export interface EntityRef {
+  kind: 'face' | 'edge';
+  id: string;
 }
+
+/**
+ * Selected faces and edges, and the entity under the pointer. Not part of the
+ * document, so not undoable. Selecting one edge of a curve selects the whole
+ * curve, so `edges` always holds complete curves.
+ */
+export interface Selection {
+  readonly faces: Set<string>;
+  readonly edges: Set<string>;
+  hovered: EntityRef | null;
+}
+
+export const sameEntity = (a: EntityRef | null, b: EntityRef | null) =>
+  a === b || (!!a && !!b && a.kind === b.kind && a.id === b.id);
 
 /** What a tool can reach. Tools change the model only through `session`. */
 export interface ToolContext {

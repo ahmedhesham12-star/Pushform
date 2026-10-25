@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { Draft } from '../src/kernel/draft';
 import { erase } from '../src/kernel/erase';
-import { faceArea } from '../src/kernel/query';
+import { edgeGroup, faceArea } from '../src/kernel/query';
 import { drawLoop, drawRectangle, GROUND } from '../src/kernel/shapes';
 import { emptyTopology, type Point3, type Topology } from '../src/kernel/types';
 import { validate } from '../src/kernel/validate';
@@ -168,6 +168,20 @@ describe('erasing faces and curves', () => {
     expect(r.topology.faces.size).toBe(1);
     expect(r.topology.faces.has(face)).toBe(true);
     expect(faceArea(r.topology, face)).toBeCloseTo(16e6, 4);
+  });
+
+  test('an edge of a curve groups with its whole curve; a plain edge with itself', () => {
+    const pts: Point3[] = Array.from({ length: 6 }, (_, i) => {
+      const a = (i / 6) * Math.PI * 2;
+      return [1000 * Math.cos(a), 0, 1000 * Math.sin(a)];
+    });
+    let t = drawLoop(emptyTopology(), GROUND, [0, 1, 0], pts, { kind: 'polygon', segments: 6, center: [0, 0, 0], normal: [0, 1, 0], radius: 1000 }).topology;
+    t = drawAll([[3000, 0, 4000, 1000]], t);
+    const curveEdge = [...t.edges].find(([, e]) => e.curve)![0];
+    const plainEdge = [...t.edges].find(([, e]) => !e.curve)![0];
+    expect(edgeGroup(t, curveEdge)).toHaveLength(6);
+    expect(edgeGroup(t, plainEdge)).toEqual([plainEdge]);
+    expect(edgeGroup(t, 'nope')).toEqual([]);
   });
 
   test('nothing to erase returns the same topology', () => {

@@ -14,6 +14,7 @@ import {
   LinearSRGBColorSpace,
   Mesh,
   MeshBasicMaterial,
+  Raycaster,
   Scene,
   Vector3,
   WebGLRenderer,
@@ -23,7 +24,7 @@ import { gridStep, isImperial, MM_PER, type UnitSettings } from '../units';
 import { OrbitCamera } from './camera';
 import { toPoint, toVector } from './convert';
 import { SnapMarker, type MarkerKind } from './marker';
-import { ModelView } from './modelView';
+import { ModelView, type EdgeHighlight } from './modelView';
 import { Picker, type FaceHit } from './picking';
 
 // Match the r128 prototype: colors are used as given, with no sRGB conversion.
@@ -34,6 +35,8 @@ const AXIS_LENGTH = 60_000;
 const MAX_GROUND_DISTANCE = 300_000;
 /** Snap radius around inference points, in pixels. */
 const SNAP_RADIUS_PX = 14;
+/** How close (pixels) the pointer must be to an edge to pick it. */
+const EDGE_PICK_PX = 6;
 /** Points within this distance (mm) of a plane count as on it. */
 const ON_PLANE = 0.1;
 
@@ -51,6 +54,17 @@ export interface PlaneHit {
   /** Face under the cursor, or null for the ground. */
   faceId: string | null;
   normal: Vector3;
+  point: Vector3;
+}
+
+export interface EdgeHit {
+  edgeId: string;
+  point: Vector3;
+}
+
+export interface Picked {
+  kind: 'face' | 'edge';
+  id: string;
   point: Vector3;
 }
 
@@ -73,6 +87,8 @@ export class Viewport {
   private imperialGrid = false;
   private snapStep = 50;
   private snaps: SnapCandidate[] = [];
+  /** Separate from the pointer ray, for line-of-sight tests. */
+  private readonly occlusion = new Raycaster();
   private pending = false;
 
   constructor(private readonly container: HTMLElement) {
@@ -164,6 +180,52 @@ export class Viewport {
 
   pickFace(): FaceHit | null {
     return this.picker.pickFace(this.modelView.pickables);
+  }
+
+  /**
+   * The visible edge nearest the pointer on screen, within EDGE_PICK_PX, that
+   * is not hidden behind a face. `point` is the closest point on the edge.
+   */
+  pickEdge(): EdgeHit | null {
+    const { x, y } = this.picker.mouse;
+    const cam = this.camera.camera.position;
+    const candidates: { px: number; edgeId: string; point: Vector3 }[] = [];
+    for (const e of this.modelView.edges) {
+      const a = this.picker.toScreen(e.a);
+      const b = this.picker.toScreen(e.b);
+      if (a.z > 1 || b.z > 1) continue;
+      const dx = b.x - a.x;
+      const dy = b.y - a.y;
+      const len2 = dx * dx + dy * dy;
+      const t = len2 ? Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / len2)) : 0;
+      const px = Math.hypot(a.x + t * dx - x, a.y + t * dy - y);
+      // Screen t is close enough to world t for picking at this tolerance.
+      if (px < EDGE_PICK_PX) candidates.push({ px, edgeId: e.id, point: e.a.clone().lerp(e.b, t) });
+    }
+    candidates.sort((p, q) => p.px - q.px);
+    for (const c of candidates) {
+      // Hidden when a face is clearly in front of the edge along the line of sight.
+      // Faces the edge lies on are hit right at the edge point, so they do not hide it.
+      const d = c.point.distanceTo(cam);
+      this.occlusion.set(cam, c.point.clone().sub(cam).normalize());
+      const hit = this.occlusion.intersectObjects(this.modelView.pickables, false)[0];
+      if (hit && hit.distance < d - Math.max(1, d * 1e-4)) continue;
+      return { edgeId: c.edgeId, point: c.point };
+    }
+    return null;
+  }
+
+  /** The entity under the pointer: an edge when one is close, otherwise a face. */
+  pick(): Picked | null {
+    const e = this.pickEdge();
+    if (e) return { kind: 'edge', id: e.edgeId, point: e.point };
+    const f = this.pickFace();
+    return f ? { kind: 'face', id: f.faceId, point: f.point } : null;
+  }
+
+  highlightEdges(edges: ReadonlyMap<string, EdgeHighlight>): void {
+    this.modelView.highlightEdges(edges);
+    this.requestRender();
   }
 
   normalOf(faceId: string): Vector3 | undefined {

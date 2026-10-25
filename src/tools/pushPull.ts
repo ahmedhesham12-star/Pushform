@@ -1,7 +1,7 @@
 import type { Vector3 } from 'three';
 import { t } from '../i18n';
 import { dragStep, formatLength, parseLengthList } from '../units';
-import type { Tool, ToolContext } from './tool';
+import { sameEntity, type Tool, type ToolContext } from './tool';
 
 /** Distances below this (mm) are treated as no push at all. */
 const MIN_DISTANCE = 0.1;
@@ -91,9 +91,9 @@ export function createPushPullTool(ctx: ToolContext): Tool {
         return;
       }
       const h = ctx.viewport.pickFace();
-      const id = h ? h.faceId : null;
-      if (id !== ctx.selection.hovered) {
-        ctx.selection.hovered = id;
+      const hovered = h ? { kind: 'face' as const, id: h.faceId } : null;
+      if (!sameEntity(hovered, ctx.selection.hovered)) {
+        ctx.selection.hovered = hovered;
         ctx.applyHighlights();
       }
     },

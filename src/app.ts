@@ -1,6 +1,6 @@
 import { createSession, matchTypedValues, type CommandError, type CommandSession, type PushformDocument } from './commands';
 import { t, type MessageKey } from './i18n';
-import { bounds, edgeCount, faceCount, hasFace, snapPoints } from './kernel';
+import { bounds, edgeCount, edgeGroup, faceCount, hasEdge, hasFace, snapPoints } from './kernel';
 import { saveAutosave } from './storage';
 import { createTools, type Selection, type Tool, type ToolContext, type ToolId } from './tools';
 import { el } from './ui/dom';
@@ -11,7 +11,7 @@ import { StatusBar } from './ui/statusBar';
 import { ActionBar, ToolBar, type ToolButtonSpec } from './ui/toolbar';
 import { UnitsMenu } from './ui/unitsMenu';
 import { defaultPrecision, formatLength, formatNumber, parseTypedValues, type LengthUnit } from './units';
-import { Viewport, type Highlight } from './viewport';
+import { Viewport, type EdgeHighlight, type Highlight } from './viewport';
 
 /** Keys that switch tools (with no modifier). */
 const TOOL_KEYS: Record<string, ToolId> = { r: 'rectangle', p: 'pushPull', e: 'erase', o: 'orbit', h: 'pan' };
@@ -31,7 +31,7 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
 export class App {
   readonly session: CommandSession;
   readonly viewport: Viewport;
-  private readonly selection: Selection = { selected: null, hovered: null };
+  private readonly selection: Selection = { faces: new Set(), edges: new Set(), hovered: null };
   private readonly tools: Record<ToolId, Tool>;
   private tool: Tool;
   private readonly status: StatusBar;
@@ -114,8 +114,11 @@ export class App {
     this.viewport.setUnits(doc.units);
     this.viewport.showModel(doc.model);
     this.viewport.setSnapPoints(snapPoints(doc.model));
-    if (this.selection.selected && !hasFace(doc.model, this.selection.selected)) this.selection.selected = null;
-    if (this.selection.hovered && !hasFace(doc.model, this.selection.hovered)) this.selection.hovered = null;
+    const s = this.selection;
+    for (const f of s.faces) if (!hasFace(doc.model, f)) s.faces.delete(f);
+    for (const e of s.edges) if (!hasEdge(doc.model, e)) s.edges.delete(e);
+    const h = s.hovered;
+    if (h && !(h.kind === 'face' ? hasFace(doc.model, h.id) : hasEdge(doc.model, h.id))) s.hovered = null;
     this.applyHighlights();
     this.intro.setVisible(this.isEmpty());
     this.actions.setHistory(this.session.canUndo, this.session.canRedo);
@@ -123,12 +126,25 @@ export class App {
   }
 
   private applyHighlights(hoverKind?: Highlight): void {
-    const { selected, hovered } = this.selection;
+    const { faces, edges, hovered } = this.selection;
+    const kind = hoverKind ?? (this.tool.id === 'erase' ? 'erase' : 'hover');
     this.viewport.paintAll('normal');
-    if (selected) this.viewport.paint(selected, 'selected');
-    if (hovered && hovered !== selected) {
-      this.viewport.paint(hovered, hoverKind ?? (this.tool.id === 'erase' ? 'erase' : 'hover'));
+    for (const f of faces) this.viewport.paint(f, 'selected');
+    const lines = new Map<string, EdgeHighlight>();
+    for (const e of edges) lines.set(e, 'selected');
+    if (hovered?.kind === 'face' && !faces.has(hovered.id)) this.viewport.paint(hovered.id, kind);
+    if (hovered?.kind === 'edge') {
+      // Hovering one segment of a curve highlights the whole curve.
+      const edgeKind: EdgeHighlight = kind === 'erase' ? 'erase' : 'hover';
+      for (const e of edgeGroup(this.session.doc.model, hovered.id)) if (!edges.has(e)) lines.set(e, edgeKind);
     }
+    this.viewport.highlightEdges(lines);
+  }
+
+  private clearSelection(): void {
+    this.selection.faces.clear();
+    this.selection.edges.clear();
+    this.selection.hovered = null;
   }
 
   private toolContext(): ToolContext {
@@ -177,7 +193,7 @@ export class App {
     this.session.clearAmend();
     this.cancel();
     this.tool = this.tools[id];
-    if (id !== 'select') this.selection.selected = null;
+    if (id !== 'select') this.clearSelection();
     this.selection.hovered = null;
     this.applyHighlights();
     this.toolbar.setActive(id);
@@ -206,15 +222,17 @@ export class App {
   private clear(): void {
     if (this.isEmpty()) return;
     this.cancel(true);
-    this.selection.selected = this.selection.hovered = null;
+    this.clearSelection();
     if (this.session.execute('core.clearModel', {}).ok) this.status.flash(t('message.cleared'));
   }
 
+  /** Erase the selected faces and edges in one step. */
   private deleteSelected(): void {
-    const faceId = this.selection.selected;
-    if (!faceId) return;
-    this.selection.selected = this.selection.hovered = null;
-    const r = this.session.execute('core.erase', { faceIds: [faceId], edgeIds: [] });
+    const faceIds = [...this.selection.faces];
+    const edgeIds = [...this.selection.edges];
+    if (!faceIds.length && !edgeIds.length) return;
+    this.clearSelection();
+    const r = this.session.execute('core.erase', { faceIds, edgeIds });
     if (r.ok) this.status.flash(t('message.erased'));
     else this.flashError(r.error);
   }
@@ -373,14 +391,15 @@ export class App {
       }
       if (e.key === 'Escape') {
         if (this.tool.busy()) this.cancel();
-        else if (this.selection.selected) {
-          this.selection.selected = null;
+        else if (this.selection.faces.size || this.selection.edges.size) {
+          this.clearSelection();
           this.applyHighlights();
+          this.measure.set(this.tool.measurementLabel(), '');
           this.status.hint();
         }
         return;
       }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && this.selection.selected) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && (this.selection.faces.size || this.selection.edges.size)) {
         e.preventDefault();
         this.deleteSelected();
         return;

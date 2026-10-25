@@ -28,6 +28,15 @@ const MATERIALS: Record<Highlight, [MeshLambertMaterial, MeshLambertMaterial]> =
 };
 const EDGE_MATERIAL = new LineBasicMaterial({ color: 0x262c31 });
 
+export type EdgeHighlight = 'hover' | 'selected' | 'erase';
+/** Linear RGB, as color management is off (see viewport.ts). */
+const EDGE_COLORS: Record<EdgeHighlight, [number, number, number]> = {
+  selected: [0x1d / 255, 0x5c / 255, 0x86 / 255],
+  hover: [0x4f / 255, 0x8f / 255, 0xc0 / 255],
+  erase: [0xc0 / 255, 0x39 / 255, 0x2b / 255],
+};
+const HIGHLIGHT_EDGE_MATERIAL = new LineBasicMaterial({ vertexColors: true });
+
 /**
  * three.js meshes for a model: two meshes per face (front and back color) plus
  * lines for the visible edges. Triangles and smooth normals across soft edges
@@ -37,11 +46,15 @@ export class ModelView {
   readonly group = new Group();
   /** Meshes the picker raycasts against; userData.faceId holds the face id. */
   pickables: Mesh[] = [];
+  /** Visible (non-soft) edges, for picking. */
+  edges: { id: string; a: Vector3; b: Vector3 }[] = [];
   private meshes = new Map<string, [Mesh, Mesh]>();
   private normals = new Map<string, Vector3>();
+  private overlay: LineSegments | null = null;
 
   build(model: Model): void {
     this.dispose();
+    for (const e of listEdges(model)) if (!e.soft) this.edges.push({ id: e.id, a: new Vector3(...e.a), b: new Vector3(...e.b) });
     for (const f of listFaces(model)) this.normals.set(f.id, new Vector3(...f.normal));
     for (const m of faceMeshes(model)) {
       const g = new BufferGeometry();
@@ -55,7 +68,7 @@ export class ModelView {
       this.meshes.set(m.faceId, [front, back]);
     }
     const ep: number[] = [];
-    for (const e of listEdges(model)) if (!e.soft) ep.push(...e.a, ...e.b);
+    for (const e of this.edges) ep.push(e.a.x, e.a.y, e.a.z, e.b.x, e.b.y, e.b.z);
     const eg = new BufferGeometry();
     eg.setAttribute('position', new Float32BufferAttribute(ep, 3));
     this.group.add(new LineSegments(eg, EDGE_MATERIAL));
@@ -78,12 +91,39 @@ export class ModelView {
     for (const id of this.meshes.keys()) this.paint(id, kind);
   }
 
+  /** Draw the given edges over the normal edge lines in their highlight colors. */
+  highlightEdges(edges: ReadonlyMap<string, EdgeHighlight>): void {
+    if (this.overlay) {
+      this.group.remove(this.overlay);
+      this.overlay.geometry.dispose();
+      this.overlay = null;
+    }
+    if (!edges.size) return;
+    const pos: number[] = [];
+    const col: number[] = [];
+    for (const e of this.edges) {
+      const kind = edges.get(e.id);
+      if (!kind) continue;
+      const c = EDGE_COLORS[kind];
+      pos.push(e.a.x, e.a.y, e.a.z, e.b.x, e.b.y, e.b.z);
+      col.push(...c, ...c);
+    }
+    const g = new BufferGeometry();
+    g.setAttribute('position', new Float32BufferAttribute(pos, 3));
+    g.setAttribute('color', new Float32BufferAttribute(col, 3));
+    this.overlay = new LineSegments(g, HIGHLIGHT_EDGE_MATERIAL);
+    this.overlay.renderOrder = 1;
+    this.group.add(this.overlay);
+  }
+
   private dispose(): void {
     for (const c of [...this.group.children]) {
       this.group.remove(c);
       if (c instanceof Mesh || c instanceof LineSegments) c.geometry.dispose();
     }
     this.pickables = [];
+    this.edges = [];
+    this.overlay = null;
     this.meshes.clear();
     this.normals.clear();
   }

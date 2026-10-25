@@ -1,4 +1,6 @@
+import { createCircleTool } from './circle';
 import { createEraseTool } from './erase';
+import { createPolygonTool } from './polygon';
 import { createLineTool } from './line';
 import { createOrbitTool } from './orbit';
 import { createPanTool } from './pan';
@@ -14,6 +16,8 @@ export function createTools(ctx: ToolContext): Record<ToolId, Tool> {
     select: createSelectTool(ctx),
     line: createLineTool(ctx),
     rectangle: createRectangleTool(ctx),
+    circle: createCircleTool(ctx),
+    polygon: createPolygonTool(ctx),
     pushPull: createPushPullTool(ctx),
     erase: createEraseTool(ctx),
     orbit: createOrbitTool(),

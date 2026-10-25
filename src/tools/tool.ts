@@ -2,7 +2,7 @@ import type { CommandError, CommandSession } from '../commands';
 import type { UnitSettings } from '../units';
 import type { Highlight, Viewport } from '../viewport';
 
-export type ToolId = 'select' | 'line' | 'rectangle' | 'pushPull' | 'erase' | 'orbit' | 'pan';
+export type ToolId = 'select' | 'line' | 'rectangle' | 'circle' | 'polygon' | 'pushPull' | 'erase' | 'orbit' | 'pan';
 
 export interface EntityRef {
   kind: 'face' | 'edge';
@@ -59,6 +59,14 @@ export interface Tool {
   active?(): boolean;
   /** Handle a key the tool uses itself (arrow keys for axis locks). Returns true when handled. */
   key?(e: KeyboardEvent): boolean;
+  /**
+   * True when the tool takes typed input even with no operation in progress,
+   * like a segment count typed before drawing a circle. Amending the last
+   * operation still comes first.
+   */
+  acceptsInput?(): boolean;
+  /** Value shown in the measurements box while the tool is idle, like "24s". */
+  idleMeasurement?(): string;
   down?(e: PointerEvent): void;
   move?(e: PointerEvent): void;
   /** Pointer released after dragging: click-drag-release finishes like a second click. */

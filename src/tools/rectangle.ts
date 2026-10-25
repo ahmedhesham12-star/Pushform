@@ -34,7 +34,7 @@ export function createRectangleTool(ctx: ToolContext): Tool {
     ctx.setMeasurement(t('measure.dimensions'), sizes(du, dv));
     if (Math.abs(du) < MIN_PREVIEW && Math.abs(dv) < MIN_PREVIEW) return;
     const corners = previewRectangle(toPoint(s.normal), toPoint(s.start), du, dv).map(toVector);
-    ctx.viewport.showRectanglePreview(corners, s.normal);
+    ctx.viewport.showShapePreview(corners, s.normal);
   };
 
   const commit = (size?: [number, number]) => {

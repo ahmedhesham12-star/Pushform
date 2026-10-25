@@ -1,7 +1,7 @@
 import { MIN_RECT_SIDE, snapPoint } from './precision';
-import { add, planeAxes, scale, type Vec3 } from './vec';
+import { add, cross, dot, length, normalize, planeAxes, scale, sub, type Vec3 } from './vec';
 import { Draft } from './draft';
-import { onPlane, planeThrough, type Plane } from './geometry';
+import { onPlane, planeBasis, planeThrough, type Plane } from './geometry';
 import { insertSegment, rebuildPlane } from './planar';
 import type { Curve, EdgeId, FaceId, Point3, Topology } from './types';
 
@@ -56,6 +56,51 @@ export interface RectangleSpec {
   corner: Point3;
   width: number;
   depth: number;
+}
+
+export interface RegularPolygonSpec {
+  kind: 'circle' | 'polygon';
+  faceId: FaceId | null;
+  center: Point3;
+  radius: number;
+  /** Number of segments (circle) or sides (polygon). */
+  segments: number;
+  /** Direction from the center to the first vertex; projected onto the plane. Defaults to the plane's first axis. */
+  direction?: Vec3 | null;
+}
+
+/** Most segments a circle or polygon may have. */
+export const MAX_SEGMENTS = 1000;
+
+/** Corners of a regular polygon around center in the plane with normal n, first one along `direction`. */
+export function regularPolygonPoints(n: Vec3, center: Point3, radius: number, segments: number, direction?: Vec3 | null): Point3[] {
+  const basis = planeBasis(n);
+  let u = basis.u;
+  if (direction) {
+    const along = sub(direction, scale(n, dot(direction, n)));
+    if (length(along) > 1e-9) u = normalize(along);
+  }
+  const v = cross(n, u);
+  return Array.from({ length: segments }, (_, i) => {
+    const a = (i / segments) * Math.PI * 2;
+    return snapPoint(add(center, add(scale(u, radius * Math.cos(a)), scale(v, radius * Math.sin(a)))));
+  });
+}
+
+/**
+ * Draw a circle or a regular polygon as one curve: its edges are selected and
+ * erased together, and push/pull joins circle walls with soft edges.
+ */
+export function drawRegularPolygon(t: Topology, spec: RegularPolygonSpec): DrawResult {
+  if (!Number.isInteger(spec.segments) || spec.segments < 3 || spec.segments > MAX_SEGMENTS) return { ok: false, error: 'tooSmall' };
+  // Each side must be at least the smallest rectangle side.
+  if (2 * spec.radius * Math.sin(Math.PI / spec.segments) < MIN_RECT_SIDE / 5) return { ok: false, error: 'tooSmall' };
+  const target = drawingPlane(t, spec.faceId);
+  if (!target) return { ok: false, error: 'noSuchFace' };
+  if (!onPlane(target.plane, spec.center, 0.1)) return { ok: false, error: 'notOnPlane' };
+  const pts = regularPolygonPoints(target.normal, spec.center, spec.radius, spec.segments, spec.direction);
+  const curve = { kind: spec.kind, segments: spec.segments, center: snapPoint(spec.center), normal: target.normal, radius: spec.radius };
+  return { ok: true, ...drawLoop(t, target.plane, target.normal, pts, curve) };
 }
 
 export function drawRectangle(t: Topology, spec: RectangleSpec): DrawResult {

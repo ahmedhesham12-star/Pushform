@@ -313,11 +313,14 @@ export class Viewport {
 
   /* ---------- previews ---------- */
 
-  showRectanglePreview(corners: Vector3[], normal: Vector3): void {
+  /** Preview of a convex shape (rectangle, circle, polygon): a light fill and its outline. */
+  showShapePreview(corners: Vector3[], normal: Vector3): void {
     this.clearPreview();
     const lift = normal.clone().multiplyScalar(2);
     const c = corners.map((p) => p.clone().add(lift));
-    this.preview.add(new Mesh(new BufferGeometry().setFromPoints([c[0]!, c[1]!, c[2]!, c[0]!, c[2]!, c[3]!]), previewFill));
+    const fan: Vector3[] = [];
+    for (let i = 1; i + 1 < c.length; i++) fan.push(c[0]!, c[i]!, c[i + 1]!);
+    this.preview.add(new Mesh(new BufferGeometry().setFromPoints(fan), previewFill));
     this.preview.add(new LineLoop(new BufferGeometry().setFromPoints(c), previewLine));
     this.requestRender();
   }

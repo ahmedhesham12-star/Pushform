@@ -16,6 +16,11 @@ export const ICONS = {
   rectangle: svg(
     '<rect x="4" y="6.5" width="16" height="11"/><circle cx="4" cy="6.5" r="1.4" fill="currentColor"/><circle cx="20" cy="17.5" r="1.4" fill="currentColor"/>',
   ),
+  circle: svg('<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><path d="M12 12h8"/>'),
+  polygon: svg(
+    '<path d="M12 4 19 8v8l-7 4-7-4V8z"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/>',
+    'stroke-linejoin="round"',
+  ),
   pushPull: svg(
     '<path d="M4 15.5 9 13h11l-5 2.5z"/><path d="M4 15.5V20h11v-4.5M20 13v4.5L15 20"/><path d="M12 10.5V3M9 6l3-3 3 3"/>',
     'stroke-linejoin="round" stroke-linecap="round"',

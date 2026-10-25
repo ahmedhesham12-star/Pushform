@@ -14,7 +14,16 @@ import { defaultPrecision, formatLength, formatNumber, parseTypedValues, type Le
 import { Viewport, type EdgeHighlight, type Highlight } from './viewport';
 
 /** Keys that switch tools (with no modifier). */
-const TOOL_KEYS: Record<string, ToolId> = { l: 'line', r: 'rectangle', p: 'pushPull', e: 'erase', o: 'orbit', h: 'pan' };
+const TOOL_KEYS: Record<string, ToolId> = {
+  l: 'line',
+  r: 'rectangle',
+  c: 'circle',
+  g: 'polygon',
+  p: 'pushPull',
+  e: 'erase',
+  o: 'orbit',
+  h: 'pan',
+};
 /** Characters that start typing into the measurements box while a tool is busy. */
 const MEASURE_START = /^[0-9.,\-٠-٩۰-۹]$/;
 /** Pointer travel (px) that turns a click into a drag. */
@@ -66,6 +75,8 @@ export class App {
       { id: 'select', label: 'tool.select', icon: 'select', keyLabel: t('key.spaceSymbol'), keyName: t('key.space') },
       { id: 'line', label: 'tool.line', icon: 'line', keyLabel: 'L', keyName: 'L' },
       { id: 'rectangle', label: 'tool.rectangle', icon: 'rectangle', keyLabel: 'R', keyName: 'R' },
+      { id: 'circle', label: 'tool.circle', icon: 'circle', keyLabel: 'C', keyName: 'C' },
+      { id: 'polygon', label: 'tool.polygon', icon: 'polygon', keyLabel: 'G', keyName: 'G' },
       { id: 'pushPull', label: 'tool.pushPull', icon: 'pushPull', keyLabel: 'P', keyName: 'P' },
       { id: 'erase', label: 'tool.erase', icon: 'erase', keyLabel: 'E', keyName: 'E' },
       { id: 'orbit', label: 'tool.orbit', icon: 'orbit', keyLabel: 'O', keyName: 'O', group: true },
@@ -80,9 +91,12 @@ export class App {
     this.status = new StatusBar(() => this.tool.hint());
     this.measure = new MeasurementsBox({
       submit: (text) => {
+        // An operation in progress first, then amending the last one, then idle input (counts).
         if (this.tool.busy() && this.tool.submit) this.tool.submit(text);
         else if (this.session.canAmend) this.amend(text);
+        else if (this.tool.acceptsInput?.() && this.tool.submit) this.tool.submit(text);
         else this.status.flash(t('error.nothingToSize'), true);
+        this.syncMeasureEditable();
       },
       cancel: () => this.cancel(),
     });
@@ -180,14 +194,25 @@ export class App {
     this.viewport.clearPreview();
     this.viewport.hideMarker();
     this.measure.reset();
+    if (!quiet) this.showIdleMeasurement();
     if (hadOperation && !quiet) this.refresh();
     this.status.hint();
     this.syncMeasureEditable();
   }
 
-  /** The measurements box takes input only for an operation in progress or one that can be amended. */
+  /** What the measurements box shows when no operation is in progress. */
+  private showIdleMeasurement(): void {
+    this.measure.set(this.tool.measurementLabel(), this.tool.idleMeasurement?.() ?? '');
+  }
+
+  /** Whether typed input has somewhere to go: an operation, an amend, or the tool's idle input. */
+  private acceptsTyping(): boolean {
+    return this.tool.busy() || this.session.canAmend || !!this.tool.acceptsInput?.();
+  }
+
+  /** The measurements box takes input only when typing has somewhere to go. */
   private syncMeasureEditable(): void {
-    this.measure.setEditable(this.tool.busy() || this.session.canAmend);
+    this.measure.setEditable(this.acceptsTyping());
   }
 
   setTool(id: ToolId): void {
@@ -198,7 +223,7 @@ export class App {
     this.selection.hovered = null;
     this.applyHighlights();
     this.toolbar.setActive(id);
-    this.measure.set(this.tool.measurementLabel(), '');
+    this.showIdleMeasurement();
     this.viewport.canvas.style.cursor = this.tool.cursor;
     this.status.hint();
     this.syncMeasureEditable();
@@ -389,7 +414,7 @@ export class App {
         e.preventDefault();
         return;
       }
-      if (MEASURE_START.test(e.key) && (this.tool.busy() || this.session.canAmend)) {
+      if (MEASURE_START.test(e.key) && this.acceptsTyping()) {
         e.preventDefault();
         this.measure.startTyping(e.key);
         return;

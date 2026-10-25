@@ -201,6 +201,61 @@ describe('core.drawLine', () => {
   });
 });
 
+describe('core.drawCircle and core.drawPolygon', () => {
+  const typedAmend = (s: CommandSession, text: string) => {
+    const typed = parseTypedValues(text, s.doc.units.unit);
+    if (!typed.ok) throw new Error(text);
+    const m = matchTypedValues(s.amendTarget()!.fields, typed);
+    return m.ok ? s.amend(m.value) : m;
+  };
+  const curveOf = (s: CommandSession) => serialize(s.doc.model).curves;
+
+  test('a circle can be amended by radius, by segment count, or both, as one undo step', () => {
+    const s = createSession();
+    const r = s.execute('core.drawCircle', { faceId: null, center: [0, 0, 0], radius: 500, segments: 24, direction: null });
+    expect(r.ok && r.output.faceIds).toHaveLength(1);
+    expect(typedAmend(s, '48s')).toMatchObject({ ok: true });
+    expect(Object.values(curveOf(s))[0]).toMatchObject({ segments: 48, radius: 500 });
+    expect(typedAmend(s, '750mm')).toMatchObject({ ok: true });
+    expect(Object.values(curveOf(s))[0]).toMatchObject({ segments: 48, radius: 750 });
+    expect(typedAmend(s, '12s, 1m')).toMatchObject({ ok: true });
+    expect(Object.values(curveOf(s))[0]).toMatchObject({ segments: 12, radius: 1000 });
+    expect(listEdges(s.doc.model)).toHaveLength(12);
+    expect(s.history()).toHaveLength(1);
+    s.undo();
+    expect(faceCount(s.doc.model)).toBe(0);
+  });
+
+  test('a polygon can be amended by side count', () => {
+    const s = createSession();
+    s.execute('core.drawPolygon', { faceId: null, center: [0, 0, 0], radius: 500, sides: 6, direction: [1, 0, 0] });
+    expect(typedAmend(s, '8s')).toMatchObject({ ok: true });
+    expect(listEdges(s.doc.model)).toHaveLength(8);
+    expect(Object.values(curveOf(s))[0]).toMatchObject({ kind: 'polygon', segments: 8 });
+  });
+
+  test('invalid counts are rejected by the command, and by amend', () => {
+    const s = createSession();
+    expect(s.execute('core.drawCircle', { faceId: null, center: [0, 0, 0], radius: 500, segments: 2, direction: null })).toMatchObject({
+      ok: false,
+      error: { code: 'invalidInput' },
+    });
+    s.execute('core.drawCircle', { faceId: null, center: [0, 0, 0], radius: 500, segments: 24, direction: null });
+    expect(typedAmend(s, '2s')).toMatchObject({ ok: false, error: { code: 'invalidInput' } });
+    expect(Object.values(curveOf(s))[0]).toMatchObject({ segments: 24 });
+  });
+
+  test('pushing a circle makes a cylinder with soft sides', () => {
+    const s = createSession();
+    const r = s.execute('core.drawCircle', { faceId: null, center: [0, 0, 0], radius: 500, segments: 24, direction: null });
+    const disc = r.ok ? r.output.faceIds[0]! : '';
+    const p = s.execute('core.pushPull', { faceId: disc, distance: 800 });
+    expect(p.ok && p.output.createdFaceIds).toHaveLength(25);
+    expect(listEdges(s.doc.model).filter((e) => e.soft)).toHaveLength(24);
+    expect(checkModel(s.doc.model)).toEqual([]);
+  });
+});
+
 describe('loading milestone 1 documents', () => {
   test('a version 1 autosave loads as a version 2 document with the same faces and units', () => {
     const v1 = JSON.parse(readFileSync(join(__dirname, 'fixtures/milestone1-autosave.json'), 'utf8'));

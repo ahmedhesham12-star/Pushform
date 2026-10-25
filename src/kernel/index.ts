@@ -6,7 +6,7 @@
  * so the representation can change without touching commands, tools or the
  * viewport.
  *
- * Mutations (createModel, drawRectangle, drawLine, pushPull, erase, deserialize) are for
+ * Mutations (createModel, drawRectangle, drawRegularPolygon, drawLine, pushPull, erase, deserialize) are for
  * src/commands only; everything else is read-only and may be used anywhere.
  */
 import { erase as eraseTopology } from './erase';
@@ -14,7 +14,15 @@ import { drawLine as drawTopologyLine } from './lines';
 import { pushPull as pushTopology } from './pushPull';
 import * as q from './query';
 import { deserializeTopology, serializeTopology, type SerializedTopology } from './serialize';
-import { drawRectangle as drawRect, rectangleCorners, type DrawError, type RectangleSpec } from './shapes';
+import {
+  drawRectangle as drawRect,
+  drawRegularPolygon as drawRegular,
+  rectangleCorners,
+  regularPolygonPoints,
+  type DrawError,
+  type RectangleSpec,
+  type RegularPolygonSpec,
+} from './shapes';
 import { faceMeshes as meshes, faceTriangles as triangles, type FaceMesh, type Triangle } from './triangulate';
 import { emptyTopology, type Point3, type Topology } from './types';
 import { validate } from './validate';
@@ -28,9 +36,9 @@ const wrap = (t: Topology) => t as unknown as Model;
 export type { Vec3 } from './vec';
 export type { Point3, FaceId, EdgeId, CurveId, CurveKind } from './types';
 export type { FaceView, EdgeView, SnapPoint, SnapKind, Bounds } from './query';
-export type { DrawError, RectangleSpec, SerializedTopology, FaceMesh, Triangle };
+export type { DrawError, RectangleSpec, RegularPolygonSpec, SerializedTopology, FaceMesh, Triangle };
 export { planeAxes } from './vec';
-export { GROUND_NORMAL } from './shapes';
+export { GROUND_NORMAL, MAX_SEGMENTS } from './shapes';
 export { COORDINATE_PRECISION, EPSILON, MIN_RECT_SIDE, snapLength, snapPoint, VERTEX_TOLERANCE } from './precision';
 
 /* ---------- mutations (commands only) ---------- */
@@ -47,6 +55,12 @@ export type DrawResult = { ok: true; model: Model; faceIds: string[] } | { ok: f
  */
 export function drawRectangle(m: Model, spec: RectangleSpec): DrawResult {
   const r = drawRect(data(m), spec);
+  return r.ok ? { ok: true, model: wrap(r.topology), faceIds: r.faceIds } : r;
+}
+
+/** Draw a circle or regular polygon as one curve, on the ground or on a face. */
+export function drawRegularPolygon(m: Model, spec: RegularPolygonSpec): DrawResult {
+  const r = drawRegular(data(m), spec);
   return r.ok ? { ok: true, model: wrap(r.topology), faceIds: r.faceIds } : r;
 }
 
@@ -108,3 +122,5 @@ export const bounds = (m: Model) => q.bounds(data(m));
 export const checkModel = (m: Model) => validate(data(m));
 /** Corners of a rectangle as drawRectangle would create it; used for previews. */
 export const previewRectangle = rectangleCorners;
+/** Corners of a circle or polygon as drawRegularPolygon would create it; used for previews. */
+export const previewRegularPolygon = regularPolygonPoints;

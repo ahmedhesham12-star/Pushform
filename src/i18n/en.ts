@@ -4,6 +4,12 @@
  * Placeholders use {name} and are filled by t().
  */
 export const en = {
+  'command.drawRectangle': 'Draw rectangle',
+  'command.pushPull': 'Push/pull',
+  'command.deleteFace': 'Erase face',
+  'command.clearModel': 'Clear model',
+  'command.setDisplayUnits': 'Change units',
+
   'units.symbol.mm': 'mm',
   'units.symbol.cm': 'cm',
   'units.symbol.m': 'm',

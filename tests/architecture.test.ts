@@ -31,8 +31,12 @@ function sourceFiles(): string[] {
 
 const layerOf = (file: string) => relative(SRC, file).split(sep)[0]!.replace(/\.ts$/, '');
 
-function stripComments(code: string): string {
-  return code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+/** Remove comments and string contents so only code identifiers remain. */
+function codeOnly(code: string): string {
+  return code
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/^\s*\/\/.*$/gm, '')
+    .replace(/'[^'\n]*'|"[^"\n]*"/g, "''");
 }
 
 function importsOf(file: string): ImportInfo[] {
@@ -71,7 +75,7 @@ describe('architecture', () => {
   test.each(['kernel', 'commands', 'units'])('%s uses no DOM globals', (layer) => {
     const bad = sourceFiles()
       .filter((f) => layerOf(f) === layer)
-      .filter((f) => DOM_GLOBALS.test(stripComments(readFileSync(f, 'utf8'))));
+      .filter((f) => DOM_GLOBALS.test(codeOnly(readFileSync(f, 'utf8'))));
     expect(bad.map((f) => relative(SRC, f))).toEqual([]);
   });
 

@@ -22,6 +22,7 @@ export const en = {
 
   'toolbar.label': 'Tools',
   'tool.select': 'Select',
+  'tool.line': 'Line',
   'tool.rectangle': 'Rectangle',
   'tool.pushPull': 'Push/Pull',
   'tool.erase': 'Erase',
@@ -33,6 +34,8 @@ export const en = {
 
   'status.select.idle': 'Click a face or an edge to select it. Shift-click to add or remove.',
   'status.select.selected': 'Press Delete to erase the selection, Esc to clear it. Shift-click to add or remove.',
+  'status.line.first': 'Click to start a line on the ground, a face or a point.',
+  'status.line.next': 'Click the next point, or type a length and press Enter. Arrow keys lock an axis; Esc ends the line.',
   'status.rectangle.first': 'Click the first corner on the ground or on a face.',
   'status.rectangle.second': 'Click the opposite corner, or type width, depth and press Enter.',
   'status.pushPull.idle': 'Click a face to push or pull it.',
@@ -53,6 +56,7 @@ export const en = {
   'message.pushed': 'Pushed/pulled {distance}.',
   'message.erased': 'Face erased. Undo brings it back.',
   'message.cleared': 'Model cleared. Undo brings it back.',
+  'message.lineClosed': 'Loop closed. Type a length now to change the last segment.',
   'message.amended': '{command} changed to {values}.',
 
   'error.tooSmall': 'The rectangle needs a width and a depth.',
@@ -64,9 +68,11 @@ export const en = {
   'error.typeTwoSizes': 'Type two positive sizes separated by a comma, like 600mm, 400mm.',
   'error.typeOneDistance': 'Type one distance, like 600mm or 2\' 6".',
   'error.typeValues': 'Type {count} values separated by commas.',
+  'error.typeOneLength': 'Type one length, like 600mm or 2\' 6".',
   'error.nothingToSize': 'Start a rectangle or a push/pull, then type a size.',
 
   'command.drawRectangle': 'Draw rectangle',
+  'command.drawLine': 'Draw line',
   'command.pushPull': 'Push/pull',
   'command.erase': 'Erase',
   'command.clearModel': 'Clear model',
@@ -76,6 +82,10 @@ export const en = {
   'snap.midpoint': 'Midpoint',
   'snap.onFace': 'On face',
   'snap.onPlane': 'On plane',
+  'snap.onEdge': 'On edge',
+  'snap.onRedAxis': 'On red axis',
+  'snap.onGreenAxis': 'On green axis',
+  'snap.onBlueAxis': 'On blue axis',
 
   'units.label': 'Units',
   'units.precisionLabel': 'Precision',

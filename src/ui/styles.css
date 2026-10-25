@@ -17,6 +17,10 @@
   --end: #2f8a52;
   --mid: #1f8fb0;
   --err: #a33a2c;
+  --edge-snap: #a3459a;
+  --axis-x: #c4443b;
+  --axis-y: #3a62c2;
+  --axis-z: #3e9a4c;
   color-scheme: light;
   box-sizing: border-box;
   padding-block: env(safe-area-inset-top, 0px) env(safe-area-inset-bottom, 0px);
@@ -36,6 +40,10 @@
     --end: #5fc185;
     --mid: #55bfdc;
     --err: #f08a7a;
+    --edge-snap: #d58ccd;
+    --axis-x: #e0675f;
+    --axis-y: #6f93e6;
+    --axis-z: #63bd70;
     color-scheme: dark;
   }
 }
@@ -53,6 +61,10 @@
   --end: #5fc185;
   --mid: #55bfdc;
   --err: #f08a7a;
+  --edge-snap: #d58ccd;
+  --axis-x: #e0675f;
+  --axis-y: #6f93e6;
+  --axis-z: #63bd70;
   color-scheme: dark;
 }
 *,

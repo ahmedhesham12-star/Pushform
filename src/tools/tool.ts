@@ -2,7 +2,7 @@ import type { CommandError, CommandSession } from '../commands';
 import type { UnitSettings } from '../units';
 import type { Highlight, Viewport } from '../viewport';
 
-export type ToolId = 'select' | 'rectangle' | 'pushPull' | 'erase' | 'orbit' | 'pan';
+export type ToolId = 'select' | 'line' | 'rectangle' | 'pushPull' | 'erase' | 'orbit' | 'pan';
 
 export interface EntityRef {
   kind: 'face' | 'edge';
@@ -52,6 +52,13 @@ export interface Tool {
   measurementLabel(): string;
   /** True while an operation is in progress (typing goes to the measurements box). */
   busy(): boolean;
+  /**
+   * True while the tool holds state that Esc should end, even if it is not
+   * busy (a line chain between segments, where typing amends the last one).
+   */
+  active?(): boolean;
+  /** Handle a key the tool uses itself (arrow keys for axis locks). Returns true when handled. */
+  key?(e: KeyboardEvent): boolean;
   down?(e: PointerEvent): void;
   move?(e: PointerEvent): void;
   /** Pointer released after dragging: click-drag-release finishes like a second click. */

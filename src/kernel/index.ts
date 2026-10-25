@@ -6,16 +6,17 @@
  * so the representation can change without touching commands, tools or the
  * viewport.
  *
- * Mutations (createModel, drawRectangle, pushPull, erase, deserialize) are for
+ * Mutations (createModel, drawRectangle, drawLine, pushPull, erase, deserialize) are for
  * src/commands only; everything else is read-only and may be used anywhere.
  */
 import { erase as eraseTopology } from './erase';
+import { drawLine as drawTopologyLine } from './lines';
 import { pushPull as pushTopology } from './pushPull';
 import * as q from './query';
 import { deserializeTopology, serializeTopology, type SerializedTopology } from './serialize';
 import { drawRectangle as drawRect, rectangleCorners, type DrawError, type RectangleSpec } from './shapes';
 import { faceMeshes as meshes, faceTriangles as triangles, type FaceMesh, type Triangle } from './triangulate';
-import { emptyTopology, type Topology } from './types';
+import { emptyTopology, type Point3, type Topology } from './types';
 import { validate } from './validate';
 
 declare const opaque: unique symbol;
@@ -47,6 +48,16 @@ export type DrawResult = { ok: true; model: Model; faceIds: string[] } | { ok: f
 export function drawRectangle(m: Model, spec: RectangleSpec): DrawResult {
   const r = drawRect(data(m), spec);
   return r.ok ? { ok: true, model: wrap(r.topology), faceIds: r.faceIds } : r;
+}
+
+/**
+ * Draw a straight line. It splits edges and faces it crosses in their plane,
+ * and closing a planar loop creates a face. Returns the same model when the
+ * line adds nothing (both ends on one vertex).
+ */
+export function drawLine(m: Model, start: Point3, end: Point3): { model: Model; edgeIds: string[]; faceIds: string[] } {
+  const r = drawTopologyLine(data(m), start, end);
+  return { model: wrap(r.topology), edgeIds: r.edgeIds, faceIds: r.faceIds };
 }
 
 export interface PushPullResult {

@@ -165,6 +165,42 @@ describe('face ids in command output', () => {
   });
 });
 
+describe('core.drawLine', () => {
+  const seg = (s: CommandSession, start: [number, number, number], direction: [number, number, number], length: number) =>
+    s.execute('core.drawLine', { start, direction, length });
+
+  test('each segment is one undo step, and closing a loop returns the new face', () => {
+    const s = createSession();
+    seg(s, [0, 0, 0], [1, 0, 0], 2000);
+    seg(s, [2000, 0, 0], [0, 0, 1], 1000);
+    seg(s, [2000, 0, 1000], [-1, 0, 0], 2000);
+    const last = seg(s, [0, 0, 1000], [0, 0, -1], 1000);
+    expect(last.ok && last.output.faceIds).toHaveLength(1);
+    expect(s.history().map((h) => h.commandId)).toEqual(Array(4).fill('core.drawLine'));
+    s.undo();
+    expect(faceCount(s.doc.model)).toBe(0);
+    expect(listEdges(s.doc.model)).toHaveLength(3);
+  });
+
+  test('typing a length amends the segment just drawn, along the same direction', () => {
+    const s = createSession();
+    seg(s, [0, 0, 0], [3, 0, 4], 1000);
+    const typed = parseTypedValues('2\' 0"', s.doc.units.unit);
+    const m = typed.ok ? matchTypedValues(s.amendTarget()!.fields, typed) : null;
+    expect(m?.ok && s.amend(m.value)).toMatchObject({ ok: true });
+    const [e] = listEdges(s.doc.model);
+    const len = Math.hypot(e!.b[0] - e!.a[0], e!.b[1] - e!.a[1], e!.b[2] - e!.a[2]);
+    expect(len).toBeCloseTo(609.6, 6);
+    expect(s.history()).toHaveLength(1);
+  });
+
+  test('a zero direction or zero length is rejected', () => {
+    const s = createSession();
+    expect(seg(s, [0, 0, 0], [0, 0, 0], 1000)).toMatchObject({ ok: false, error: { code: 'invalidInput' } });
+    expect(seg(s, [0, 0, 0], [1, 0, 0], 0)).toMatchObject({ ok: false, error: { code: 'tooSmall' } });
+  });
+});
+
 describe('loading milestone 1 documents', () => {
   test('a version 1 autosave loads as a version 2 document with the same faces and units', () => {
     const v1 = JSON.parse(readFileSync(join(__dirname, 'fixtures/milestone1-autosave.json'), 'utf8'));

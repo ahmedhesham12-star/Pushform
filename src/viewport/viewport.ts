@@ -50,6 +50,22 @@ const previewFill = new MeshBasicMaterial({
 });
 const previewLine = new LineBasicMaterial({ color: PREVIEW_COLOR });
 
+export type Axis = 'x' | 'y' | 'z';
+/** Red is X, green is Z and blue is Y (up), as drawn by the axis lines. */
+export const AXIS_DIRECTION: Record<Axis, Vector3> = {
+  x: new Vector3(1, 0, 0),
+  y: new Vector3(0, 1, 0),
+  z: new Vector3(0, 0, 1),
+};
+const AXIS_COLOR: Record<Axis, number> = { x: 0xc4443b, y: 0x3a62c2, z: 0x3e9a4c };
+const AXIS_LINE: Record<Axis, LineBasicMaterial> = {
+  x: new LineBasicMaterial({ color: AXIS_COLOR.x }),
+  y: new LineBasicMaterial({ color: AXIS_COLOR.y }),
+  z: new LineBasicMaterial({ color: AXIS_COLOR.z }),
+};
+/** How close (pixels) the pointer must be to an axis line through the start point to lock onto it. */
+const AXIS_PICK_PX = 10;
+
 export interface PlaneHit {
   /** Face under the cursor, or null for the ground. */
   faceId: string | null;
@@ -108,9 +124,9 @@ export class Viewport {
     sun.position.set(4, 10, 7);
     this.scene.add(sun);
     this.scene.add(
-      axis(0xc4443b, new Vector3(1, 0, 0)),
-      axis(0x3e9a4c, new Vector3(0, 0, -1)),
-      axis(0x3a62c2, new Vector3(0, 1, 0)),
+      axis(AXIS_COLOR.x, new Vector3(1, 0, 0)),
+      axis(AXIS_COLOR.z, new Vector3(0, 0, -1)),
+      axis(AXIS_COLOR.y, new Vector3(0, 1, 0)),
     );
     this.scene.add(this.modelView.group, this.preview);
 
@@ -199,8 +215,7 @@ export class Viewport {
       const len2 = dx * dx + dy * dy;
       const t = len2 ? Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / len2)) : 0;
       const px = Math.hypot(a.x + t * dx - x, a.y + t * dy - y);
-      // Screen t is close enough to world t for picking at this tolerance.
-      if (px < EDGE_PICK_PX) candidates.push({ px, edgeId: e.id, point: e.a.clone().lerp(e.b, t) });
+      if (px < EDGE_PICK_PX) candidates.push({ px, edgeId: e.id, point: this.closestOnSegment(e.a, e.b) ?? e.a.clone().lerp(e.b, t) });
     }
     candidates.sort((p, q) => p.px - q.px);
     for (const c of candidates) {
@@ -307,10 +322,66 @@ export class Viewport {
     this.requestRender();
   }
 
+  /** A rubber-band line from a to b, in an axis color or the accent color. */
+  showLinePreview(a: Vector3, b: Vector3, axis: Axis | null): void {
+    this.clearPreview();
+    const material = axis ? AXIS_LINE[axis] : previewLine;
+    this.preview.add(new Line(new BufferGeometry().setFromPoints([a, b]), material));
+    this.requestRender();
+  }
+
+  /** The point on the infinite line origin + s * dir closest to the pointer ray, or null when they are parallel. */
+  closestOnLine(origin: Vector3, dir: Vector3): Vector3 | null {
+    const { origin: o, direction: d } = this.picker.ray;
+    const u = dir.clone().normalize();
+    const w0 = origin.clone().sub(o);
+    const b = u.dot(d);
+    const den = 1 - b * b;
+    if (den < 1e-6) return null;
+    const s = (b * d.dot(w0) - u.dot(w0)) / den;
+    return origin.clone().addScaledVector(u, s);
+  }
+
+  /** The point on segment ab closest to the pointer ray (exact in 3D, unlike screen interpolation). */
+  closestOnSegment(a: Vector3, b: Vector3): Vector3 | null {
+    const ab = b.clone().sub(a);
+    const len = ab.length();
+    const p = this.closestOnLine(a, ab);
+    if (!p || !len) return null;
+    const s = Math.max(0, Math.min(len, p.clone().sub(a).dot(ab) / len));
+    return a.clone().addScaledVector(ab, s / len);
+  }
+
+  /**
+   * Axis inference: the red, green or blue axis through `start` whose line on
+   * screen passes closest to the pointer, within AXIS_PICK_PX, and the point on it.
+   */
+  axisInference(start: Vector3): { axis: Axis; point: Vector3 } | null {
+    const { x, y } = this.picker.mouse;
+    const s = this.picker.toScreen(start);
+    if (s.z > 1) return null;
+    let best: { axis: Axis; point: Vector3 } | null = null;
+    let bestPx = AXIS_PICK_PX;
+    for (const axis of ['x', 'y', 'z'] as const) {
+      const e = this.picker.toScreen(start.clone().addScaledVector(AXIS_DIRECTION[axis], this.camera.distance * 0.1));
+      const dx = e.x - s.x;
+      const dy = e.y - s.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 1) continue;
+      const px = Math.abs((x - s.x) * dy - (y - s.y) * dx) / len;
+      if (px >= bestPx) continue;
+      const point = this.closestOnLine(start, AXIS_DIRECTION[axis]);
+      if (!point) continue;
+      bestPx = px;
+      best = { axis, point };
+    }
+    return best;
+  }
+
   clearPreview(): void {
     for (const c of [...this.preview.children]) {
       this.preview.remove(c);
-      if (c instanceof Mesh || c instanceof LineLoop) c.geometry.dispose();
+      if (c instanceof Mesh || c instanceof Line) c.geometry.dispose();
     }
     this.requestRender();
   }

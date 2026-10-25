@@ -9,6 +9,10 @@ export const ICONS = {
     'stroke-width="1.7" stroke-linejoin="round"',
   ),
   select: svg('<path d="M6 3.5 18 11l-5.6 1.4L9.3 18z"/>', 'stroke-linejoin="round"'),
+  line: svg(
+    '<path d="M5 19 19 5"/><circle cx="5" cy="19" r="1.4" fill="currentColor"/><circle cx="19" cy="5" r="1.4" fill="currentColor"/>',
+    'stroke-linecap="round"',
+  ),
   rectangle: svg(
     '<rect x="4" y="6.5" width="16" height="11"/><circle cx="4" cy="6.5" r="1.4" fill="currentColor"/><circle cx="20" cy="17.5" r="1.4" fill="currentColor"/>',
   ),

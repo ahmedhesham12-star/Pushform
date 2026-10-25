@@ -14,7 +14,7 @@ import { defaultPrecision, formatLength, formatNumber, parseTypedValues, type Le
 import { Viewport, type EdgeHighlight, type Highlight } from './viewport';
 
 /** Keys that switch tools (with no modifier). */
-const TOOL_KEYS: Record<string, ToolId> = { r: 'rectangle', p: 'pushPull', e: 'erase', o: 'orbit', h: 'pan' };
+const TOOL_KEYS: Record<string, ToolId> = { l: 'line', r: 'rectangle', p: 'pushPull', e: 'erase', o: 'orbit', h: 'pan' };
 /** Characters that start typing into the measurements box while a tool is busy. */
 const MEASURE_START = /^[0-9.,\-٠-٩۰-۹]$/;
 /** Pointer travel (px) that turns a click into a drag. */
@@ -64,6 +64,7 @@ export class App {
 
     const toolSpecs: ToolButtonSpec<ToolId>[] = [
       { id: 'select', label: 'tool.select', icon: 'select', keyLabel: t('key.spaceSymbol'), keyName: t('key.space') },
+      { id: 'line', label: 'tool.line', icon: 'line', keyLabel: 'L', keyName: 'L' },
       { id: 'rectangle', label: 'tool.rectangle', icon: 'rectangle', keyLabel: 'R', keyName: 'R' },
       { id: 'pushPull', label: 'tool.pushPull', icon: 'pushPull', keyLabel: 'P', keyName: 'P' },
       { id: 'erase', label: 'tool.erase', icon: 'erase', keyLabel: 'E', keyName: 'E' },
@@ -342,7 +343,7 @@ export class App {
     });
 
     canvas.addEventListener('pointerleave', () => {
-      if (this.tool.busy()) return;
+      if (this.tool.busy() || this.tool.active?.()) return;
       if (this.selection.hovered) {
         this.selection.hovered = null;
         this.applyHighlights();
@@ -384,13 +385,17 @@ export class App {
         return;
       }
       if (mod || e.altKey) return;
+      if (this.tool.key?.(e)) {
+        e.preventDefault();
+        return;
+      }
       if (MEASURE_START.test(e.key) && (this.tool.busy() || this.session.canAmend)) {
         e.preventDefault();
         this.measure.startTyping(e.key);
         return;
       }
       if (e.key === 'Escape') {
-        if (this.tool.busy()) this.cancel();
+        if (this.tool.busy() || this.tool.active?.()) this.cancel();
         else if (this.selection.faces.size || this.selection.edges.size) {
           this.clearSelection();
           this.applyHighlights();

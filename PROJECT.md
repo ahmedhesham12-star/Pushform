@@ -45,7 +45,7 @@ Everything else comes from a plugin API built on the command layer.
 - Imports become components: one definition, many instances. Imported meshes are reference geometry: movable and snappable, but not push/pull editable. Show simplified versions when zoomed out.
 - Formats:
   - v1: OBJ, STL, glTF.
-  - v1.1: STEP/IGES via OpenCascade WebAssembly. It is LGPL, so check license compatibility before release.
+  - v1.1: STEP/IGES via OpenCascade WebAssembly. It is LGPL, which is compatible with both GPL and MIT when used as a separate library, so the license choice does not block STEP import. Ship it as a separately loaded, replaceable module with its license notice.
   - DXF for 2D profiles.
 - On import: ask for units when the file has none, show the real size, and set the insertion point and orientation.
 - Placement: glue to face, snap to edges, and per-item placement presets.
@@ -179,7 +179,7 @@ Done on branch `milestone-1`:
    - Face ids must stay stable across the milestone 2 kernel swap (half-edge). If they cannot, the document format version must change, so saved files and recorded command inputs that refer to old ids are not misread.
 
 ## Open questions
-- License: GPL or MIT. This also affects whether the LGPL OpenCascade build can ship.
+- License: GPL or MIT.
 - Arabic font choice, since Barlow has no Arabic glyphs.
 - Default units: currently meters for every new file. Revisit when woodworking features land, for example a setting or a locale-based default.
 - Decimal comma input. Users in many regions type 1,5 for 1.5. Today the parser accepts only a decimal point, and a comma separates values ("600, 400"), so "1,5" is read as two values. Proposed approach: follow the locale's decimal separator, and switch the list separator to ";" when the decimal separator is a comma. Decide during the localization work. No code change yet.

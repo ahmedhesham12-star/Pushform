@@ -173,6 +173,10 @@ Done on branch `milestone-1`:
 3. Line tool, move and copy, and components (also needed for imports).
 4. Arabic locale: catalog, an Arabic-capable font, and an RTL layout pass.
 5. Tooling: ESLint and Prettier, browser end-to-end tests in CI, and code-splitting three.js.
+6. MCP bridge: expose the command layer to external AI clients (bring-your-own, local).
+   - Read-only query commands, so external callers can find geometry: list faces with id, center, normal, size and area. Today these queries exist only as kernel functions used inside the app.
+   - Every command that creates faces returns the new face ids in its output. `core.drawRectangle` already returns its face id. `core.pushPull` returns only the applied distance, not the ids of the walls and bottom it creates.
+   - Face ids must stay stable across the milestone 2 kernel swap (half-edge). If they cannot, the document format version must change, so saved files and recorded command inputs that refer to old ids are not misread.
 
 ## Open questions
 - License: GPL or MIT. This also affects whether the LGPL OpenCascade build can ship.

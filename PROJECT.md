@@ -178,3 +178,4 @@ Done on branch `milestone-1`:
 - License: GPL or MIT. This also affects whether the LGPL OpenCascade build can ship.
 - Arabic font choice, since Barlow has no Arabic glyphs.
 - Default units: currently meters for every new file. Revisit when woodworking features land, for example a setting or a locale-based default.
+- Decimal comma input. Users in many regions type 1,5 for 1.5. Today the parser accepts only a decimal point, and a comma separates values ("600, 400"), so "1,5" is read as two values. Proposed approach: follow the locale's decimal separator, and switch the list separator to ";" when the decimal separator is a comma. Decide during the localization work. No code change yet.

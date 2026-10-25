@@ -99,6 +99,13 @@ How the session works:
 
 Plugins call `registry.register(def)` and extend the typed `CommandMap` through declaration merging.
 
+**Amend last operation.** After a command finishes, typed values replace its amendable inputs, as in SketchUp.
+- A command opts in by declaring `amendable` fields, for example `[{ key: 'width', mode: 'positive' }, { key: 'depth', mode: 'positive' }]`.
+- Typed values are magnitudes applied in the original direction. In `signed` mode (distances), a negative value reverses the direction.
+- `CommandSession.amend(values)` re-runs the command from the document before it and replaces that history entry, so it stays one undo step. If the amended command fails, the original result is kept.
+- Amending ends when any other command runs, on undo or redo, on load, or when the app calls `clearAmend()`. The app calls it on a left click in the viewport and on a tool switch. Navigation keeps it available.
+- Core amendable commands: `core.drawRectangle` (width, depth) and `core.pushPull` (distance). Future tools such as line, move, rotate, offset and arrays get it by declaring their fields.
+
 ### Document format
 JSON: `{ format: 'pushform', version: 1, units: { unit, precision }, model: { kind: 'face-loop', version: 1, next, faces } }`. Both levels are validated on load.
 
@@ -120,12 +127,14 @@ JSON: `{ format: 'pushform', version: 1, units: { unit, precision }, model: { ki
 | 2026-10-25 | Triangulation stays in the viewport (three ShapeUtils) | Rendering-only in milestone 1. It moves to the kernel when mesh export arrives. |
 | 2026-10-25 | Imperial files use a 1 ft grid, 2" snap step and 1/4" drag rounding; metric uses a 1 m grid, 50 mm snap and 10 mm drag rounding | Metric values come from the prototype; imperial values are their closest natural equivalents. |
 | 2026-10-25 | Autosave key `pushform.autosave.v1` in local storage | Same behavior as the prototype; there is no file open or save yet. |
+| 2026-10-25 | "Amend last operation" lives in the command layer; commands declare amendable fields | Requested after testing (SketchUp behavior). One implementation serves every current and future tool, plugins and MCP. |
 
 ## Differences from the prototype
 - **Bug fix:** pulling a lone face downward built its side walls facing inward, which showed the back-face color from outside. Walls of a lone face now always face outward. Covered by a kernel test.
 - New units menu (unit and precision) in the top bar.
 - Values are shown with unit symbols ("0.60 m") instead of a unit in the label ("Dimensions (m)").
 - Typed values accept units and both systems. A bare number uses the file's unit.
+- Typed values after a rectangle or push/pull is finished amend that operation (the prototype ignored them). After a command, the measurements box shows the values it would amend.
 - Brand is Pushform instead of Blockout; the intro text mentions typed units.
 - The autosave key and format changed, so models saved by the prototype are not loaded.
 
@@ -147,7 +156,8 @@ Done on branch `milestone-1`:
 - Units module with parsing and formatting tests in both systems.
 - Command layer with undo/redo tests and plugin registration.
 - Architecture test enforcing the layer rules.
-- Verification: 141 unit tests pass and the production build succeeds. A scripted browser smoke test (not in the repo) drew, pushed, cut a pocket, used undo/redo, deleted, switched units and reloaded, with no console errors.
+- Amend last operation for rectangle and push/pull, through the command layer.
+- Verification: 154 unit tests pass and the production build succeeds. A scripted browser smoke test (not in the repo) drew, pushed, cut a pocket, used undo/redo, deleted, switched units and reloaded, with no console errors.
 
 ### Known limitations (inherited from the prototype)
 - Rectangles must sit fully inside a face; splitting a face along an edge is not implemented.

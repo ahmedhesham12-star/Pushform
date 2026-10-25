@@ -19,6 +19,7 @@ export const pushPull: CommandDef<PushPullInput, PushPullOutput> = {
   id: 'core.pushPull',
   title: () => t('command.pushPull'),
   input: pushPullInput,
+  amendable: [{ key: 'distance', mode: 'signed' }],
   run(doc, input) {
     if (!hasFace(doc.model, input.faceId)) return { ok: false, error: { code: 'noSuchFace', detail: input.faceId } };
     const r = kernelPushPull(doc.model, input.faceId, input.distance);

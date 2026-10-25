@@ -22,6 +22,10 @@ export const drawRectangle: CommandDef<DrawRectangleInput, DrawRectangleOutput> 
   id: 'core.drawRectangle',
   title: () => t('command.drawRectangle'),
   input: drawRectangleInput,
+  amendable: [
+    { key: 'width', mode: 'positive' },
+    { key: 'depth', mode: 'positive' },
+  ],
   run(doc, input) {
     const r = kernelDrawRectangle(doc.model, input);
     if (!r.ok) return { ok: false, error: { code: r.error } };

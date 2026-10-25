@@ -24,6 +24,7 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 
 ## Conventions
 - Every model change is a command: namespaced id (`core.x`), zod input schema with `z.strictObject`, JSON-serializable input and output, and a pure `run()` that returns the same document instance when nothing changed.
+- Commands whose numeric inputs can be retyped after they finish declare `amendable` fields (`positive` for sizes, `signed` for distances). `CommandSession.amend` handles the rest. Do not build amend logic into tools.
 - Lengths are stored in mm. Convert only at the edges, with `parseLength`/`parseLengthList` and `formatLength`/`formatArea` from `src/units`.
 - All user-visible text goes through `t()` with keys in `src/i18n/en.ts`. Never put text in HTML, icons or code literals.
 - Numbers shown to users go through Intl (via `src/units`).

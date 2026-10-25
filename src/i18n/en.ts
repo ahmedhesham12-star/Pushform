@@ -51,6 +51,7 @@ export const en = {
   'message.pushed': 'Pushed/pulled {distance}.',
   'message.erased': 'Face erased. Undo brings it back.',
   'message.cleared': 'Model cleared. Undo brings it back.',
+  'message.amended': '{command} changed to {values}.',
 
   'error.tooSmall': 'The rectangle needs a width and a depth.',
   'error.outsideFace': 'Draw the rectangle fully inside the face. Splitting a face along its edge isn’t built yet.',
@@ -60,6 +61,7 @@ export const en = {
   'error.generic': 'That did not work ({code}).',
   'error.typeTwoSizes': 'Type two positive sizes separated by a comma, like 600mm, 400mm.',
   'error.typeOneDistance': 'Type one distance, like 600mm or 2\' 6".',
+  'error.typeValues': 'Type {count} values separated by commas.',
   'error.nothingToSize': 'Start a rectangle or a push/pull, then type a size.',
 
   'command.drawRectangle': 'Draw rectangle',

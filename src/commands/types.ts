@@ -14,6 +14,9 @@ export type CommandErrorCode =
   | 'outsideFace'
   | 'overlapsHole'
   | 'invalidPrecision'
+  | 'nothingToAmend'
+  | 'amendValueCount'
+  | 'amendValueInvalid'
   | (string & {});
 
 export interface CommandError {
@@ -37,7 +40,26 @@ export interface CommandDef<I = unknown, O = unknown> {
   /** Display name for menus and the undo list, already translated. */
   readonly title: () => string;
   readonly input: z.ZodType<I>;
+  /**
+   * Numeric inputs (in mm) that typed values may replace right after the
+   * command has run ("amend last operation"), in the order they are typed.
+   * Omit for commands that cannot be amended.
+   */
+  readonly amendable?: readonly AmendableField<I>[];
   run(doc: PushformDocument, input: I): RunResult<O>;
+}
+
+type NumberKeys<I> = { [K in keyof I]-?: I[K] extends number ? K : never }[keyof I] & string;
+
+/**
+ * One amendable input. Typed values are magnitudes applied in the direction
+ * the original input had, so the user does not have to retype signs.
+ * - positive: the typed value must be greater than zero (sizes).
+ * - signed: a negative typed value reverses the direction (distances).
+ */
+export interface AmendableField<I> {
+  readonly key: NumberKeys<I>;
+  readonly mode: 'positive' | 'signed';
 }
 
 /**

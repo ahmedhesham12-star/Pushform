@@ -10,7 +10,7 @@ import { MeasurementsBox } from './ui/measurements';
 import { StatusBar } from './ui/statusBar';
 import { ActionBar, ToolBar, type ToolButtonSpec } from './ui/toolbar';
 import { UnitsMenu } from './ui/unitsMenu';
-import { defaultPrecision, type LengthUnit } from './units';
+import { defaultPrecision, formatLength, parseLengthList, type LengthUnit } from './units';
 import { Viewport, type Highlight } from './viewport';
 
 /** Keys that switch tools (with no modifier). */
@@ -79,7 +79,8 @@ export class App {
     this.status = new StatusBar(() => this.tool.hint());
     this.measure = new MeasurementsBox({
       submit: (text) => {
-        if (this.tool.submit) this.tool.submit(text);
+        if (this.tool.busy() && this.tool.submit) this.tool.submit(text);
+        else if (this.session.canAmend) this.amend(text);
         else this.status.flash(t('error.nothingToSize'), true);
       },
       cancel: () => this.cancel(),
@@ -92,9 +93,10 @@ export class App {
     this.tools = createTools(this.toolContext());
     this.tool = this.tools.rectangle;
 
-    this.session.subscribe(() => {
+    this.session.subscribe((e) => {
       saveAutosave(this.session.doc);
       this.refresh();
+      if (e.reason === 'execute' || e.reason === 'amend') this.showAmendValues();
     });
     this.bindPointer();
     this.bindKeyboard();
@@ -162,6 +164,7 @@ export class App {
   }
 
   setTool(id: ToolId): void {
+    this.session.clearAmend();
     this.cancel();
     this.tool = this.tools[id];
     if (id !== 'select') this.selection.selected = null;
@@ -205,6 +208,40 @@ export class App {
     else this.flashError(r.error);
   }
 
+  /** Typed values after a finished command replace that command's amendable inputs. */
+  private amend(text: string): void {
+    const target = this.session.amendTarget();
+    if (!target) return;
+    const parsed = parseLengthList(text, this.session.doc.units.unit);
+    const r = parsed.ok ? this.session.amend(parsed.mm) : null;
+    if (r?.ok) {
+      const title = this.session.registry.get(target.commandId)?.title() ?? target.commandId;
+      this.status.flash(t('message.amended', { command: title, values: this.amendValuesText() }));
+      return;
+    }
+    if (r && !['amendValueCount', 'amendValueInvalid', 'invalidInput'].includes(r.error.code)) {
+      return this.flashError(r.error);
+    }
+    const count = target.fields.length;
+    const key: MessageKey = count === 1 ? 'error.typeOneDistance' : count === 2 ? 'error.typeTwoSizes' : 'error.typeValues';
+    this.status.flash(t(key, { count }), true);
+  }
+
+  /** Current amendable values, formatted in the file's units. */
+  private amendValuesText(): string {
+    const target = this.session.amendTarget();
+    if (!target) return '';
+    const units = this.session.doc.units;
+    return target.values
+      .map((v, i) => formatLength(target.fields[i]!.mode === 'positive' ? Math.abs(v) : v, units))
+      .join(t('measure.listSeparator'));
+  }
+
+  /** After a command, show what typing would amend. */
+  private showAmendValues(): void {
+    if (this.session.canAmend) this.measure.set(this.tool.measurementLabel(), this.amendValuesText());
+  }
+
   private setUnits(unit: LengthUnit, precision: number | null): void {
     this.session.execute('core.setDisplayUnits', { unit, precision: precision ?? defaultPrecision(unit) });
     this.measure.set(this.tool.measurementLabel(), '');
@@ -227,6 +264,9 @@ export class App {
         return;
       }
       if (e.button !== 0) return;
+      // A click in the viewport starts a new action, so typed values no longer amend the last one.
+      // Navigation (right-drag, wheel, orbit and pan tools) keeps amending available.
+      this.session.clearAmend();
       this.down = { x: e.clientX, y: e.clientY };
       this.viewport.setPointer(e);
       this.tool.down?.(e);
@@ -305,7 +345,7 @@ export class App {
         return;
       }
       if (mod || e.altKey) return;
-      if (MEASURE_START.test(e.key) && this.tool.busy()) {
+      if (MEASURE_START.test(e.key) && (this.tool.busy() || this.session.canAmend)) {
         e.preventDefault();
         this.measure.startTyping(e.key);
         return;

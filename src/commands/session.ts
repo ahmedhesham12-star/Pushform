@@ -1,6 +1,7 @@
+import { applyAmendValues } from './amend';
 import type { PushformDocument } from './document';
 import type { CommandRegistry } from './registry';
-import type { CommandError, CommandId, InputOf, OutputOf } from './types';
+import type { AmendableField, CommandError, CommandId, InputOf, OutputOf } from './types';
 
 export type Outcome<O> = { ok: true; output: O; changed: boolean } | { ok: false; error: CommandError };
 export type PreviewOutcome<O> = { ok: true; doc: PushformDocument; output: O } | { ok: false; error: CommandError };
@@ -13,7 +14,14 @@ export interface HistoryEntry {
   readonly after: PushformDocument;
 }
 
-export type ChangeReason = 'execute' | 'undo' | 'redo' | 'load';
+export type ChangeReason = 'execute' | 'amend' | 'undo' | 'redo' | 'load';
+
+/** The command that typed values would amend, with its current amendable values. */
+export interface AmendTarget {
+  readonly commandId: string;
+  readonly fields: readonly AmendableField<unknown>[];
+  readonly values: readonly number[];
+}
 export interface ChangeEvent {
   reason: ChangeReason;
   commandId?: string;
@@ -32,6 +40,8 @@ export class CommandSession {
   private undoStack: HistoryEntry[] = [];
   private redoStack: HistoryEntry[] = [];
   private readonly listeners = new Set<ChangeListener>();
+  /** Set when the last executed command can be amended; it is always the top undo entry. */
+  private amendable: { commandId: string; input: unknown } | null = null;
 
   constructor(
     readonly registry: CommandRegistry,
@@ -51,6 +61,8 @@ export class CommandSession {
 
   /** Run a command by id with untrusted input (plugins, MCP, replay). Input is always validated. */
   executeUnchecked(id: string, input: unknown): Outcome<unknown> {
+    // Running any command ends the chance to amend the previous one.
+    this.amendable = null;
     const r = this.run(id, input);
     if (!r.ok) return r;
     const changed = r.doc !== this.current;
@@ -59,9 +71,61 @@ export class CommandSession {
       if (this.undoStack.length > HISTORY_LIMIT) this.undoStack.shift();
       this.redoStack = [];
       this.current = r.doc;
+      if (this.registry.get(id)?.amendable?.length) this.amendable = { commandId: id, input: r.input };
       this.emit({ reason: 'execute', commandId: id });
     }
     return { ok: true, output: r.output, changed };
+  }
+
+  /* ---------- amend last operation ---------- */
+
+  get canAmend(): boolean {
+    return this.amendTarget() !== null;
+  }
+
+  /** What typed values would amend right now, or null. */
+  amendTarget(): AmendTarget | null {
+    const a = this.amendable;
+    const fields = a && this.registry.get(a.commandId)?.amendable;
+    if (!a || !fields || this.undoStack.at(-1)?.after !== this.current) return null;
+    const input = a.input as Record<string, number>;
+    return { commandId: a.commandId, fields, values: fields.map((f) => input[f.key]!) };
+  }
+
+  /**
+   * Re-run the last command with new values for its amendable fields (mm,
+   * in field order). The amended command replaces the original in history,
+   * so it stays one undo step. On error the original result is kept.
+   */
+  amend(values: readonly number[]): Outcome<unknown> {
+    const target = this.amendTarget();
+    const entry = this.undoStack.at(-1);
+    const def = target && this.registry.get(target.commandId);
+    if (!target || !entry || !def) return { ok: false, error: { code: 'nothingToAmend' } };
+
+    const next = applyAmendValues(target.fields, this.amendable!.input, values);
+    if (!next.ok) return next;
+    const parsed = def.input.safeParse(next.input);
+    if (!parsed.success) return { ok: false, error: { code: 'invalidInput', detail: parsed.error.message } };
+    const r = def.run(entry.before, parsed.data);
+    if (!r.ok) return r;
+    if (r.doc === entry.before) return { ok: false, error: { code: 'amendValueInvalid', detail: 'no change' } };
+
+    this.undoStack[this.undoStack.length - 1] = {
+      commandId: entry.commandId,
+      input: parsed.data,
+      before: entry.before,
+      after: r.doc,
+    };
+    this.current = r.doc;
+    this.amendable = { commandId: entry.commandId, input: parsed.data };
+    this.emit({ reason: 'amend', commandId: entry.commandId });
+    return { ok: true, output: r.output, changed: true };
+  }
+
+  /** End amending, e.g. when the user starts a new action. */
+  clearAmend(): void {
+    this.amendable = null;
   }
 
   /** Run a command against the current document without committing it (live previews). */
@@ -81,6 +145,7 @@ export class CommandSession {
   undo(): boolean {
     const entry = this.undoStack.pop();
     if (!entry) return false;
+    this.amendable = null;
     this.redoStack.push(entry);
     this.current = entry.before;
     this.emit({ reason: 'undo', commandId: entry.commandId });
@@ -90,6 +155,7 @@ export class CommandSession {
   redo(): boolean {
     const entry = this.redoStack.pop();
     if (!entry) return false;
+    this.amendable = null;
     this.undoStack.push(entry);
     this.current = entry.after;
     this.emit({ reason: 'redo', commandId: entry.commandId });
@@ -106,6 +172,7 @@ export class CommandSession {
     this.current = doc;
     this.undoStack = [];
     this.redoStack = [];
+    this.amendable = null;
     this.emit({ reason: 'load' });
   }
 

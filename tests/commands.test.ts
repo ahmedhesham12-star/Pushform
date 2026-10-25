@@ -9,7 +9,8 @@ import {
   type CommandDef,
   type CommandSession,
 } from '../src/commands';
-import { faceCount, getFace, serialize } from '../src/kernel';
+import { drawRectangle, faceArea, faceCount, getFace, serialize } from '../src/kernel';
+import { parseLengthList } from '../src/units';
 
 function boxSession(): { s: CommandSession; top: string } {
   const s = createSession();
@@ -163,6 +164,146 @@ describe('validation and errors', () => {
       ok: false,
       error: { code: 'invalidPrecision' },
     });
+  });
+});
+
+describe('amend last operation', () => {
+  const area = (s: CommandSession, id: string) => faceArea(s.doc.model, id);
+
+  test('typed values replace the size of the rectangle just drawn', () => {
+    const s = createSession();
+    const r = s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 3000, depth: 2000 });
+    const id = r.ok ? r.output.faceId : '';
+    expect(s.amendTarget()).toMatchObject({ commandId: 'core.drawRectangle', values: [3000, 2000] });
+
+    const a = s.amend([600, 400]);
+    expect(a).toMatchObject({ ok: true, changed: true, output: { faceId: id } });
+    expect(faceCount(s.doc.model)).toBe(1);
+    expect(area(s, id)).toBeCloseTo(600 * 400, 6);
+    expect(s.history()).toHaveLength(1);
+    expect(s.history()[0]!.input).toMatchObject({ width: 600, depth: 400 });
+  });
+
+  test('a rectangle keeps the direction it was drawn in', () => {
+    const s = createSession();
+    s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: -3000, depth: 2000 });
+    s.amend([600, 400]);
+    expect(s.history()[0]!.input).toMatchObject({ width: -600, depth: 400 });
+  });
+
+  test('typed values in either unit system work through parseLengthList', () => {
+    const s = createSession();
+    s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 3000, depth: 2000 });
+    const typed = parseLengthList('2\' 0", 600mm', s.doc.units.unit);
+    expect(typed.ok && s.amend(typed.mm).ok).toBe(true);
+    expect(s.history()[0]!.input).toMatchObject({ width: 609.6, depth: 600 });
+  });
+
+  test('typed distance replaces the push/pull just done, from the state before it', () => {
+    const { s, top } = boxSession();
+    expect(s.amendTarget()).toMatchObject({ commandId: 'core.pushPull', values: [1000] });
+    expect(s.amend([500])).toMatchObject({ ok: true, output: { distance: 500 } });
+    expect(faceCount(s.doc.model)).toBe(6);
+    expect(getFace(s.doc.model, top)!.outer[0]![1]).toBe(500);
+    expect(s.history()).toHaveLength(2);
+  });
+
+  test('a negative typed distance reverses the push/pull', () => {
+    const { s, top } = boxSession();
+    s.amend([-300]);
+    expect(getFace(s.doc.model, top)!.outer[0]![1]).toBe(-300);
+    expect(faceCount(s.doc.model)).toBe(6);
+  });
+
+  test('amending again keeps replacing the same step', () => {
+    const { s, top } = boxSession();
+    s.amend([500]);
+    s.amend([750]);
+    expect(getFace(s.doc.model, top)!.outer[0]![1]).toBe(750);
+    expect(s.history()).toHaveLength(2);
+  });
+
+  test('one undo after amending returns to the state before the command', () => {
+    const { s, top } = boxSession();
+    s.amend([500]);
+    expect(s.undo()).toBe(true);
+    expect(faceCount(s.doc.model)).toBe(1);
+    expect(s.redo()).toBe(true);
+    expect(getFace(s.doc.model, top)!.outer[0]![1]).toBe(500);
+    expect(s.undo()).toBe(true);
+    expect(s.undo()).toBe(true);
+    expect(faceCount(s.doc.model)).toBe(0);
+  });
+
+  test('is cleared by running another command', () => {
+    const { s, top } = boxSession();
+    s.execute('core.setDisplayUnits', { unit: 'mm', precision: 0 });
+    expect(s.canAmend).toBe(false);
+    expect(s.amend([500])).toMatchObject({ ok: false, error: { code: 'nothingToAmend' } });
+    expect(getFace(s.doc.model, top)!.outer[0]![1]).toBe(1000);
+  });
+
+  test('is cleared by a failed command, undo, and clearAmend', () => {
+    const a = boxSession();
+    a.s.execute('core.deleteFace', { faceId: 'nope' });
+    expect(a.s.canAmend).toBe(false);
+
+    const b = boxSession();
+    b.s.undo();
+    expect(b.s.canAmend).toBe(false);
+    b.s.redo();
+    expect(b.s.canAmend).toBe(false);
+
+    const c = boxSession();
+    c.s.clearAmend();
+    expect(c.s.canAmend).toBe(false);
+  });
+
+  test('commands without amendable inputs cannot be amended', () => {
+    const { s, top } = boxSession();
+    s.execute('core.deleteFace', { faceId: top });
+    expect(s.canAmend).toBe(false);
+  });
+
+  test('bad values are rejected and the original result is kept', () => {
+    const { s, top } = boxSession();
+    expect(s.amend([500, 200])).toMatchObject({ ok: false, error: { code: 'amendValueCount' } });
+    expect(s.amend([0])).toMatchObject({ ok: false, error: { code: 'amendValueInvalid' } });
+    expect(getFace(s.doc.model, top)!.outer[0]![1]).toBe(1000);
+    expect(s.canAmend).toBe(true);
+
+    const r = createSession();
+    r.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 3000, depth: 2000 });
+    expect(r.amend([-600, 400])).toMatchObject({ ok: false, error: { code: 'amendValueInvalid' } });
+    expect(r.amend([2, 400])).toMatchObject({ ok: false, error: { code: 'tooSmall' } });
+    expect(r.history()[0]!.input).toMatchObject({ width: 3000, depth: 2000 });
+  });
+
+  test('emits an amend change event', () => {
+    const { s } = boxSession();
+    const events: string[] = [];
+    s.subscribe((e) => events.push(`${e.reason}:${e.commandId}`));
+    s.amend([500]);
+    expect(events).toEqual(['amend:core.pushPull']);
+  });
+
+  test('plugin commands become amendable by declaring their fields', () => {
+    const s = createSession();
+    const def: CommandDef<{ size: number }, { faceId: string }> = {
+      id: 'example.square',
+      title: () => 'Square',
+      input: z.strictObject({ size: z.number().positive() }),
+      amendable: [{ key: 'size', mode: 'positive' }],
+      run(doc, input) {
+        const r = drawRectangle(doc.model, { faceId: null, corner: [0, 0, 0], width: input.size, depth: input.size });
+        return r.ok ? { ok: true, doc: { ...doc, model: r.model }, output: { faceId: r.faceId } } : { ok: false, error: { code: r.error } };
+      },
+    };
+    s.registry.register(def);
+    const r = s.executeUnchecked('example.square', { size: 500 }) as { ok: true; output: { faceId: string } };
+    s.amend([800]);
+    expect(faceArea(s.doc.model, r.output.faceId)).toBeCloseTo(640000, 6);
+    expect(s.history()).toHaveLength(1);
   });
 });
 

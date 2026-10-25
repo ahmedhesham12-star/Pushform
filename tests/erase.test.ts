@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { Draft } from '../src/kernel/topo/draft';
-import { erase } from '../src/kernel/topo/erase';
-import { faceArea } from '../src/kernel/topo/query';
-import { drawLoop, drawRectangle, GROUND } from '../src/kernel/topo/shapes';
-import { emptyTopology, type Point3, type Topology } from '../src/kernel/topo/types';
-import { validate } from '../src/kernel/topo/validate';
+import { Draft } from '../src/kernel/draft';
+import { erase } from '../src/kernel/erase';
+import { faceArea } from '../src/kernel/query';
+import { drawLoop, drawRectangle, GROUND } from '../src/kernel/shapes';
+import { emptyTopology, type Point3, type Topology } from '../src/kernel/types';
+import { validate } from '../src/kernel/validate';
 
 /* All sizes in mm. Rectangles are on the ground, given as [x0, z0, x1, z1]. */
 

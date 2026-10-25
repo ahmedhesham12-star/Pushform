@@ -15,7 +15,7 @@ const inches = (text: string) => {
 
 /** Every stored coordinate, as written to the file. */
 const allCoordinates = (s: CommandSession) =>
-  Object.values(serializeDocument(s.doc).model.faces).flatMap((f) => [f.outer, ...f.holes].flat(2));
+  Object.values(serializeDocument(s.doc).model.vertices).flat();
 
 describe('snapLength', () => {
   test('rounds to the closest double of the 1e-6 mm decimal', () => {
@@ -42,7 +42,7 @@ describe('imperial input is stored exactly', () => {
     const [w, d] = (parseLengthList(size, 'in') as { ok: true; mm: number[] }).mm;
     const r = s.execute('core.drawRectangle', { faceId: null, corner: [c, 0, c], width: w!, depth: d! });
     if (!r.ok) throw new Error(r.error.code);
-    return { s, id: r.output.faceId };
+    return { s, id: r.output.faceIds[0]! };
   }
 
   test('command inputs are rounded on entry', () => {
@@ -90,7 +90,7 @@ describe('imperial input is stored exactly', () => {
       width: inches('5 3/8"'),
       depth: inches('3 1/4"'),
     });
-    if (inset.ok) s.execute('core.pushPull', { faceId: inset.output.faceId, distance: -inches('1/4"') });
+    if (inset.ok) s.execute('core.pushPull', { faceId: inset.output.faceIds[0]!, distance: -inches('1/4"') });
     const coords = allCoordinates(s);
     expect(coords.length).toBeGreaterThan(0);
     for (const v of coords) expect(snapLength(v)).toBe(v);

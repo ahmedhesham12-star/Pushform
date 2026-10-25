@@ -1,19 +1,12 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
-import {
-  createModel,
-  drawRectangle,
-  faceArea as v1FaceArea,
-  listFaces as v1ListFaces,
-  pushPull as v1PushPull,
-  serialize as v1Serialize,
-  type Model,
-} from '../src/kernel';
-import { Draft } from '../src/kernel/topo/draft';
-import { faceArea } from '../src/kernel/topo/query';
-import { deserializeTopology, serializeTopology } from '../src/kernel/topo/serialize';
-import { faceTriangles } from '../src/kernel/topo/triangulate';
-import { emptyTopology, type Point3, type Topology } from '../src/kernel/topo/types';
-import { validate } from '../src/kernel/topo/validate';
+import { Draft } from '../src/kernel/draft';
+import { faceArea } from '../src/kernel/query';
+import { deserializeTopology, serializeTopology } from '../src/kernel/serialize';
+import { faceTriangles } from '../src/kernel/triangulate';
+import { emptyTopology, type Point3, type Topology } from '../src/kernel/types';
+import { validate } from '../src/kernel/validate';
 
 /* All sizes in mm. */
 
@@ -260,47 +253,49 @@ describe('version 2 format', () => {
 });
 
 describe('converting version 1 face-loop models', () => {
-  const ok = <T extends { ok: boolean }>(r: T) => r as Extract<T, { ok: true }>;
-
-  /** A milestone 1 model: a box with a pocket in its top and an inset face on a wall. */
-  function v1Model(): Model {
-    let m = createModel();
-    const r = ok(drawRectangle(m, { faceId: null, corner: [0, 0, 0], width: 3000, depth: 2000 }));
-    m = v1PushPull(r.model, r.faceId, 1000).model;
-    const inset = ok(drawRectangle(m, { faceId: r.faceId, corner: [1000, 1000, 500], width: 1000, depth: 1000 }));
-    m = v1PushPull(inset.model, inset.faceId, -300).model;
-    const wall = v1ListFaces(m).find((f) => f.normal[2] === 1)!;
-    m = ok(drawRectangle(m, { faceId: wall.id, corner: [500, 200, 2000], width: 800, depth: 500 })).model;
-    return m;
-  }
+  /**
+   * A real milestone 1 autosave: a box with a pocket in its top and an inset
+   * face on a wall, in feet and inches. Written by the milestone 1 code.
+   */
+  const fixture = JSON.parse(readFileSync(join(__dirname, 'fixtures/milestone1-autosave.json'), 'utf8'));
+  const v1 = fixture.model as { next: number; faces: Record<string, { outer: Point3[]; holes: Point3[][]; normal: Point3; side: boolean }> };
+  const v1Area = (f: { outer: Point3[]; holes: Point3[][] }) => {
+    const a = (l: Point3[]) => {
+      let x = 0;
+      let y = 0;
+      let z = 0;
+      l.forEach((p, i) => {
+        const q = l[(i + 1) % l.length]!;
+        x += (p[1] - q[1]) * (p[2] + q[2]);
+        y += (p[2] - q[2]) * (p[0] + q[0]);
+        z += (p[0] - q[0]) * (p[1] + q[1]);
+      });
+      return Math.hypot(x, y, z) / 2;
+    };
+    return a(f.outer) - f.holes.reduce((s, h) => s + a(h), 0);
+  };
 
   test('produces valid topology with the same face ids, normals and areas', () => {
-    const m = v1Model();
-    const t = deserializeTopology(JSON.parse(JSON.stringify(v1Serialize(m))))!;
+    const t = deserializeTopology(v1)!;
     expect(t).not.toBeNull();
     expectValid(t);
-    const old = v1ListFaces(m);
-    expect([...t.faces.keys()].sort()).toEqual(old.map((f) => f.id).sort());
-    for (const f of old) {
-      expect(t.faces.get(f.id)!.normal).toEqual(f.normal);
-      expect(faceArea(t, f.id)).toBeCloseTo(v1FaceArea(m, f.id), 6);
+    expect([...t.faces.keys()].sort()).toEqual(Object.keys(v1.faces).sort());
+    for (const [id, f] of Object.entries(v1.faces)) {
+      expect(t.faces.get(id)!.normal).toEqual(f.normal);
+      expect(faceArea(t, id)).toBeCloseTo(v1Area(f), 6);
     }
   });
 
   test('shares corners and sides between faces', () => {
-    let m = createModel();
-    const r = ok(drawRectangle(m, { faceId: null, corner: [0, 0, 0], width: 3000, depth: 2000 }));
-    m = v1PushPull(r.model, r.faceId, 1000).model;
-    const t = deserializeTopology(v1Serialize(m))!;
-    expectValid(t);
-    expect(t.faces.size).toBe(6);
-    expect(t.vertices.size).toBe(8);
-    expect(t.edges.size).toBe(12);
+    // Box: 8 corners and 12 sides; pocket: 8 corners, 12 sides; wall inset: 4 corners, 4 sides.
+    const t = deserializeTopology(v1)!;
+    expect(t.faces.size).toBe(12);
+    expect(t.vertices.size).toBe(8 + 8 + 4);
+    expect(t.edges.size).toBe(12 + 12 + 4);
   });
 
   test('new ids never collide with converted face ids', () => {
-    const m = v1Model();
-    const json = v1Serialize(m);
+    const json = v1;
     const t = deserializeTopology(json)!;
     expect(t.next).toBeGreaterThanOrEqual(json.next);
     const ids = [...t.vertices.keys(), ...t.edges.keys(), ...t.faces.keys()];

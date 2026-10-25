@@ -14,8 +14,8 @@ Browser-based push/pull 3D modeler. TypeScript (strict), Vite, three.js, Vitest,
 Run `npm test` and `npm run build` before every commit. Both must pass.
 
 ## Layers (enforced by tests/architecture.test.ts)
-- `src/kernel`: pure geometry in millimeters. No three.js, no DOM, no imports from other layers. Import it only through `src/kernel/index.ts`. The `Model` type is opaque.
-- `src/commands`: the only code that may call kernel mutations (`createModel`, `drawRectangle`, `pushPull`, `deleteFace`, `deserialize`). No three.js or DOM.
+- `src/kernel`: pure geometry in millimeters: a shared topology of vertices, edges, faces and curves. No three.js, no DOM, no imports from other layers; the only package allowed is `earcut`. Import it only through `src/kernel/index.ts`. The `Model` type is opaque. Kernel tests check `validate()` (via `checkModel`) after every operation.
+- `src/commands`: the only code that may call kernel mutations (`createModel`, `drawRectangle`, `pushPull`, `erase`, `deserialize`). No three.js or DOM.
 - `src/units`, `src/i18n`: shared foundations.
 - `src/viewport`: three.js rendering, camera, picking and snapping.
 - `src/tools`: one file per tool. Tools change the model only through `session.execute` or `session.preview`.

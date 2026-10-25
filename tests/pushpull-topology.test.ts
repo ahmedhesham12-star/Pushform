@@ -1,10 +1,10 @@
 import { describe, expect, test } from 'vitest';
-import { Draft } from '../src/kernel/topo/draft';
-import { pushPull } from '../src/kernel/topo/pushPull';
-import { faceArea, facePoints } from '../src/kernel/topo/query';
-import { drawLoop, drawRectangle } from '../src/kernel/topo/shapes';
-import { emptyTopology, type CurveKind, type FaceId, type Point3, type Topology } from '../src/kernel/topo/types';
-import { validate } from '../src/kernel/topo/validate';
+import { Draft } from '../src/kernel/draft';
+import { pushPull } from '../src/kernel/pushPull';
+import { faceArea, facePoints } from '../src/kernel/query';
+import { drawLoop, drawRectangle } from '../src/kernel/shapes';
+import { emptyTopology, type CurveKind, type FaceId, type Point3, type Topology } from '../src/kernel/types';
+import { validate } from '../src/kernel/validate';
 
 /* All sizes in mm. */
 

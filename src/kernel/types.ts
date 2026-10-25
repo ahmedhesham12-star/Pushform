@@ -11,7 +11,7 @@
  * Topology that shares unchanged entities with the old one, so undo snapshots
  * stay cheap. All lengths are millimeters.
  */
-import type { Vec3 } from '../vec';
+import type { Vec3 } from './vec';
 
 export type Point3 = Vec3;
 export type VertexId = string;

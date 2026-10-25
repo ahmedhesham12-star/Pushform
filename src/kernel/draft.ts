@@ -1,7 +1,7 @@
-import { snapPoint, VERTEX_TOLERANCE } from '../precision';
-import { dot, length, newell, sub } from '../vec';
+import { snapPoint, VERTEX_TOLERANCE } from './precision';
+import { dot, length, newell, sub } from './vec';
 import type { Curve, CurveId, Edge, EdgeId, Face, FaceId, Point3, Topology, Vertex, VertexId } from './types';
-import type { Vec3 } from '../vec';
+import type { Vec3 } from './vec';
 
 const pairKey = (a: VertexId, b: VertexId) => (a < b ? `${a}|${b}` : `${b}|${a}`);
 

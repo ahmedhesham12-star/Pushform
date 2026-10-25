@@ -66,7 +66,7 @@ export const en = {
 
   'command.drawRectangle': 'Draw rectangle',
   'command.pushPull': 'Push/pull',
-  'command.deleteFace': 'Erase face',
+  'command.erase': 'Erase',
   'command.clearModel': 'Clear model',
   'command.setDisplayUnits': 'Change units',
 

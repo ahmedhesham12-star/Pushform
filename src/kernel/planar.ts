@@ -5,8 +5,8 @@
  * coplanar faces when an edge is erased go through here.
  */
 import earcut from 'earcut';
-import { VERTEX_TOLERANCE } from '../precision';
-import { add, scale, sub, type Vec3 } from '../vec';
+import { VERTEX_TOLERANCE } from './precision';
+import { add, scale, sub, type Vec3 } from './vec';
 import type { Draft } from './draft';
 import {
   onPlane,

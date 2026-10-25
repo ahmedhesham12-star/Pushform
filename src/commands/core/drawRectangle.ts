@@ -15,7 +15,11 @@ export const drawRectangleInput = z.strictObject({
 });
 export type DrawRectangleInput = z.infer<typeof drawRectangleInput>;
 export interface DrawRectangleOutput {
-  faceId: string;
+  /**
+   * Ids of every face created: the rectangle's regions, and pieces split off
+   * existing faces it overlaps. Empty when it only redraws existing edges.
+   */
+  faceIds: string[];
 }
 
 export const drawRectangle: CommandDef<DrawRectangleInput, DrawRectangleOutput> = {
@@ -29,6 +33,6 @@ export const drawRectangle: CommandDef<DrawRectangleInput, DrawRectangleOutput> 
   run(doc, input) {
     const r = kernelDrawRectangle(doc.model, input);
     if (!r.ok) return { ok: false, error: { code: r.error } };
-    return { ok: true, doc: { ...doc, model: r.model }, output: { faceId: r.faceId } };
+    return { ok: true, doc: { ...doc, model: r.model }, output: { faceIds: r.faceIds } };
   },
 };

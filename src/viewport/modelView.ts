@@ -8,12 +8,10 @@ import {
   LineSegments,
   Mesh,
   MeshLambertMaterial,
-  ShapeUtils,
-  Vector2,
   Vector3,
   type Side,
 } from 'three';
-import { listFaces, planeAxes, renderEdges, type Model, type Point3, type Vec3 } from '../kernel';
+import { faceMeshes, listEdges, listFaces, type Model } from '../kernel';
 
 export type Highlight = 'normal' | 'hover' | 'selected' | 'erase';
 
@@ -30,9 +28,11 @@ const MATERIALS: Record<Highlight, [MeshLambertMaterial, MeshLambertMaterial]> =
 };
 const EDGE_MATERIAL = new LineBasicMaterial({ color: 0x262c31 });
 
-const dot = (a: Point3, b: Vec3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-
-/** three.js meshes for a model: two meshes per face (front and back color) plus edge lines. */
+/**
+ * three.js meshes for a model: two meshes per face (front and back color) plus
+ * lines for the visible edges. Triangles and smooth normals across soft edges
+ * come from the kernel; soft edges are not drawn.
+ */
 export class ModelView {
   readonly group = new Group();
   /** Meshes the picker raycasts against; userData.faceId holds the face id. */
@@ -42,35 +42,20 @@ export class ModelView {
 
   build(model: Model): void {
     this.dispose();
-    for (const f of listFaces(model)) {
-      const [u, v] = planeAxes(f.normal);
-      const to2 = (p: Point3) => new Vector2(dot(p, u), dot(p, v));
-      const tris = ShapeUtils.triangulateShape(f.outer.map(to2), f.holes.map((h) => h.map(to2)));
-      const all = [f.outer, ...f.holes].flat();
-      const n = new Vector3(...f.normal);
-      const pos: number[] = [];
-      for (const [i, j0, k0] of tris) {
-        let j = j0!;
-        let k = k0!;
-        const a = new Vector3(...all[i!]!);
-        const b = new Vector3(...all[j]!);
-        const c = new Vector3(...all[k]!);
-        if (b.sub(a).cross(c.sub(a)).dot(n) < 0) [j, k] = [k, j];
-        pos.push(...all[i!]!, ...all[j]!, ...all[k]!);
-      }
+    for (const f of listFaces(model)) this.normals.set(f.id, new Vector3(...f.normal));
+    for (const m of faceMeshes(model)) {
       const g = new BufferGeometry();
-      g.setAttribute('position', new Float32BufferAttribute(pos, 3));
-      g.computeVertexNormals();
+      g.setAttribute('position', new Float32BufferAttribute(m.positions, 3));
+      g.setAttribute('normal', new Float32BufferAttribute(m.normals, 3));
       const front = new Mesh(g, MATERIALS.normal[0]);
       const back = new Mesh(g, MATERIALS.normal[1]);
-      front.userData.faceId = back.userData.faceId = f.id;
+      front.userData.faceId = back.userData.faceId = m.faceId;
       this.group.add(front, back);
       this.pickables.push(front, back);
-      this.meshes.set(f.id, [front, back]);
-      this.normals.set(f.id, n);
+      this.meshes.set(m.faceId, [front, back]);
     }
     const ep: number[] = [];
-    for (const [a, b] of renderEdges(model)) ep.push(...a, ...b);
+    for (const e of listEdges(model)) if (!e.soft) ep.push(...e.a, ...e.b);
     const eg = new BufferGeometry();
     eg.setAttribute('position', new Float32BufferAttribute(ep, 3));
     this.group.add(new LineSegments(eg, EDGE_MATERIAL));

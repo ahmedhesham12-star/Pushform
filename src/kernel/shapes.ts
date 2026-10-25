@@ -1,6 +1,5 @@
-import { MIN_RECT_SIDE } from '../model';
-import { snapPoint } from '../precision';
-import { add, planeAxes, scale, type Vec3 } from '../vec';
+import { MIN_RECT_SIDE, snapPoint } from './precision';
+import { add, planeAxes, scale, type Vec3 } from './vec';
 import { Draft } from './draft';
 import { onPlane, planeThrough, type Plane } from './geometry';
 import { insertSegment, rebuildPlane } from './planar';

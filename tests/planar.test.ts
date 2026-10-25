@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { faceArea } from '../src/kernel/topo/query';
-import { drawRectangle } from '../src/kernel/topo/shapes';
-import { emptyTopology, type Topology } from '../src/kernel/topo/types';
-import { validate } from '../src/kernel/topo/validate';
+import { faceArea } from '../src/kernel/query';
+import { drawRectangle } from '../src/kernel/shapes';
+import { emptyTopology, type Topology } from '../src/kernel/types';
+import { validate } from '../src/kernel/validate';
 
 /* All sizes in mm. Rectangles are on the ground, given as [x0, z0, x1, z1]. */
 

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { z } from 'zod';
 import {
@@ -9,14 +11,24 @@ import {
   type CommandDef,
   type CommandSession,
 } from '../src/commands';
-import { drawRectangle, faceArea, faceCount, getFace, serialize } from '../src/kernel';
+import {
+  checkModel,
+  drawRectangle,
+  faceArea,
+  faceCount,
+  getFace,
+  hasFace,
+  listEdges,
+  listFaces,
+  serialize,
+} from '../src/kernel';
 import { parseLengthList } from '../src/units';
 
 function boxSession(): { s: CommandSession; top: string } {
   const s = createSession();
   const r = s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 3000, depth: 2000 });
   if (!r.ok) throw new Error('draw failed');
-  const top = r.output.faceId;
+  const top = r.output.faceIds[0]!;
   s.execute('core.pushPull', { faceId: top, distance: 1000 });
   return { s, top };
 }
@@ -79,12 +91,12 @@ describe('undo and redo through commands', () => {
     const { s, top } = boxSession();
     const events: string[] = [];
     const off = s.subscribe((e) => events.push(`${e.reason}:${e.commandId}`));
-    s.execute('core.deleteFace', { faceId: top });
+    s.execute('core.erase', { faceIds: [top], edgeIds: [] });
     s.undo();
     s.redo();
     off();
     s.undo();
-    expect(events).toEqual(['execute:core.deleteFace', 'undo:core.deleteFace', 'redo:core.deleteFace']);
+    expect(events).toEqual(['execute:core.erase', 'undo:core.erase', 'redo:core.erase']);
   });
 });
 
@@ -104,7 +116,7 @@ describe('no-op commands record nothing', () => {
     s.execute('core.pushPull', { faceId: top, distance: -999 });
     const before = s.history().length;
     const r = s.execute('core.pushPull', { faceId: top, distance: -50 });
-    expect(r).toEqual({ ok: true, output: { distance: 0 }, changed: false });
+    expect(r).toEqual({ ok: true, output: { distance: 0, createdFaceIds: [], removedFaceIds: [] }, changed: false });
     expect(s.history()).toHaveLength(before);
   });
 });
@@ -118,6 +130,61 @@ describe('preview', () => {
     expect(p.ok && getFace(p.doc.model, top)!.outer[0]![1]).toBe(1400);
     expect(snapshot(s)).toBe(before);
     expect(s.history()).toHaveLength(2);
+  });
+});
+
+describe('face ids in command output', () => {
+  test('drawRectangle returns every face it creates, including pieces of faces it overlaps', () => {
+    const s = createSession();
+    s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 2000, depth: 2000 });
+    const r = s.execute('core.drawRectangle', { faceId: null, corner: [1000, 0, 1000], width: 2000, depth: 2000 });
+    expect(r.ok && r.output.faceIds).toHaveLength(2);
+    expect(faceCount(s.doc.model)).toBe(3);
+  });
+
+  test('pushPull returns its walls and the bottom a lone face leaves behind', () => {
+    const s = createSession();
+    const d = s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 2000, depth: 2000 });
+    const id = d.ok ? d.output.faceIds[0]! : '';
+    const r = s.execute('core.pushPull', { faceId: id, distance: 500 });
+    expect(r.ok && r.output.createdFaceIds).toHaveLength(5);
+    if (r.ok) for (const f of r.output.createdFaceIds) expect(hasFace(s.doc.model, f)).toBe(true);
+  });
+
+  test('erase merges coplanar faces and reports the faces that are gone', () => {
+    const s = createSession();
+    s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 2000, depth: 2000 });
+    s.execute('core.drawRectangle', { faceId: null, corner: [2000, 0, 0], width: 1000, depth: 2000 });
+    const shared = listEdges(s.doc.model).find((e) => e.a[0] === 2000 && e.b[0] === 2000)!;
+    const r = s.execute('core.erase', { faceIds: [], edgeIds: [shared.id] });
+    expect(r.ok && r.output.removedFaceIds).toHaveLength(1);
+    expect(faceCount(s.doc.model)).toBe(1);
+    s.undo();
+    expect(faceCount(s.doc.model)).toBe(2);
+  });
+});
+
+describe('loading milestone 1 documents', () => {
+  test('a version 1 autosave loads as a version 2 document with the same faces and units', () => {
+    const v1 = JSON.parse(readFileSync(join(__dirname, 'fixtures/milestone1-autosave.json'), 'utf8'));
+    expect(v1.version).toBe(1);
+    const doc = deserializeDocument(v1)!;
+    expect(doc).not.toBeNull();
+    expect(doc.units).toEqual({ unit: 'ft-in', precision: 16 });
+    expect(checkModel(doc.model)).toEqual([]);
+    expect(listFaces(doc.model).map((f) => f.id).sort()).toEqual(Object.keys(v1.model.faces).sort());
+    const saved = serializeDocument(doc);
+    expect(saved.version).toBe(2);
+    expect(saved.model.kind).toBe('topology');
+    expect(serializeDocument(deserializeDocument(JSON.parse(JSON.stringify(saved)))!)).toEqual(saved);
+  });
+
+  test('a converted document keeps working with commands', () => {
+    const v1 = JSON.parse(readFileSync(join(__dirname, 'fixtures/milestone1-autosave.json'), 'utf8'));
+    const s = createSession(deserializeDocument(v1)!);
+    const top = listFaces(s.doc.model).find((f) => f.normal[1] === 1 && f.holes.length === 1)!;
+    expect(s.execute('core.pushPull', { faceId: top.id, distance: 100 })).toMatchObject({ ok: true, changed: true });
+    expect(checkModel(s.doc.model)).toEqual([]);
   });
 });
 
@@ -153,13 +220,19 @@ describe('validation and errors', () => {
       ok: false,
       error: { code: 'noSuchFace' },
     });
-    expect(s.execute('core.deleteFace', { faceId: 'f1' })).toMatchObject({ ok: false, error: { code: 'noSuchFace' } });
+    expect(s.execute('core.erase', { faceIds: ['f1'], edgeIds: [] })).toMatchObject({ ok: false, error: { code: 'nothingToErase' } });
   });
 
   test('kernel errors become command errors', () => {
     const { s, top } = boxSession();
-    const r = s.execute('core.drawRectangle', { faceId: top, corner: [2500, 1000, 500], width: 1000, depth: 500 });
-    expect(r).toMatchObject({ ok: false, error: { code: 'outsideFace' } });
+    expect(s.execute('core.drawRectangle', { faceId: top, corner: [500, 1000, 500], width: 2, depth: 500 })).toMatchObject({
+      ok: false,
+      error: { code: 'tooSmall' },
+    });
+    expect(s.execute('core.drawRectangle', { faceId: top, corner: [500, 400, 500], width: 500, depth: 500 })).toMatchObject({
+      ok: false,
+      error: { code: 'notOnPlane' },
+    });
     expect(s.execute('core.setDisplayUnits', { unit: 'ft-in', precision: 10 })).toMatchObject({
       ok: false,
       error: { code: 'invalidPrecision' },
@@ -173,11 +246,11 @@ describe('amend last operation', () => {
   test('typed values replace the size of the rectangle just drawn', () => {
     const s = createSession();
     const r = s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 3000, depth: 2000 });
-    const id = r.ok ? r.output.faceId : '';
+    const id = r.ok ? r.output.faceIds[0]! : '';
     expect(s.amendTarget()).toMatchObject({ commandId: 'core.drawRectangle', values: [3000, 2000] });
 
     const a = s.amend([600, 400]);
-    expect(a).toMatchObject({ ok: true, changed: true, output: { faceId: id } });
+    expect(a).toMatchObject({ ok: true, changed: true, output: { faceIds: [id] } });
     expect(faceCount(s.doc.model)).toBe(1);
     expect(area(s, id)).toBeCloseTo(600 * 400, 6);
     expect(s.history()).toHaveLength(1);
@@ -245,7 +318,7 @@ describe('amend last operation', () => {
 
   test('is cleared by a failed command, undo, and clearAmend', () => {
     const a = boxSession();
-    a.s.execute('core.deleteFace', { faceId: 'nope' });
+    a.s.execute('core.erase', { faceIds: ['nope'], edgeIds: [] });
     expect(a.s.canAmend).toBe(false);
 
     const b = boxSession();
@@ -261,7 +334,7 @@ describe('amend last operation', () => {
 
   test('commands without amendable inputs cannot be amended', () => {
     const { s, top } = boxSession();
-    s.execute('core.deleteFace', { faceId: top });
+    s.execute('core.erase', { faceIds: [top], edgeIds: [] });
     expect(s.canAmend).toBe(false);
   });
 
@@ -296,7 +369,7 @@ describe('amend last operation', () => {
       amendable: [{ key: 'size', mode: 'positive' }],
       run(doc, input) {
         const r = drawRectangle(doc.model, { faceId: null, corner: [0, 0, 0], width: input.size, depth: input.size });
-        return r.ok ? { ok: true, doc: { ...doc, model: r.model }, output: { faceId: r.faceId } } : { ok: false, error: { code: r.error } };
+        return r.ok ? { ok: true, doc: { ...doc, model: r.model }, output: { faceId: r.faceIds[0]! } } : { ok: false, error: { code: r.error } };
       },
     };
     s.registry.register(def);
@@ -310,7 +383,7 @@ describe('amend last operation', () => {
 describe('plugins', () => {
   test('can register a namespaced command that runs through the same history', () => {
     const s = createSession();
-    const def: CommandDef<{ size: number }, { faceId: string }> = {
+    const def: CommandDef<{ size: number }, { faceIds: string[] }> = {
       id: 'example.square',
       title: () => 'Square',
       input: z.strictObject({ size: z.number().positive() }),
@@ -348,7 +421,7 @@ describe('document serialization', () => {
     const good = serializeDocument(newDocument());
     expect(deserializeDocument(good)).not.toBeNull();
     expect(deserializeDocument({ ...good, format: 'other' })).toBeNull();
-    expect(deserializeDocument({ ...good, version: 2 })).toBeNull();
+    expect(deserializeDocument({ ...good, version: 3 })).toBeNull();
     expect(deserializeDocument({ ...good, units: { unit: 'km', precision: 2 } })).toBeNull();
     expect(deserializeDocument({ ...good, units: { unit: 'mm', precision: 16 } })).toBeNull();
     expect(deserializeDocument({ faces: {}, next: 1 })).toBeNull();

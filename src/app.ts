@@ -1,6 +1,6 @@
 import { createSession, type CommandError, type CommandSession, type PushformDocument } from './commands';
 import { t, type MessageKey } from './i18n';
-import { bounds, faceCount, hasFace, snapPoints } from './kernel';
+import { bounds, edgeCount, faceCount, hasFace, snapPoints } from './kernel';
 import { saveAutosave } from './storage';
 import { createTools, type Selection, type Tool, type ToolContext, type ToolId } from './tools';
 import { el } from './ui/dom';
@@ -104,7 +104,7 @@ export class App {
 
     this.refresh();
     this.setTool('rectangle');
-    if (faceCount(this.session.doc.model)) this.zoomToFit();
+    if (!this.isEmpty()) this.zoomToFit();
   }
 
   /* ---------- state to view ---------- */
@@ -117,7 +117,7 @@ export class App {
     if (this.selection.selected && !hasFace(doc.model, this.selection.selected)) this.selection.selected = null;
     if (this.selection.hovered && !hasFace(doc.model, this.selection.hovered)) this.selection.hovered = null;
     this.applyHighlights();
-    this.intro.setVisible(faceCount(doc.model) === 0);
+    this.intro.setVisible(this.isEmpty());
     this.actions.setHistory(this.session.canUndo, this.session.canRedo);
     this.unitsMenu.sync(doc.units);
   }
@@ -204,7 +204,7 @@ export class App {
   }
 
   private clear(): void {
-    if (!faceCount(this.session.doc.model)) return;
+    if (this.isEmpty()) return;
     this.cancel(true);
     this.selection.selected = this.selection.hovered = null;
     if (this.session.execute('core.clearModel', {}).ok) this.status.flash(t('message.cleared'));
@@ -214,9 +214,14 @@ export class App {
     const faceId = this.selection.selected;
     if (!faceId) return;
     this.selection.selected = this.selection.hovered = null;
-    const r = this.session.execute('core.deleteFace', { faceId });
+    const r = this.session.execute('core.erase', { faceIds: [faceId], edgeIds: [] });
     if (r.ok) this.status.flash(t('message.erased'));
     else this.flashError(r.error);
+  }
+
+  private isEmpty(): boolean {
+    const m = this.session.doc.model;
+    return faceCount(m) === 0 && edgeCount(m) === 0;
   }
 
   /** Typed values after a finished command replace that command's amendable inputs. */

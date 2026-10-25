@@ -13,7 +13,7 @@ export function createEraseTool(ctx: ToolContext): Tool {
       if (!h) return;
       ctx.selection.hovered = null;
       if (ctx.selection.selected === h.faceId) ctx.selection.selected = null;
-      const r = ctx.session.execute('core.deleteFace', { faceId: h.faceId });
+      const r = ctx.session.execute('core.erase', { faceIds: [h.faceId], edgeIds: [] });
       if (r.ok) ctx.flash(t('message.erased'));
       else ctx.flashError(r.error);
     },

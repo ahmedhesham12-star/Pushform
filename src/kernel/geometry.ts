@@ -1,5 +1,5 @@
-import { VERTEX_TOLERANCE } from '../precision';
-import { cross, dot, length, newell, normalize, planeAxes, scale, sub, type Vec3 } from '../vec';
+import { VERTEX_TOLERANCE } from './precision';
+import { cross, dot, length, newell, normalize, planeAxes, scale, sub, type Vec3 } from './vec';
 import type { Point3 } from './types';
 
 export type Vec2 = readonly [number, number];

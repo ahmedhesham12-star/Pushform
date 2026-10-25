@@ -13,6 +13,10 @@ export type PushPullInput = z.infer<typeof pushPullInput>;
 export interface PushPullOutput {
   /** Distance actually applied after clamping, in mm. */
   distance: number;
+  /** Faces created: walls, and the bottom a lone face leaves behind. */
+  createdFaceIds: string[];
+  /** Faces removed, for example by pushing through to the opposite face. */
+  removedFaceIds: string[];
 }
 
 export const pushPull: CommandDef<PushPullInput, PushPullOutput> = {
@@ -24,6 +28,10 @@ export const pushPull: CommandDef<PushPullInput, PushPullOutput> = {
     if (!hasFace(doc.model, input.faceId)) return { ok: false, error: { code: 'noSuchFace', detail: input.faceId } };
     const r = kernelPushPull(doc.model, input.faceId, input.distance);
     const next = r.model === doc.model ? doc : { ...doc, model: r.model };
-    return { ok: true, doc: next, output: { distance: r.distance } };
+    return {
+      ok: true,
+      doc: next,
+      output: { distance: r.distance, createdFaceIds: r.createdFaceIds, removedFaceIds: r.removedFaceIds },
+    };
   },
 };

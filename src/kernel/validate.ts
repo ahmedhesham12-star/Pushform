@@ -1,5 +1,5 @@
-import { VERTEX_TOLERANCE } from '../precision';
-import { dot, length, newell, normalize, sub } from '../vec';
+import { VERTEX_TOLERANCE } from './precision';
+import { dot, length, newell, normalize, sub } from './vec';
 import {
   onPlane,
   planeBasis,

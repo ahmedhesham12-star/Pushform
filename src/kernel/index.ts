@@ -1,76 +1,99 @@
 /**
  * Public kernel API. Nothing outside src/kernel may import other kernel files.
  *
- * Model is opaque: callers can only pass it back to these functions. This is
- * the boundary that lets milestone 2 swap the face/loop store for a half-edge
- * structure without touching commands, tools or the viewport.
+ * The model is a shared topology (vertices, edges, faces, curves; see
+ * types.ts). Model is opaque: callers can only pass it back to these functions,
+ * so the representation can change without touching commands, tools or the
+ * viewport.
  *
- * Mutations (createModel, drawRectangle, pushPull, deleteFace, deserialize) are
- * for src/commands only; everything else is read-only and may be used anywhere.
+ * Mutations (createModel, drawRectangle, pushPull, erase, deserialize) are for
+ * src/commands only; everything else is read-only and may be used anywhere.
  */
-import { emptyModel, type ModelData } from './model';
+import { erase as eraseTopology } from './erase';
+import { pushPull as pushTopology } from './pushPull';
 import * as q from './query';
-import { drawRectangle as drawRect, rectangleLoop, type RectangleError, type RectangleSpec } from './rectangle';
-import { pushPull as push } from './pushPull';
-import { deserialize as load, serialize as save, type SerializedModel } from './serialize';
+import { deserializeTopology, serializeTopology, type SerializedTopology } from './serialize';
+import { drawRectangle as drawRect, rectangleCorners, type DrawError, type RectangleSpec } from './shapes';
+import { faceMeshes as meshes, faceTriangles as triangles, type FaceMesh, type Triangle } from './triangulate';
+import { emptyTopology, type Topology } from './types';
+import { validate } from './validate';
 
 declare const opaque: unique symbol;
 export type Model = { readonly [opaque]: 'Model' };
 
-const data = (m: Model) => m as unknown as ModelData;
-const wrap = (m: ModelData) => m as unknown as Model;
+const data = (m: Model) => m as unknown as Topology;
+const wrap = (t: Topology) => t as unknown as Model;
 
 export type { Vec3 } from './vec';
-export type { Point3 } from './model';
-export type { FaceView, SnapPoint, SnapKind, Bounds } from './query';
-export type { RectangleError, RectangleSpec, SerializedModel };
+export type { Point3, FaceId, EdgeId, CurveId, CurveKind } from './types';
+export type { FaceView, EdgeView, SnapPoint, SnapKind, Bounds } from './query';
+export type { DrawError, RectangleSpec, SerializedTopology, FaceMesh, Triangle };
 export { planeAxes } from './vec';
-export { GROUND_NORMAL } from './rectangle';
-export { COORDINATE_PRECISION, EPSILON, MIN_RECT_SIDE, snapLength, snapPoint } from './model';
+export { GROUND_NORMAL } from './shapes';
+export { COORDINATE_PRECISION, EPSILON, MIN_RECT_SIDE, snapLength, snapPoint, VERTEX_TOLERANCE } from './precision';
 
 /* ---------- mutations (commands only) ---------- */
 
 export function createModel(): Model {
-  return wrap(emptyModel());
+  return wrap(emptyTopology());
 }
 
-export type DrawRectangleResult = { ok: true; model: Model; faceId: string } | { ok: false; error: RectangleError };
+export type DrawResult = { ok: true; model: Model; faceIds: string[] } | { ok: false; error: DrawError };
 
-export function drawRectangle(m: Model, spec: RectangleSpec): DrawRectangleResult {
+/**
+ * Draw a rectangle on the ground or on a face. It may overlap, cross, touch or
+ * contain existing faces; they are split into the right regions.
+ */
+export function drawRectangle(m: Model, spec: RectangleSpec): DrawResult {
   const r = drawRect(data(m), spec);
-  return r.ok ? { ok: true, model: wrap(r.model), faceId: r.faceId } : r;
+  return r.ok ? { ok: true, model: wrap(r.topology), faceIds: r.faceIds } : r;
+}
+
+export interface PushPullResult {
+  model: Model;
+  distance: number;
+  createdFaceIds: string[];
+  removedFaceIds: string[];
 }
 
 /** Returns the same model instance when nothing changed (distance 0). */
-export function pushPull(m: Model, faceId: string, distance: number): { model: Model; distance: number } {
-  const r = push(data(m), faceId, distance);
-  return { model: wrap(r.model), distance: r.distance };
+export function pushPull(m: Model, faceId: string, distance: number): PushPullResult {
+  const r = pushTopology(data(m), faceId, distance);
+  return { model: wrap(r.topology), distance: r.distance, createdFaceIds: r.createdFaceIds, removedFaceIds: r.removedFaceIds };
 }
 
-/** Returns the same model instance when the face does not exist. */
-export function deleteFace(m: Model, faceId: string): Model {
-  const d = data(m);
-  if (!d.faces[faceId]) return m;
-  const faces = { ...d.faces };
-  delete faces[faceId];
-  return wrap({ faces, next: d.next });
+/** Erase faces and edges with SketchUp's rules. Returns the same model when nothing was erased. */
+export function erase(m: Model, faceIds: readonly string[], edgeIds: readonly string[]): { model: Model; removedFaceIds: string[] } {
+  const r = eraseTopology(data(m), faceIds, edgeIds);
+  return { model: wrap(r.topology), removedFaceIds: r.removedFaceIds };
 }
 
+/** Load a saved model: version 2 topology, or a version 1 face-loop model (converted). */
 export function deserialize(json: unknown): Model | null {
-  const d = load(json);
-  return d && wrap(d);
+  const t = deserializeTopology(json);
+  return t && wrap(t);
 }
 
 /* ---------- read-only queries ---------- */
 
-export const serialize = (m: Model): SerializedModel => save(data(m));
+export const serialize = (m: Model): SerializedTopology => serializeTopology(data(m));
 export const listFaces = (m: Model) => q.listFaces(data(m));
 export const getFace = (m: Model, id: string) => q.getFace(data(m), id);
-export const hasFace = (m: Model, id: string): boolean => Object.hasOwn(data(m).faces, id);
-export const faceCount = (m: Model) => q.faceCount(data(m));
+export const hasFace = (m: Model, id: string): boolean => data(m).faces.has(id);
+export const faceCount = (m: Model) => data(m).faces.size;
 export const faceArea = (m: Model, id: string) => q.faceArea(data(m), id);
-export const renderEdges = (m: Model) => q.renderEdges(data(m));
+export const faceTriangles = (m: Model, id: string) => triangles(data(m), id);
+export const faceMeshes = (m: Model) => meshes(data(m));
+export const listEdges = (m: Model) => q.listEdges(data(m));
+export const getEdge = (m: Model, id: string) => q.getEdge(data(m), id);
+export const hasEdge = (m: Model, id: string): boolean => data(m).edges.has(id);
+export const edgeCount = (m: Model) => data(m).edges.size;
+export const edgeLength = (m: Model, id: string) => q.edgeLength(data(m), id);
+/** An edge's whole curve, or just the edge: what selecting or erasing it affects. */
+export const edgeGroup = (m: Model, id: string) => q.edgeGroup(data(m), id);
 export const snapPoints = (m: Model) => q.snapPoints(data(m));
 export const bounds = (m: Model) => q.bounds(data(m));
+/** Problems with the model's topology; empty when valid. For tests and debugging. */
+export const checkModel = (m: Model) => validate(data(m));
 /** Corners of a rectangle as drawRectangle would create it; used for previews. */
-export const previewRectangle = rectangleLoop;
+export const previewRectangle = rectangleCorners;

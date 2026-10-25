@@ -1,0 +1,350 @@
+/*
+ * Layout uses logical properties (inline/block, start/end) so a right-to-left
+ * locale mirrors the interface without separate rules. The only physical
+ * coordinates are those of the snap marker, which follows canvas pixels.
+ */
+:root {
+  --ui: #eef0ed;
+  --ui-2: #e2e5e1;
+  --line: #c3c8c2;
+  --ink: #20262a;
+  --ink-2: #5a646a;
+  --accent: #1d5c86;
+  --accent-ink: #ffffff;
+  --canvas: #dde4e7;
+  --grid: #c7cfd3;
+  --grid-2: #b3bdc2;
+  --end: #2f8a52;
+  --mid: #1f8fb0;
+  --err: #a33a2c;
+  color-scheme: light;
+  box-sizing: border-box;
+  padding-block: env(safe-area-inset-top, 0px) env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ui: #23282c;
+    --ui-2: #2d3338;
+    --line: #434a50;
+    --ink: #e4e7e8;
+    --ink-2: #a2abb1;
+    --accent: #5ca3d5;
+    --accent-ink: #0c1924;
+    --canvas: #2f363b;
+    --grid: #3b4248;
+    --grid-2: #4b545b;
+    --end: #5fc185;
+    --mid: #55bfdc;
+    --err: #f08a7a;
+    color-scheme: dark;
+  }
+}
+:root[data-theme='dark'] {
+  --ui: #23282c;
+  --ui-2: #2d3338;
+  --line: #434a50;
+  --ink: #e4e7e8;
+  --ink-2: #a2abb1;
+  --accent: #5ca3d5;
+  --accent-ink: #0c1924;
+  --canvas: #2f363b;
+  --grid: #3b4248;
+  --grid-2: #4b545b;
+  --end: #5fc185;
+  --mid: #55bfdc;
+  --err: #f08a7a;
+  color-scheme: dark;
+}
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+html {
+  block-size: 100%;
+}
+body {
+  block-size: 100%;
+  margin: 0;
+  background: var(--ui);
+  color: var(--ink);
+  font-family: Barlow, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-size: 15px;
+  line-height: 1.4;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas: 'top top' 'tools view' 'status status';
+  overflow: hidden;
+}
+button,
+select,
+input {
+  font: inherit;
+  color: inherit;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* ---------- top bar ---------- */
+.top {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  border-block-end: 1px solid var(--line);
+  background: var(--ui);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-inline-size: 0;
+}
+.brand svg {
+  flex: none;
+  color: var(--accent);
+}
+.brand b {
+  font-weight: 600;
+  font-size: 17px;
+  letter-spacing: 0.01em;
+}
+.brand span {
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.actions button,
+.units select {
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 5px 11px;
+  cursor: pointer;
+}
+.actions button:hover,
+.units select:hover {
+  background: var(--ui-2);
+}
+.actions button:disabled {
+  opacity: 0.45;
+  cursor: default;
+  background: transparent;
+}
+.units {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-inline-end: 6px;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+.units select {
+  padding-inline: 6px;
+  color: var(--ink);
+  background: var(--ui);
+}
+
+/* ---------- tool bar ---------- */
+.tools {
+  grid-area: tools;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 8px;
+  border-inline-end: 1px solid var(--line);
+  background: var(--ui);
+  overflow: auto;
+}
+.tools button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  inline-size: 72px;
+  padding: 9px 4px 7px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+}
+.tools button:hover {
+  background: var(--ui-2);
+}
+.tools button[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.tools kbd {
+  position: absolute;
+  inset-block-start: 4px;
+  inset-inline-end: 6px;
+  font: 500 10px/1 Barlow, sans-serif;
+  opacity: 0.6;
+}
+.tools hr {
+  inline-size: 100%;
+  border: 0;
+  border-block-start: 1px solid var(--line);
+  margin: 6px 0;
+}
+
+/* ---------- viewport ---------- */
+.view {
+  grid-area: view;
+  position: relative;
+  overflow: hidden;
+  background: var(--canvas);
+}
+.view canvas {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+  touch-action: none;
+}
+.intro {
+  position: absolute;
+  inset-inline-start: 14px;
+  inset-block-start: 14px;
+  max-inline-size: 300px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--ui);
+  color: var(--ink);
+  pointer-events: none;
+}
+.intro p {
+  margin: 0 0 6px;
+}
+.intro p:last-child {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: 14px;
+}
+/* Physical left/top on purpose: the marker is moved by canvas pixel coordinates. */
+.snap-marker {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+  display: none;
+}
+.snap-marker i {
+  position: absolute;
+  inline-size: 11px;
+  block-size: 11px;
+  margin: -5.5px 0 0 -5.5px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  background: var(--canvas);
+}
+.snap-marker span {
+  position: absolute;
+  inset-inline-start: 10px;
+  inset-block-start: 8px;
+  white-space: nowrap;
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--ui);
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+/* ---------- status bar ---------- */
+.status {
+  grid-area: status;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 14px;
+  border-block-start: 1px solid var(--line);
+  background: var(--ui);
+}
+.status-text {
+  margin: 0;
+  color: var(--ink-2);
+  min-inline-size: 0;
+}
+.status-text.err {
+  color: var(--err);
+}
+.vcb {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  font-size: 14px;
+  color: var(--ink-2);
+}
+.vcb input {
+  inline-size: 180px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--canvas);
+  color: var(--ink);
+  font: 500 14px Barlow, sans-serif;
+  font-variant-numeric: tabular-nums;
+  text-align: end;
+}
+
+@media (max-width: 680px) {
+  body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto auto;
+    grid-template-areas: 'top' 'view' 'tools' 'status';
+  }
+  .brand span {
+    display: none;
+  }
+  .tools {
+    flex-direction: row;
+    border-inline-end: 0;
+    border-block-start: 1px solid var(--line);
+    padding: 6px;
+  }
+  .tools button {
+    inline-size: auto;
+    min-inline-size: 64px;
+    flex: 1;
+  }
+  .tools kbd,
+  .tools hr {
+    display: none;
+  }
+  .intro {
+    inset-inline-end: 14px;
+    max-inline-size: none;
+  }
+  .status {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .vcb {
+    justify-content: space-between;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+  }
+}

@@ -1,0 +1,864 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blockout, a 3D modeling prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --ui:#eef0ed; --ui-2:#e2e5e1; --line:#c3c8c2; --ink:#20262a; --ink-2:#5a646a;
+  --accent:#1d5c86; --accent-ink:#ffffff; --canvas:#dde4e7; --grid:#c7cfd3; --grid-2:#b3bdc2;
+  --end:#2f8a52; --mid:#1f8fb0; --err:#a33a2c;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ui:#23282c; --ui-2:#2d3338; --line:#434a50; --ink:#e4e7e8; --ink-2:#a2abb1;
+    --accent:#5ca3d5; --accent-ink:#0c1924; --canvas:#2f363b; --grid:#3b4248; --grid-2:#4b545b;
+    --end:#5fc185; --mid:#55bfdc; --err:#f08a7a;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --ui:#23282c; --ui-2:#2d3338; --line:#434a50; --ink:#e4e7e8; --ink-2:#a2abb1;
+  --accent:#5ca3d5; --accent-ink:#0c1924; --canvas:#2f363b; --grid:#3b4248; --grid-2:#4b545b;
+  --end:#5fc185; --mid:#55bfdc; --err:#f08a7a;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{
+  height:100%;margin:0;background:var(--ui);color:var(--ink);
+  font-family:Barlow,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;font-size:15px;line-height:1.4;
+  display:grid;grid-template-columns:auto 1fr;grid-template-rows:auto 1fr auto;
+  grid-template-areas:"top top" "tools view" "status status";overflow:hidden;
+}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.top{grid-area:top;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:8px 14px;border-bottom:1px solid var(--line);background:var(--ui)}
+.brand{display:flex;align-items:center;gap:10px;min-width:0}
+.brand svg{flex:none;color:var(--accent)}
+.brand b{font-weight:600;font-size:17px;letter-spacing:.01em}
+.brand span{color:var(--ink-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.actions button{background:transparent;border:1px solid var(--line);border-radius:6px;padding:5px 11px;cursor:pointer}
+.actions button:hover{background:var(--ui-2)}
+.actions button:disabled{opacity:.45;cursor:default;background:transparent}
+
+.tools{grid-area:tools;display:flex;flex-direction:column;gap:4px;padding:10px 8px;
+  border-right:1px solid var(--line);background:var(--ui);overflow:auto}
+.tools button{position:relative;display:flex;flex-direction:column;align-items:center;gap:3px;
+  width:72px;padding:9px 4px 7px;border:0;border-radius:8px;background:transparent;cursor:pointer;font-size:13px}
+.tools button:hover{background:var(--ui-2)}
+.tools button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink)}
+.tools kbd{position:absolute;top:4px;right:6px;font:500 10px/1 Barlow,sans-serif;opacity:.6}
+.tools hr{width:100%;border:0;border-top:1px solid var(--line);margin:6px 0}
+
+#view{grid-area:view;position:relative;overflow:hidden;background:var(--canvas)}
+#view canvas{display:block;width:100%;height:100%;touch-action:none}
+#hint{position:absolute;left:14px;top:14px;max-width:300px;padding:12px 14px;border:1px solid var(--line);
+  border-radius:8px;background:var(--ui);color:var(--ink);pointer-events:none}
+#hint p{margin:0 0 6px}
+#hint p:last-child{margin:0;color:var(--ink-2);font-size:14px}
+#marker{position:absolute;left:0;top:0;pointer-events:none;display:none}
+#marker i{position:absolute;width:11px;height:11px;margin:-5.5px 0 0 -5.5px;border-radius:50%;border:2px solid currentColor;background:var(--canvas)}
+#marker span{position:absolute;left:10px;top:8px;white-space:nowrap;font-size:12px;padding:1px 6px;border-radius:4px;background:var(--ui);border:1px solid var(--line);color:var(--ink)}
+
+.status{grid-area:status;display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:7px 14px;border-top:1px solid var(--line);background:var(--ui)}
+#status{margin:0;color:var(--ink-2);min-width:0}
+#status.err{color:var(--err)}
+.vcb{display:flex;align-items:center;gap:8px;flex:none;font-size:14px;color:var(--ink-2)}
+.vcb input{width:150px;padding:4px 8px;border:1px solid var(--line);border-radius:5px;background:var(--canvas);
+  color:var(--ink);font:500 14px Barlow,sans-serif;font-variant-numeric:tabular-nums;text-align:right}
+
+@media (max-width:680px){
+  body{grid-template-columns:1fr;grid-template-rows:auto 1fr auto auto;grid-template-areas:"top" "view" "tools" "status"}
+  .brand span{display:none}
+  .tools{flex-direction:row;border-right:0;border-top:1px solid var(--line);padding:6px}
+  .tools button{width:auto;min-width:64px;flex:1}
+  .tools kbd,.tools hr{display:none}
+  #hint{right:14px;max-width:none}
+  .status{flex-direction:column;align-items:stretch;gap:6px}
+  .vcb{justify-content:space-between}
+}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M12 2.8 20.5 7.5v9L12 21.2 3.5 16.5v-9z"/><path d="M3.5 7.5 12 12.2l8.5-4.7M12 12.2v9"/></svg>
+    <b>Blockout</b><span>Push/pull modeling prototype</span>
+  </div>
+  <div class="actions">
+    <button id="undo" title="Undo (Ctrl+Z)">Undo</button>
+    <button id="redo" title="Redo (Ctrl+Shift+Z)">Redo</button>
+    <button id="fit" title="Zoom to fit (Shift+Z)">Zoom to fit</button>
+    <button id="clear">Clear model</button>
+  </div>
+</header>
+
+<nav class="tools" aria-label="Tools">
+  <button data-tool="select" title="Select (Space)"><kbd>␣</kbd>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M6 3.5 18 11l-5.6 1.4L9.3 18z"/></svg>Select</button>
+  <button data-tool="rect" title="Rectangle (R)"><kbd>R</kbd>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="4" y="6.5" width="16" height="11"/><circle cx="4" cy="6.5" r="1.4" fill="currentColor"/><circle cx="20" cy="17.5" r="1.4" fill="currentColor"/></svg>Rectangle</button>
+  <button data-tool="push" title="Push/Pull (P)"><kbd>P</kbd>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M4 15.5 9 13h11l-5 2.5z"/><path d="M4 15.5V20h11v-4.5M20 13v4.5L15 20"/><path d="M12 10.5V3M9 6l3-3 3 3"/></svg>Push/Pull</button>
+  <button data-tool="erase" title="Erase (E)"><kbd>E</kbd>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round" stroke-linecap="round"><path d="M4 15.5 12.5 7l5.5 5.5-6.5 6.5H8z"/><path d="M8.5 11 14 16.5M13 19.5h7"/></svg>Erase</button>
+  <hr>
+  <button data-tool="orbit" title="Orbit (O)"><kbd>O</kbd>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M12 3a4 9 0 0 1 0 18"/><path d="m18.5 6.2 2 2.4-3 .6"/></svg>Orbit</button>
+  <button data-tool="pan" title="Pan (H)"><kbd>H</kbd>
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18M3 12h18M9 6l3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/></svg>Pan</button>
+</nav>
+
+<main id="view">
+  <div id="hint">
+    <p>Press R and click two corners on the ground to draw a rectangle. Then press P, click the rectangle and move up to make it solid.</p>
+    <p>Right-drag to orbit, Shift + right-drag to pan, scroll to zoom. Type a number while drawing for exact sizes.</p>
+  </div>
+  <div id="marker"><i></i><span></span></div>
+</main>
+
+<footer class="status">
+  <p id="status" aria-live="polite"></p>
+  <label class="vcb"><span id="vcbLabel">Dimensions (m)</span><input id="vcb" inputmode="decimal" autocomplete="off" spellcheck="false"></label>
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+const $ = s => document.querySelector(s);
+const V3 = THREE.Vector3;
+const V = a => new V3(a[0], a[1], a[2]);
+const A = v => [v.x, v.y, v.z];
+const STEP = 0.05;
+const STORE = 'blockout-model-v1';
+
+/* ---------- renderer, scene, camera ---------- */
+const view = $('#view');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+view.prepend(renderer.domElement);
+const el = renderer.domElement;
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 600);
+const cam = { target: new V3(0, 0, 0), r: 16, theta: 0.72, phi: 1.02 };
+
+let pending = false;
+function requestRender() {
+  if (pending) return;
+  pending = true;
+  requestAnimationFrame(() => { pending = false; renderer.render(scene, camera); });
+}
+function updateCamera() {
+  cam.phi = Math.min(Math.PI - 0.02, Math.max(0.02, cam.phi));
+  const sp = Math.sin(cam.phi);
+  camera.position.set(
+    cam.target.x + cam.r * sp * Math.sin(cam.theta),
+    cam.target.y + cam.r * Math.cos(cam.phi),
+    cam.target.z + cam.r * sp * Math.cos(cam.theta));
+  camera.lookAt(cam.target);
+  camera.updateMatrixWorld();
+  requestRender();
+}
+new ResizeObserver(() => {
+  const w = view.clientWidth, h = view.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+  requestRender();
+}).observe(view);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x7c8590, 0.85));
+const sun = new THREE.DirectionalLight(0xffffff, 0.55);
+sun.position.set(4, 10, 7);
+scene.add(sun);
+
+/* axes: solid on the positive side, dashed on the negative side */
+function axis(color, dir) {
+  const g = new THREE.Group();
+  const solid = new THREE.BufferGeometry().setFromPoints([new V3(), dir.clone().multiplyScalar(60)]);
+  g.add(new THREE.Line(solid, new THREE.LineBasicMaterial({ color })));
+  const dashed = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new V3(), dir.clone().multiplyScalar(-60)]),
+    new THREE.LineDashedMaterial({ color, dashSize: 0.25, gapSize: 0.18 }));
+  dashed.computeLineDistances();
+  g.add(dashed);
+  return g;
+}
+scene.add(axis(0xc4443b, new V3(1, 0, 0)), axis(0x3e9a4c, new V3(0, 0, -1)), axis(0x3a62c2, new V3(0, 1, 0)));
+
+let grid = null;
+function readTheme() {
+  const cs = getComputedStyle(document.documentElement);
+  const c = n => new THREE.Color(cs.getPropertyValue(n).trim() || '#888');
+  scene.background = c('--canvas');
+  if (grid) { scene.remove(grid); grid.geometry.dispose(); }
+  grid = new THREE.GridHelper(60, 60, c('--grid-2'), c('--grid'));
+  grid.position.y = -0.004;
+  scene.add(grid);
+  requestRender();
+}
+readTheme();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', readTheme);
+new MutationObserver(readTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+/* ---------- materials ---------- */
+function faceMat(color, side) {
+  return new THREE.MeshLambertMaterial({ color, side, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
+}
+const MATS = {
+  normal: [faceMat(0xf3f2ee, THREE.FrontSide), faceMat(0x8e9fb2, THREE.BackSide)],
+  hover:  [faceMat(0xd5e5f1, THREE.FrontSide), faceMat(0xa9bed2, THREE.BackSide)],
+  sel:    [faceMat(0x8fbde0, THREE.FrontSide), faceMat(0x6f9dc4, THREE.BackSide)],
+  erase:  [faceMat(0xf1c3ba, THREE.FrontSide), faceMat(0xd29a90, THREE.BackSide)]
+};
+const edgeMat = new THREE.LineBasicMaterial({ color: 0x262c31 });
+const previewFill = new THREE.MeshBasicMaterial({ color: 0x1d5c86, transparent: true, opacity: 0.22, side: THREE.DoubleSide, depthWrite: false });
+const previewLine = new THREE.LineBasicMaterial({ color: 0x1d5c86 });
+
+/* ---------- geometry kernel ---------- */
+const key = p => p.map(v => (Math.round(v * 1e4) / 1e4).toFixed(4)).join(',');
+const ek = (a, b) => { const ka = key(a), kb = key(b); return ka < kb ? ka + '|' + kb : kb + '|' + ka; };
+function newell(loop) {
+  let x = 0, y = 0, z = 0;
+  for (let i = 0; i < loop.length; i++) {
+    const a = loop[i], b = loop[(i + 1) % loop.length];
+    x += (a[1] - b[1]) * (a[2] + b[2]);
+    y += (a[2] - b[2]) * (a[0] + b[0]);
+    z += (a[0] - b[0]) * (a[1] + b[1]);
+  }
+  return new V3(x, y, z);
+}
+function orient(loop, n, ccw) {
+  const d = newell(loop).dot(n);
+  return (ccw ? d < 0 : d > 0) ? loop.slice().reverse() : loop.slice();
+}
+function basis(n) {
+  const ax = Math.abs(n.x), ay = Math.abs(n.y), az = Math.abs(n.z);
+  if (ay >= ax && ay >= az) return [new V3(1, 0, 0), new V3(0, 0, 1)];
+  if (ax >= az) return [new V3(0, 0, 1), new V3(0, 1, 0)];
+  return [new V3(1, 0, 0), new V3(0, 1, 0)];
+}
+const clone = m => JSON.parse(JSON.stringify(m));
+function addFace(m, outer, n, holes = [], side = false) {
+  const N = (n.isVector3 ? n.clone() : V(n)).normalize();
+  const id = 'f' + (m.next++);
+  m.faces[id] = { outer: orient(outer, N, true), holes: holes.map(h => orient(h, N, false)), n: A(N), side };
+  return id;
+}
+function edgeMap(m) {
+  const map = new Map();
+  for (const [id, f] of Object.entries(m.faces)) {
+    [f.outer, ...f.holes].forEach((loop, li) => {
+      for (let i = 0; i < loop.length; i++) {
+        const a = loop[i], b = loop[(i + 1) % loop.length], k = ek(a, b);
+        if (!map.has(k)) map.set(k, []);
+        map.get(k).push({ id, a, b, hole: li > 0 });
+      }
+    });
+  }
+  return map;
+}
+function area(f) {
+  let s = newell(f.outer).length() / 2;
+  for (const h of f.holes) s -= newell(h).length() / 2;
+  return s;
+}
+
+/* Push/pull: neighbours that are perpendicular rectangles get stretched,
+   open edges grow new side walls, a lone face leaves a copy behind. */
+function pushPull(m0, fid, dIn) {
+  const m = clone(m0), f = m.faces[fid];
+  if (!f || Math.abs(dIn) < 1e-6) return { m: m0, d: 0 };
+  const n = V(f.n), em = edgeMap(m);
+  const loops = [{ pts: f.outer, hole: false }, ...f.holes.map(h => ({ pts: h, hole: true }))];
+  const walls = [], stretch = new Map(), carry = new Set();
+  let free = true, lo = -Infinity, hi = Infinity;
+
+  for (const L of loops) {
+    for (let i = 0; i < L.pts.length; i++) {
+      const a = L.pts[i], b = L.pts[(i + 1) % L.pts.length];
+      const others = (em.get(ek(a, b)) || []).filter(e => e.id !== fid);
+      if (others.length) free = false;
+      let handled = false;
+      for (const o of others) {
+        const g = m.faces[o.id], gn = V(g.n), dot = gn.dot(n);
+        if (dot > 0.999 && L.hole) { carry.add(o.id); handled = true; break; }
+        if (Math.abs(dot) > 1e-3) continue;
+        const ka = key(a), kb = key(b);
+        let ext = 0;
+        for (const p of g.outer) {
+          const e = V(p).sub(V(a)).dot(n);
+          if (Math.abs(e) > Math.abs(ext)) ext = e;
+        }
+        if (Math.abs(ext) < 1e-6) continue;
+        if (g.outer.length === 4) {
+          if (ext > 0) hi = Math.min(hi, ext - 0.001); else lo = Math.max(lo, ext + 0.001);
+          if (!stretch.has(o.id)) stretch.set(o.id, new Set());
+          stretch.get(o.id).add(ka); stretch.get(o.id).add(kb);
+          handled = true; break;
+        }
+        if (ext > 0) hi = Math.min(hi, 0); else lo = Math.max(lo, 0);
+      }
+      if (!handled) walls.push([a, b]);
+    }
+  }
+  const d = Math.min(hi, Math.max(lo, dIn));
+  if (Math.abs(d) < 1e-6) return { m: m0, d: 0 };
+  const off = n.clone().multiplyScalar(d);
+  const mv = p => A(V(p).add(off));
+
+  for (const [gid, ks] of stretch) {
+    const g = m.faces[gid];
+    g.outer = g.outer.map(p => ks.has(key(p)) ? mv(p) : p);
+  }
+  for (const cid of carry) {
+    const c = m.faces[cid];
+    c.outer = c.outer.map(mv); c.holes = c.holes.map(h => h.map(mv));
+  }
+  for (const [a, b] of walls) {
+    addFace(m, [a, b, mv(b), mv(a)], V(b).sub(V(a)).cross(off), [], true);
+  }
+  const outer = f.outer.map(mv), holes = f.holes.map(h => h.map(mv));
+  if (free) {
+    const keepN = d > 0 ? n.clone().negate() : n.clone();
+    const newN = d > 0 ? n.clone() : n.clone().negate();
+    addFace(m, f.outer, keepN, f.holes);
+    f.outer = orient(outer, newN, true);
+    f.holes = holes.map(h => orient(h, newN, false));
+    f.n = A(newN);
+  } else {
+    f.outer = outer; f.holes = holes;
+  }
+  return { m, d };
+}
+
+/* Rectangle drawn inside an existing face cuts a hole and fills it with a new face. */
+function insetRect(m, fid, loop) {
+  const f = m.faces[fid], n = V(f.n), [u, v] = basis(n);
+  const box = pts => {
+    const us = pts.map(p => V(p).dot(u)), vs = pts.map(p => V(p).dot(v));
+    return { u0: Math.min(...us), u1: Math.max(...us), v0: Math.min(...vs), v1: Math.max(...vs) };
+  };
+  const r = box(loop), o = box(f.outer), e = 1e-4;
+  if (!(r.u0 > o.u0 + e && r.u1 < o.u1 - e && r.v0 > o.v0 + e && r.v1 < o.v1 - e)) return 'edge';
+  for (const h of f.holes) {
+    const b = box(h);
+    if (!(r.u1 < b.u0 - e || r.u0 > b.u1 + e || r.v1 < b.v0 - e || r.v0 > b.v1 + e)) return 'overlap';
+  }
+  f.holes.push(orient(loop, n, false));
+  return addFace(m, loop, n);
+}
+
+/* ---------- model state ---------- */
+function load() {
+  try {
+    const m = JSON.parse(localStorage.getItem(STORE));
+    if (m && typeof m.faces === 'object' && Number.isFinite(m.next)) return m;
+  } catch (e) {}
+  return null;
+}
+function save() { try { localStorage.setItem(STORE, JSON.stringify(model)); } catch (e) {} }
+
+let model = load() || { faces: {}, next: 1 };
+let undoStack = [], redoStack = [];
+let tool = 'rect', selected = null, hovered = null;
+let rs = { stage: 0 }, ps = { active: false };
+let points = [];
+
+/* ---------- scene building ---------- */
+const modelGroup = new THREE.Group(), tempGroup = new THREE.Group();
+scene.add(modelGroup, tempGroup);
+let meshes = new Map(), pickables = [];
+
+function disposeGroup(g) {
+  for (const c of [...g.children]) { g.remove(c); if (c.geometry) c.geometry.dispose(); }
+}
+function rebuild(m) {
+  disposeGroup(modelGroup);
+  meshes = new Map(); pickables = [];
+  for (const [id, f] of Object.entries(m.faces)) {
+    const n = V(f.n), [u, v] = basis(n);
+    const to2 = p => new THREE.Vector2(V(p).dot(u), V(p).dot(v));
+    const tris = THREE.ShapeUtils.triangulateShape(f.outer.map(to2), f.holes.map(h => h.map(to2)));
+    const all = [f.outer, ...f.holes].flat();
+    const pos = [];
+    for (const t of tris) {
+      let [i, j, k] = t;
+      const a = V(all[i]), b = V(all[j]), c = V(all[k]);
+      if (b.clone().sub(a).cross(c.clone().sub(a)).dot(n) < 0) [j, k] = [k, j];
+      pos.push(...all[i], ...all[j], ...all[k]);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.computeVertexNormals();
+    const front = new THREE.Mesh(g, MATS.normal[0]);
+    const back = new THREE.Mesh(g, MATS.normal[1]);
+    front.userData.id = back.userData.id = id;
+    modelGroup.add(front, back);
+    pickables.push(front, back);
+    meshes.set(id, [front, back]);
+  }
+  const ep = [];
+  for (const list of edgeMap(m).values()) {
+    if (list.length === 2) {
+      const f1 = m.faces[list[0].id], f2 = m.faces[list[1].id];
+      if (f1.side && f2.side && V(f1.n).dot(V(f2.n)) > 0.999) continue;
+    }
+    ep.push(...list[0].a, ...list[0].b);
+  }
+  const eg = new THREE.BufferGeometry();
+  eg.setAttribute('position', new THREE.Float32BufferAttribute(ep, 3));
+  modelGroup.add(new THREE.LineSegments(eg, edgeMat));
+  requestRender();
+  return ep;
+}
+function refresh() {
+  const ep = rebuild(model);
+  const seen = new Set();
+  points = [];
+  for (let i = 0; i < ep.length; i += 6) {
+    const a = ep.slice(i, i + 3), b = ep.slice(i + 3, i + 6);
+    for (const p of [a, b]) { const k = key(p); if (!seen.has(k)) { seen.add(k); points.push({ p: V(p), type: 'end' }); } }
+    points.push({ p: V(a).add(V(b)).multiplyScalar(0.5), type: 'mid' });
+  }
+  if (selected && !model.faces[selected]) selected = null;
+  applyHighlights();
+  $('#hint').style.display = Object.keys(model.faces).length ? 'none' : '';
+  $('#undo').disabled = !undoStack.length;
+  $('#redo').disabled = !redoStack.length;
+}
+function paint(id, kind) {
+  const pair = meshes.get(id);
+  if (pair) { pair[0].material = MATS[kind][0]; pair[1].material = MATS[kind][1]; }
+}
+function applyHighlights() {
+  for (const id of meshes.keys()) paint(id, 'normal');
+  if (selected) paint(selected, 'sel');
+  if (hovered && hovered !== selected) paint(hovered, tool === 'erase' ? 'erase' : 'hover');
+  requestRender();
+}
+function commit(m) {
+  undoStack.push(JSON.stringify(model));
+  if (undoStack.length > 150) undoStack.shift();
+  redoStack = [];
+  model = m;
+  save();
+  refresh();
+}
+
+/* ---------- picking and inference ---------- */
+const ray = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+const mouse = { x: 0, y: 0 };
+function setRay(e) {
+  const r = el.getBoundingClientRect();
+  mouse.x = e.clientX - r.left; mouse.y = e.clientY - r.top;
+  ndc.set((mouse.x / r.width) * 2 - 1, -(mouse.y / r.height) * 2 + 1);
+  ray.setFromCamera(ndc, camera);
+}
+function pickFace() {
+  const h = ray.intersectObjects(pickables, false)[0];
+  return h ? { id: h.object.userData.id, point: h.point.clone() } : null;
+}
+function rayPlane(point, n) {
+  const out = new V3();
+  return ray.ray.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(n, point), out) ? out : null;
+}
+function toScreen(p) {
+  const r = el.getBoundingClientRect(), q = p.clone().project(camera);
+  return { x: (q.x + 1) / 2 * r.width, y: (1 - q.y) / 2 * r.height, z: q.z };
+}
+function nearestPoint(filter) {
+  let best = null, bd = 14;
+  for (const pt of points) {
+    if (!filter(pt.p)) continue;
+    const s = toScreen(pt.p);
+    if (s.z > 1) continue;
+    const d = Math.hypot(s.x - mouse.x, s.y - mouse.y);
+    if (d < bd) { bd = d; best = pt; }
+  }
+  return best;
+}
+const marker = $('#marker');
+const LABELS = { end: 'Endpoint', mid: 'Midpoint', face: 'On face', ground: '', plane: 'On plane' };
+function showMarker(p, type) {
+  const s = toScreen(p);
+  marker.style.display = 'block';
+  marker.style.transform = `translate(${s.x}px, ${s.y}px)`;
+  const color = type === 'end' ? 'var(--end)' : type === 'mid' ? 'var(--mid)' : 'var(--accent)';
+  marker.querySelector('i').style.color = color;
+  const span = marker.querySelector('span');
+  span.textContent = LABELS[type] || '';
+  span.style.display = LABELS[type] ? '' : 'none';
+}
+function hideMarker() { marker.style.display = 'none'; }
+function snapOnPlane(planePt, n, raw, fallbackType) {
+  const best = nearestPoint(p => Math.abs(p.clone().sub(planePt).dot(n)) < 1e-4);
+  if (best) { showMarker(best.p, best.type); return best.p.clone(); }
+  const [u, v] = basis(n), s = planePt.dot(n);
+  const pu = Math.round(raw.dot(u) / STEP) * STEP, pv = Math.round(raw.dot(v) / STEP) * STEP;
+  const p = u.clone().multiplyScalar(pu).add(v.clone().multiplyScalar(pv)).add(n.clone().multiplyScalar(s));
+  showMarker(p, fallbackType);
+  return p;
+}
+function planeUnderCursor() {
+  const h = pickFace();
+  if (h) return { fid: h.id, n: V(model.faces[h.id].n), point: h.point };
+  const g = rayPlane(new V3(), new V3(0, 1, 0));
+  return g && g.distanceTo(camera.position) < 300 ? { fid: null, n: new V3(0, 1, 0), point: g } : null;
+}
+
+/* ---------- status and measurements box ---------- */
+const statusEl = $('#status'), vcb = $('#vcb'), vcbLabel = $('#vcbLabel');
+let vcbTyping = false, flashTimer = 0;
+const HINTS = {
+  select: () => selected ? 'Face selected. Press Delete to erase it, Esc to clear the selection.' : 'Click a face to select it.',
+  rect: () => rs.stage ? 'Click the opposite corner, or type width, depth and press Enter.' : 'Click the first corner on the ground or on a face.',
+  push: () => ps.active ? 'Move to set the distance and click to finish, or type a distance and press Enter.' : 'Click a face to push or pull it.',
+  erase: () => 'Click a face to erase it.',
+  orbit: () => 'Drag to orbit. Right-drag orbits with any tool.',
+  pan: () => 'Drag to pan. Shift + right-drag pans with any tool.'
+};
+function hint() {
+  if (flashTimer) return;
+  statusEl.className = '';
+  statusEl.textContent = HINTS[tool]();
+}
+function flash(msg, isErr) {
+  clearTimeout(flashTimer);
+  statusEl.textContent = msg;
+  statusEl.className = isErr ? 'err' : '';
+  flashTimer = setTimeout(() => { flashTimer = 0; hint(); }, 3500);
+}
+function setVcb(label, value) {
+  vcbLabel.textContent = label;
+  if (!vcbTyping) vcb.value = value;
+}
+const f2 = x => Math.abs(x).toFixed(2);
+
+/* ---------- rectangle tool ---------- */
+function rectLoop(du, dv) {
+  const [u, v] = basis(rs.n), s = rs.start;
+  const U = u.clone().multiplyScalar(du), Vv = v.clone().multiplyScalar(dv);
+  return [s.clone(), s.clone().add(U), s.clone().add(U).add(Vv), s.clone().add(Vv)];
+}
+function rectDims() {
+  const [u, v] = basis(rs.n), d = rs.cur.clone().sub(rs.start);
+  return [d.dot(u), d.dot(v)];
+}
+function drawRectPreview() {
+  disposeGroup(tempGroup);
+  const [du, dv] = rectDims();
+  setVcb('Dimensions (m)', `${f2(du)}, ${f2(dv)}`);
+  if (Math.abs(du) < 1e-4 && Math.abs(dv) < 1e-4) { requestRender(); return; }
+  const lift = rs.n.clone().multiplyScalar(0.002);
+  const c = rectLoop(du, dv).map(p => p.add(lift));
+  const fill = new THREE.BufferGeometry().setFromPoints([c[0], c[1], c[2], c[0], c[2], c[3]]);
+  tempGroup.add(new THREE.Mesh(fill, previewFill));
+  tempGroup.add(new THREE.LineLoop(new THREE.BufferGeometry().setFromPoints(c), previewLine));
+  requestRender();
+}
+function commitRect(du, dv) {
+  if (du === undefined) [du, dv] = rectDims();
+  if (Math.abs(du) < 0.005 || Math.abs(dv) < 0.005) { flash('The rectangle needs a width and a depth.', true); cancelOps(); return; }
+  const loop = rectLoop(du, dv).map(A);
+  const m = clone(model);
+  if (rs.fid) {
+    const res = insetRect(m, rs.fid, loop);
+    if (res === 'edge') { flash('Draw the rectangle fully inside the face. Splitting a face along its edge isn’t built yet.', true); cancelOps(); return; }
+    if (res === 'overlap') { flash('The rectangle overlaps another rectangle on this face.', true); cancelOps(); return; }
+  } else {
+    addFace(m, loop, new V3(0, 1, 0));
+  }
+  cancelOps(true);
+  commit(m);
+  flash(`Rectangle ${f2(du)} × ${f2(dv)} m added. Press P to push or pull it.`);
+}
+
+/* ---------- push/pull tool ---------- */
+function pushDistance(e) {
+  const o = ray.ray.origin, dir = ray.ray.direction, w0 = ps.P.clone().sub(o);
+  const b = ps.n.dot(dir), d1 = ps.n.dot(w0), ee = dir.dot(w0), den = 1 - b * b;
+  let s = den < 1e-3 ? (ps.sy - e.clientY) * cam.r * 0.002 : (b * ee - d1) / den;
+  const tol = cam.r * 0.012;
+  let snap = null, best = Infinity;
+  for (const pt of points) {
+    const c = pt.p.clone().sub(ps.P).dot(ps.n);
+    if (Math.abs(c) > 1e-5 && Math.abs(c - s) < Math.min(tol, best)) { best = Math.abs(c - s); snap = c; }
+  }
+  return snap !== null ? { s: snap, snapped: true } : { s: Math.round(s / 0.01) * 0.01, snapped: false };
+}
+function previewPush(d, snapped) {
+  const res = pushPull(model, ps.fid, d);
+  ps.d = res.d; ps.m = res.m;
+  rebuild(res.m);
+  paint(ps.fid, 'sel');
+  setVcb('Distance (m)', (res.d < 0 ? '-' : '') + f2(res.d));
+  showMarker(ps.P.clone().add(ps.n.clone().multiplyScalar(res.d)), snapped ? 'plane' : 'face');
+}
+function commitPush() {
+  if (!ps.active || Math.abs(ps.d) < 1e-4) { cancelOps(); return; }
+  const m = ps.m, d = ps.d;
+  cancelOps(true);
+  commit(m);
+  flash(`Pushed/pulled ${f2(d)} m.`);
+}
+
+/* ---------- shared tool plumbing ---------- */
+function cancelOps(quiet) {
+  const hadPreview = rs.stage || ps.active;
+  rs = { stage: 0 }; ps = { active: false };
+  disposeGroup(tempGroup);
+  hideMarker();
+  vcbTyping = false;
+  vcb.value = '';
+  if (hadPreview && !quiet) refresh();
+  requestRender();
+  hint();
+}
+function deleteFace(id) {
+  const m = clone(model);
+  delete m.faces[id];
+  if (selected === id) selected = null;
+  hovered = null;
+  commit(m);
+  flash('Face erased. Undo brings it back.');
+}
+function setHover(h) {
+  const id = h ? h.id : null;
+  if (id !== hovered) { hovered = id; applyHighlights(); }
+}
+function toolDown(e) {
+  if (tool === 'rect') {
+    if (rs.stage === 0) {
+      const pl = planeUnderCursor();
+      if (!pl) return;
+      const start = snapOnPlane(pl.point, pl.n, pl.point, pl.fid ? 'face' : 'ground');
+      rs = { stage: 1, fid: pl.fid, n: pl.n, start, cur: start.clone() };
+      setVcb('Dimensions (m)', '0.00, 0.00');
+      hint();
+    } else commitRect();
+  } else if (tool === 'push') {
+    if (!ps.active) {
+      const h = pickFace();
+      if (!h) return;
+      hovered = null;
+      ps = { active: true, fid: h.id, P: h.point, n: V(model.faces[h.id].n), sy: e.clientY, d: 0, m: model };
+      previewPush(0, false);
+      hint();
+    } else commitPush();
+  } else if (tool === 'select') {
+    const h = pickFace();
+    selected = h ? h.id : null;
+    applyHighlights();
+    if (selected) setVcb('Area (m²)', area(model.faces[selected]).toFixed(2)); else setVcb('Area (m²)', '');
+    hint();
+  } else if (tool === 'erase') {
+    const h = pickFace();
+    if (h) deleteFace(h.id);
+  }
+}
+function toolMove(e) {
+  if (tool === 'rect') {
+    if (rs.stage === 0) {
+      const pl = planeUnderCursor();
+      if (pl) snapOnPlane(pl.point, pl.n, pl.point, pl.fid ? 'face' : 'ground'); else hideMarker();
+    } else {
+      const raw = rayPlane(rs.start, rs.n);
+      if (!raw) return;
+      rs.cur = snapOnPlane(rs.start, rs.n, raw, rs.fid ? 'face' : 'ground');
+      drawRectPreview();
+    }
+  } else if (tool === 'push') {
+    if (!ps.active) setHover(pickFace());
+    else { const r = pushDistance(e); previewPush(r.s, r.snapped); }
+  } else if (tool === 'select' || tool === 'erase') {
+    setHover(pickFace());
+  }
+}
+function toolDragEnd() {
+  if (tool === 'rect' && rs.stage === 1) commitRect();
+  else if (tool === 'push' && ps.active) commitPush();
+}
+function applyVcb(text) {
+  vcbTyping = false;
+  const nums = text.split(/[,;x×\s]+/).filter(Boolean).map(Number);
+  if (tool === 'rect' && rs.stage === 1) {
+    if (nums.length < 2 || nums.some(n => !Number.isFinite(n) || n <= 0)) { flash('Type two positive sizes, like 3, 2.', true); return; }
+    const [du, dv] = rectDims();
+    commitRect((Math.sign(du) || 1) * nums[0], (Math.sign(dv) || 1) * nums[1]);
+  } else if (tool === 'push' && ps.active) {
+    if (nums.length !== 1 || !Number.isFinite(nums[0])) { flash('Type one distance, like 2.5.', true); return; }
+    previewPush((Math.sign(ps.d) || 1) * nums[0], false);
+    commitPush();
+  } else {
+    flash('Start a rectangle or a push/pull, then type a size.', true);
+  }
+}
+
+/* ---------- camera navigation ---------- */
+function orbit(dx, dy) { cam.theta -= dx * 0.008; cam.phi -= dy * 0.008; updateCamera(); }
+function pan(dx, dy) {
+  const h = el.clientHeight || 1;
+  const s = 2 * cam.r * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) / h;
+  const right = new V3().setFromMatrixColumn(camera.matrixWorld, 0);
+  const up = new V3().setFromMatrixColumn(camera.matrixWorld, 1);
+  cam.target.addScaledVector(right, -dx * s).addScaledVector(up, dy * s);
+  updateCamera();
+}
+function zoomFit() {
+  const b = new THREE.Box3();
+  for (const f of Object.values(model.faces)) for (const p of f.outer) b.expandByPoint(V(p));
+  if (b.isEmpty()) { cam.target.set(0, 0, 0); cam.r = 16; }
+  else {
+    b.getCenter(cam.target);
+    const size = b.getSize(new V3()).length();
+    cam.r = Math.max(3, size * 1.9);
+  }
+  updateCamera();
+}
+
+let nav = null, down = null;
+el.addEventListener('contextmenu', e => e.preventDefault());
+el.addEventListener('pointerdown', e => {
+  el.setPointerCapture(e.pointerId);
+  const navBtn = e.button === 1 || e.button === 2;
+  if (navBtn || (e.button === 0 && (tool === 'orbit' || tool === 'pan'))) {
+    nav = { mode: navBtn ? (e.shiftKey ? 'pan' : 'orbit') : tool, x: e.clientX, y: e.clientY };
+    el.style.cursor = 'grabbing';
+    e.preventDefault();
+    return;
+  }
+  if (e.button !== 0) return;
+  down = { x: e.clientX, y: e.clientY };
+  setRay(e);
+  toolDown(e);
+});
+el.addEventListener('pointermove', e => {
+  if (nav) {
+    const dx = e.clientX - nav.x, dy = e.clientY - nav.y;
+    nav.x = e.clientX; nav.y = e.clientY;
+    nav.mode === 'orbit' ? orbit(dx, dy) : pan(dx, dy);
+    return;
+  }
+  setRay(e);
+  toolMove(e);
+});
+el.addEventListener('pointerup', e => {
+  if (nav) { nav = null; setCursor(); return; }
+  if (down) {
+    const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6;
+    down = null;
+    if (moved) { setRay(e); toolDragEnd(); }
+  }
+});
+el.addEventListener('pointerleave', () => {
+  if (!rs.stage && !ps.active) { if (hovered) { hovered = null; applyHighlights(); } hideMarker(); }
+});
+el.addEventListener('wheel', e => {
+  e.preventDefault();
+  setRay(e);
+  const dy = e.deltaY * (e.deltaMode === 1 ? 16 : 1);
+  let k = Math.exp(dy * 0.0015);
+  const newR = Math.min(300, Math.max(0.4, cam.r * k));
+  k = newR / cam.r;
+  const h = pickFace();
+  let anchor = h ? h.point : rayPlane(new V3(), new V3(0, 1, 0));
+  if (!anchor || anchor.distanceTo(camera.position) > 250) anchor = cam.target.clone();
+  cam.target.lerp(anchor, 1 - k);
+  cam.r = newR;
+  updateCamera();
+  hideMarker();
+}, { passive: false });
+
+/* ---------- toolbar and keyboard ---------- */
+function setCursor() {
+  el.style.cursor = { select: 'default', rect: 'crosshair', push: 'crosshair', erase: 'crosshair', orbit: 'grab', pan: 'grab' }[tool];
+}
+function setTool(t) {
+  cancelOps();
+  tool = t;
+  if (t !== 'select') selected = null;
+  hovered = null;
+  applyHighlights();
+  document.querySelectorAll('.tools button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.tool === t)));
+  setVcb(t === 'push' ? 'Distance (m)' : t === 'select' ? 'Area (m²)' : 'Dimensions (m)', '');
+  setCursor();
+  hint();
+}
+document.querySelectorAll('.tools button').forEach(b => b.addEventListener('click', () => setTool(b.dataset.tool)));
+
+function doUndo() {
+  if (!undoStack.length) return;
+  cancelOps(true);
+  redoStack.push(JSON.stringify(model));
+  model = JSON.parse(undoStack.pop());
+  save(); refresh();
+}
+function doRedo() {
+  if (!redoStack.length) return;
+  cancelOps(true);
+  undoStack.push(JSON.stringify(model));
+  model = JSON.parse(redoStack.pop());
+  save(); refresh();
+}
+$('#undo').addEventListener('click', doUndo);
+$('#redo').addEventListener('click', doRedo);
+$('#fit').addEventListener('click', zoomFit);
+$('#clear').addEventListener('click', () => {
+  if (!Object.keys(model.faces).length) return;
+  cancelOps(true);
+  selected = hovered = null;
+  commit({ faces: {}, next: 1 });
+  flash('Model cleared. Undo brings it back.');
+});
+
+vcb.addEventListener('input', () => { vcbTyping = true; });
+vcb.addEventListener('keydown', e => {
+  e.stopPropagation();
+  if (e.key === 'Enter') { e.preventDefault(); applyVcb(vcb.value); vcb.blur(); }
+  else if (e.key === 'Escape') { vcb.blur(); cancelOps(); }
+});
+
+window.addEventListener('keydown', e => {
+  if (e.target === vcb) return;
+  const mod = e.metaKey || e.ctrlKey, k = e.key.toLowerCase();
+  if (mod && k === 'z') { e.preventDefault(); e.shiftKey ? doRedo() : doUndo(); return; }
+  if (mod && k === 'y') { e.preventDefault(); doRedo(); return; }
+  if (mod || e.altKey) return;
+  if (/^[0-9.,\-]$/.test(e.key) && (rs.stage || ps.active)) {
+    e.preventDefault();
+    vcb.focus(); vcb.value = e.key; vcbTyping = true;
+    return;
+  }
+  if (e.key === 'Escape') { if (rs.stage || ps.active) cancelOps(); else if (selected) { selected = null; applyHighlights(); hint(); } return; }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && selected) { e.preventDefault(); deleteFace(selected); return; }
+  if (e.key === ' ') { e.preventDefault(); setTool('select'); return; }
+  if (e.shiftKey && k === 'z') { zoomFit(); return; }
+  const map = { r: 'rect', p: 'push', e: 'erase', o: 'orbit', h: 'pan' };
+  if (map[k] && !e.shiftKey) setTool(map[k]);
+});
+
+/* ---------- start ---------- */
+updateCamera();
+refresh();
+setTool('rect');
+if (Object.keys(model.faces).length) zoomFit();
+})();
+</script>
+</body>
+</html>

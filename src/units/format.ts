@@ -105,6 +105,11 @@ function formatPower(value: number, power: 2 | 3, settings: UnitSettings, option
   return `${numberFormat(locale, digits).format(value / MM_PER[base] ** power)} ${symbol}`;
 }
 
+/** An angle in degrees with one decimal, such as 22.5°. */
+export function formatAngle(degrees: number, options: FormatOptions = {}): string {
+  return `${numberFormat(options.locale ?? localeTag(), 1).format(degrees + 0)}${t('units.symbol.degree')}`;
+}
+
 /** Plain number in the active locale, used for counts and other non-length values. */
 export function formatNumber(value: number, digits = 0, locale: string = localeTag()): string {
   return numberFormat(locale, digits).format(value);

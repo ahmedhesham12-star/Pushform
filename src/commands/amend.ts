@@ -19,9 +19,20 @@ const kindOf = (f: AmendableField<unknown>) => f.kind ?? 'length';
  */
 export function matchTypedValues(
   fields: readonly AmendableField<unknown>[],
-  typed: { lengths: readonly number[]; counts: readonly number[]; arrays?: readonly { count: number; divide: boolean }[] },
+  typed: {
+    lengths: readonly number[];
+    counts: readonly number[];
+    arrays?: readonly { count: number; divide: boolean }[];
+    angles?: readonly number[];
+    bare?: boolean;
+  },
 ): Result<Record<string, number | boolean>> {
   const out: Record<string, number | boolean> = {};
+  // A plain number is a length for commands with lengths, and an angle for those with only angles.
+  const hasLengths = fields.some((f) => kindOf(f) === 'length');
+  const hasAngles = fields.some((f) => kindOf(f) === 'angle');
+  const lengths = !hasLengths && hasAngles && typed.bare ? [] : typed.lengths;
+  const angles = hasAngles ? (typed.angles ?? []) : [];
   const arrayFields = fields.filter((f) => kindOf(f) === 'array');
   if (typed.arrays?.length) {
     if (typed.arrays.length !== 1 || arrayFields.length !== 1) {
@@ -32,8 +43,9 @@ export function matchTypedValues(
     if (f.flag) out[f.flag] = typed.arrays[0]!.divide;
   }
   for (const [kind, values] of [
-    ['length', typed.lengths],
+    ['length', lengths],
     ['count', typed.counts],
+    ['angle', angles],
   ] as const) {
     const group = fields.filter((f) => kindOf(f) === kind);
     if (!values.length) continue;

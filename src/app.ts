@@ -60,7 +60,7 @@ import { MeasurementsBox } from './ui/measurements';
 import { StatusBar } from './ui/statusBar';
 import { ActionBar, ToolBar, type ToolButtonSpec } from './ui/toolbar';
 import { UnitsMenu } from './ui/unitsMenu';
-import { defaultPrecision, formatArea, formatLength, formatNumber, formatVolume, parseTypedValues, type LengthUnit } from './units';
+import { defaultPrecision, formatAngle, formatArea, formatLength, formatNumber, formatVolume, parseTypedValues, type LengthUnit } from './units';
 import { Viewport, type EdgeHighlight, type Highlight } from './viewport';
 
 /** Characters that start typing into the measurements box while a tool is busy. */
@@ -134,6 +134,7 @@ export class App {
     const toolSpecs: ToolButtonSpec<ToolId>[] = [
       { id: 'select', label: 'tool.select', icon: 'select', ...key('select') },
       { id: 'move', label: 'tool.move', icon: 'move', ...key('move') },
+      { id: 'rotate', label: 'tool.rotate', icon: 'rotate', ...key('rotate') },
       { id: 'line', label: 'tool.line', icon: 'line', ...key('line') },
       { id: 'rectangle', label: 'tool.rectangle', icon: 'rectangle', ...key('rectangle') },
       { id: 'circle', label: 'tool.circle', icon: 'circle', ...key('circle') },
@@ -639,7 +640,7 @@ export class App {
     if (r?.ok) {
       // A moved or copied selection follows the amend (copies of loose geometry get new ids).
       const out = r.output as { faceIds?: string[]; edgeIds?: string[]; instanceIds?: string[] };
-      if (target.commandId === 'core.move' || target.commandId === 'core.moveCopies') {
+      if (['core.move', 'core.moveCopies', 'core.rotate', 'core.rotateCopies'].includes(target.commandId)) {
         this.clearSelection();
         for (const f of out.faceIds ?? []) this.selection.faces.add(f);
         for (const e of out.edgeIds ?? []) this.selection.edges.add(e);
@@ -664,6 +665,7 @@ export class App {
       .map((v, i) => {
         const field = target.fields[i]!;
         if (field.kind === 'count') return t('measure.count', { count: formatNumber(Math.abs(v)) });
+        if (field.kind === 'angle') return formatAngle(v);
         if (field.kind === 'array') {
           const divide = field.flag !== undefined && target.input[field.flag] === true;
           return t(divide ? 'measure.divide' : 'measure.multiply', { count: formatNumber(Math.abs(v)) });

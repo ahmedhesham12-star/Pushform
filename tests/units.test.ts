@@ -2,6 +2,8 @@ import { describe, expect, test } from 'vitest';
 import {
   formatArea,
   formatVolume,
+  formatAngle,
+  parseAngle,
   formatLength,
   parseLength,
   parseLengthList,
@@ -161,6 +163,15 @@ describe('parseTypedValues', () => {
     expect(r.ok && r.lengths.length + r.counts.length).toBe(0);
   });
 
+  test('plain numbers are also angles; marked degrees are only angles', () => {
+    const r = parseTypedValues('45', 'm');
+    expect(r.ok && [r.angles, r.lengths, r.bare]).toEqual([[45], [45000], true]);
+    const d = parseTypedValues('22.5°', 'm');
+    expect(d.ok && [d.angles, d.lengths]).toEqual([[22.5], []]);
+    const mm = parseTypedValues('500mm', 'm');
+    expect(mm.ok && [mm.angles, mm.bare]).toEqual([[], false]);
+  });
+
   test('x still separates lengths', () => {
     expect(typed('600 x 400', 'mm')).toEqual({ lengths: [600, 400], counts: [] });
     const r = parseTypedValues('600 x 400', 'mm');
@@ -261,6 +272,28 @@ describe('formatVolume', () => {
     [2 * 28316846.592, { unit: 'ft-in', precision: 16 }, '2.00 ft³'],
   ])('%f mm³ in %o -> %s', (value, settings, expected) => {
     expect(f(value, settings)).toBe(expected);
+  });
+});
+
+describe('angles', () => {
+  test.each([
+    ['45', 45],
+    ['-30', -30],
+    ['22.5°', 22.5],
+    ['90 deg', 90],
+    ['- 15', -15],
+    ['٤٥', 45],
+  ])('parseAngle(%j) = %d', (text, value) => {
+    expect(parseAngle(text)).toBe(value);
+  });
+
+  test.each(['', 'abc', '45mm', '1/2'])('parseAngle rejects %j', (text) => {
+    expect(parseAngle(text)).toBeNull();
+  });
+
+  test('formatAngle', () => {
+    expect(formatAngle(22.5, { locale: 'en' })).toBe('22.5°');
+    expect(formatAngle(-90, { locale: 'en' })).toBe('-90.0°');
   });
 });
 

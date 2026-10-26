@@ -1,20 +1,16 @@
 import type { Vector3 } from 'three';
-import { definitionModel } from '../commands';
 import { t } from '../i18n';
-import { edgeGroup, faceEdges } from '../kernel';
 import { formatLength, parseLengthList } from '../units';
 import type { Axis } from '../viewport';
 import { AXIS_KEYS, inferPoint } from './inference';
 import { isMac } from './shortcuts';
-import { entityOf, sameEntity, type Tool, type ToolContext } from './tool';
+import type { Tool, ToolContext } from './tool';
+import { hasSelection, hoverTakeable, selectResult, takeSelection, type Taken } from './transformSelection';
 
 /** Moves shorter than this (mm) are no move at all. */
 const MIN_DISTANCE = 0.01;
 
-interface MoveState {
-  faceIds: string[];
-  edgeIds: string[];
-  instanceIds: string[];
+interface MoveState extends Taken {
   /** Start point and current destination, in world coordinates. */
   start: Vector3;
   end: Vector3 | null;
@@ -30,13 +26,11 @@ interface MoveState {
  * axis, as in the Line tool.
  */
 export function createMoveTool(ctx: ToolContext): Tool {
-  const { selection } = ctx;
   let state: MoveState | null = null;
   let lock: Axis | null = null;
   let copy = false;
 
   const fmt = (mm: number) => formatLength(Math.abs(mm), ctx.units());
-  const hasSelection = () => selection.faces.size + selection.edges.size + selection.instances.size > 0;
   const copyKey = () => t(isMac() ? 'key.option' : 'key.ctrl');
 
   /** The move in the editing context's coordinates: a unit direction and a distance. */
@@ -81,29 +75,9 @@ export function createMoveTool(ctx: ToolContext): Tool {
       ? ctx.session.execute('core.moveCopies', { ...input(s, m), copies: 1, divide: false })
       : ctx.session.execute('core.move', input(s, m));
     if (!r.ok) return ctx.flashError(r.error);
-    // What moved (or the copy) stays selected, as in SketchUp.
-    selection.faces.clear();
-    selection.edges.clear();
-    selection.instances.clear();
-    for (const f of r.output.faceIds) selection.faces.add(f);
-    for (const e of r.output.edgeIds) selection.edges.add(e);
-    for (const i of r.output.instanceIds) selection.instances.add(i);
-    ctx.applyHighlights();
+    selectResult(ctx, r.output);
     ctx.flash(t(wasCopy ? 'message.copied' : 'message.moved', { distance: fmt(m.distance) }));
     ctx.hint();
-  };
-
-  /** With nothing selected, the entity under the pointer becomes the selection. */
-  const pickUnderPointer = (): boolean => {
-    const hit = entityOf(ctx.viewport.pick());
-    if (!hit) return false;
-    const m = definitionModel(ctx.session.doc, ctx.viewport.frame.definitionId)!;
-    if (hit.kind === 'face') selection.faces.add(hit.id);
-    else if (hit.kind === 'edge') for (const e of edgeGroup(m, hit.id)) selection.edges.add(e);
-    else selection.instances.add(hit.id);
-    selection.hovered = null;
-    ctx.applyHighlights();
-    return true;
   };
 
   return {
@@ -113,42 +87,25 @@ export function createMoveTool(ctx: ToolContext): Tool {
     hint: () => {
       const key = copyKey();
       if (state) return t(copy ? 'status.move.copy' : 'status.move.target', { key });
-      return t(hasSelection() ? 'status.move.start' : 'status.move.pick', { key });
+      return t(hasSelection(ctx) ? 'status.move.start' : 'status.move.pick', { key });
     },
     measurementLabel: () => t('measure.distance'),
     busy: () => state !== null,
 
     down(e) {
       if (state) return commit();
-      if (!hasSelection() && !pickUnderPointer()) return;
       const first = inferPoint(ctx, null, null);
-      if (!first) return;
+      const taken = first && takeSelection(ctx);
+      if (!first || !taken) return;
       if (isMac() ? e.altKey : e.ctrlKey) copy = true;
-      const m = definitionModel(ctx.session.doc, ctx.viewport.frame.definitionId)!;
-      state = {
-        faceIds: [...selection.faces],
-        edgeIds: [...selection.edges],
-        instanceIds: [...selection.instances],
-        start: first.point,
-        end: null,
-        axis: null,
-      };
-      // Inference ignores what is being moved, so it cannot snap to itself.
-      const edges = new Set([...selection.edges, ...[...selection.faces].flatMap((f) => faceEdges(m, f))]);
-      ctx.viewport.setExcluded({ faces: new Set(selection.faces), edges, instances: new Set(selection.instances) });
+      state = { ...taken, start: first.point, end: null, axis: null };
       ctx.setMeasurement(t('measure.distance'), fmt(0));
       ctx.hint();
     },
 
     move() {
       if (!state) {
-        if (!hasSelection()) {
-          const hovered = entityOf(ctx.viewport.pick());
-          if (!sameEntity(hovered, selection.hovered)) {
-            selection.hovered = hovered;
-            ctx.applyHighlights();
-          }
-        }
+        hoverTakeable(ctx);
         const hit = inferPoint(ctx, null, null);
         if (hit) ctx.viewport.showMarker(hit.point, hit.kind);
         else ctx.viewport.hideMarker();

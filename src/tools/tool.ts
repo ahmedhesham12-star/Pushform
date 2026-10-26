@@ -3,7 +3,7 @@ import type { InstanceId } from '../scene';
 import type { UnitSettings } from '../units';
 import type { Highlight, Picked, Viewport } from '../viewport';
 
-export type ToolId = 'select' | 'move' | 'line' | 'rectangle' | 'circle' | 'polygon' | 'pushPull' | 'erase' | 'orbit' | 'pan';
+export type ToolId = 'select' | 'move' | 'rotate' | 'line' | 'rectangle' | 'circle' | 'polygon' | 'pushPull' | 'erase' | 'orbit' | 'pan';
 
 export interface EntityRef {
   kind: 'face' | 'edge' | 'instance';

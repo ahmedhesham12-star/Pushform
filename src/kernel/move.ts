@@ -1,8 +1,9 @@
 /**
- * Moving loose geometry by a vector, as the Move tool does. The selected faces
- * and edges move with their vertices; geometry made only of moving vertices
- * moves along. Geometry connected to the selection stretches, unless that
- * would bend a face out of its plane or fold or cross it, which is blocked.
+ * Moving and rotating loose geometry, as the Move and Rotate tools do. The
+ * selected faces and edges go through a rigid motion with their vertices;
+ * geometry made only of moving vertices goes along. Geometry connected to the
+ * selection stretches, unless that would bend a face out of its plane or fold
+ * or cross it, which is refused.
  */
 import { EPSILON, VERTEX_TOLERANCE, snapPoint } from './precision';
 import { add, cleanNormal, dot, length, sub, type Vec3 } from './vec';
@@ -11,7 +12,7 @@ import { onPlane, planeThrough, polygonNormal, samePlane, type Plane } from './g
 import { extract, merge, transformTopology } from './assembly';
 import { planeProblems } from './validate';
 import { GROUND } from './shapes';
-import type { EdgeId, FaceId, Topology, VertexId } from './types';
+import type { EdgeId, FaceId, Point3, Topology, VertexId } from './types';
 
 export type MoveError = 'moveBends' | 'moveCrosses';
 
@@ -25,7 +26,17 @@ export type MoveResult =
     }
   | { ok: false; error: MoveError };
 
+/** A rigid motion: points through mapPoint, directions (normals) through mapVector. */
+export interface RigidMap {
+  readonly mapPoint: (p: Point3) => Point3;
+  readonly mapVector: (v: Vec3) => Vec3;
+}
+
 export function moveGeometry(t: Topology, faceIds: readonly FaceId[], edgeIds: readonly EdgeId[], vector: Vec3): MoveResult {
+  return transformSelection(t, faceIds, edgeIds, { mapPoint: (p) => add(p, vector), mapVector: (v) => v });
+}
+
+export function transformSelection(t: Topology, faceIds: readonly FaceId[], edgeIds: readonly EdgeId[], map: RigidMap): MoveResult {
   const d = new Draft(t);
   const moving = new Set<VertexId>();
   for (const f of faceIds) {
@@ -33,7 +44,8 @@ export function moveGeometry(t: Topology, faceIds: readonly FaceId[], edgeIds: r
     if (face) for (const v of [face.outer, ...face.holes].flat()) moving.add(v);
   }
   for (const e of edgeIds) for (const v of t.edges.get(e)?.v ?? []) moving.add(v);
-  if (!moving.size || length(vector) < EPSILON) {
+  const target = new Map([...moving].map((v) => [v, snapPoint(map.mapPoint(t.vertices.get(v)!.p))] as const));
+  if (!moving.size || [...moving].every((v) => length(sub(target.get(v)!, t.vertices.get(v)!.p)) < EPSILON)) {
     return { ok: true, topology: t, faceIds: faceIds.filter((f) => t.faces.has(f)), edgeIds: edgeIds.filter((e) => t.edges.has(e)) };
   }
 
@@ -49,10 +61,10 @@ export function moveGeometry(t: Topology, faceIds: readonly FaceId[], edgeIds: r
   // Free only when no edge and no other face (a hole around it, for one) holds on to a moving vertex.
   const rigidSet = new Set(rigidFaces);
   const held = [...t.faces].some(([id, f]) => !rigidSet.has(id) && [f.outer, ...f.holes].flat().some((v) => moving.has(v)));
-  if (!stretched.length && !held) return moveIsland(t, d, moving, rigidFaces, rigidEdges, vector);
+  if (!stretched.length && !held) return moveIsland(t, d, target, rigidFaces, rigidEdges, map);
 
-  for (const v of moving) d.moveVertex(v, add(d.point(v), vector));
-  // A stretched point landing on another point would need the two merged: not supported, so blocked.
+  applyRigid(d, target, rigidFaces, rigidEdges, map);
+  // A stretched point landing on another point would need the two merged: not supported, so refused.
   if ([...moving].some((v) => landsOnOther(d, v))) return { ok: false, error: 'moveCrosses' };
   for (const e of stretched) {
     const [a, b] = d.edge(e).v;
@@ -71,11 +83,25 @@ export function moveGeometry(t: Topology, faceIds: readonly FaceId[], edgeIds: r
     if ([face.outer, ...face.holes].flat().some((v) => !onPlane(plane, d.point(v)))) return { ok: false, error: 'moveBends' };
     d.setFace(f, { ...face, normal: cleanNormal(n) });
   }
-  moveCurves(d, rigidEdges, vector);
 
   if (conflicts(d, touched, [...rigidEdges, ...stretched])) return { ok: false, error: 'moveCrosses' };
   const topology = d.commit();
   return { ok: true, topology, faceIds: faceIds.filter((f) => topology.faces.has(f)), edgeIds: edgeIds.filter((e) => topology.edges.has(e)) };
+}
+
+/** Move the vertices to their targets, and turn the normals of faces and curves that move whole. */
+function applyRigid(d: Draft, target: ReadonlyMap<VertexId, Point3>, faces: readonly FaceId[], edges: readonly EdgeId[], map: RigidMap): void {
+  for (const [v, p] of target) d.moveVertex(v, p);
+  for (const f of faces) {
+    const face = d.face(f);
+    d.setFace(f, { ...face, normal: cleanNormal(map.mapVector(face.normal)) });
+  }
+  const moved = new Set(edges);
+  for (const [id, c] of d.curves) {
+    if (c.edges.length && c.edges.every((e) => moved.has(e))) {
+      d.curves.set(id, { ...c, center: snapPoint(map.mapPoint(c.center)), normal: cleanNormal(map.mapVector(c.normal)) });
+    }
+  }
 }
 
 /**
@@ -83,15 +109,20 @@ export function moveGeometry(t: Topology, faceIds: readonly FaceId[], edgeIds: r
  * unless it lands on other geometry; then it is taken out and merged back at
  * its new place, so points landing on points join and coplanar faces merge.
  */
-function moveIsland(t: Topology, d: Draft, moving: Set<VertexId>, faceIds: FaceId[], edgeIds: EdgeId[], vector: Vec3): MoveResult {
-  for (const v of moving) d.moveVertex(v, add(d.point(v), vector));
-  moveCurves(d, edgeIds, vector);
-  if (![...moving].some((v) => landsOnOther(d, v)) && !conflicts(d, new Set(faceIds), edgeIds)) {
+function moveIsland(
+  t: Topology,
+  d: Draft,
+  target: ReadonlyMap<VertexId, Point3>,
+  faceIds: FaceId[],
+  edgeIds: EdgeId[],
+  map: RigidMap,
+): MoveResult {
+  applyRigid(d, target, faceIds, edgeIds, map);
+  if (![...target.keys()].some((v) => landsOnOther(d, v)) && !conflicts(d, new Set(faceIds), edgeIds)) {
     return { ok: true, topology: d.commit(), faceIds, edgeIds };
   }
   const x = extract(t, faceIds, edgeIds);
-  const moved = transformTopology(x.extracted, (p) => add(p, vector), (n) => n);
-  const r = merge(x.remaining, moved);
+  const r = merge(x.remaining, transformTopology(x.extracted, map.mapPoint, map.mapVector));
   return { ok: true, topology: r.topology, faceIds: r.faceIds, edgeIds: r.edgeIds };
 }
 
@@ -100,14 +131,6 @@ function landsOnOther(d: Draft, v: VertexId): boolean {
   const p = d.point(v);
   for (const [id, x] of d.vertices) if (id !== v && length(sub(x.p, p)) <= VERTEX_TOLERANCE) return true;
   return false;
-}
-
-/** Curves made only of moved edges keep their center with them. */
-function moveCurves(d: Draft, movedEdges: readonly EdgeId[], vector: Vec3): void {
-  const moved = new Set(movedEdges);
-  for (const [id, c] of d.curves) {
-    if (c.edges.length && c.edges.every((e) => moved.has(e))) d.curves.set(id, { ...c, center: snapPoint(add(c.center, vector)) });
-  }
 }
 
 /** Whether the planes of the given faces, or any plane holding one of the given edges, break the planar invariants. */

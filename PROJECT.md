@@ -171,6 +171,8 @@ Core commands (geometry commands and the group and component commands take the o
 | `core.copyInstances` (instanceIds, translation) | `instanceIds` | |
 | `core.move` (faceIds, edgeIds, instanceIds, direction, distance) | the moved `faceIds`, `edgeIds`, `instanceIds` | distance |
 | `core.moveCopies` (same, plus copies and divide) | the copies' `faceIds`, `edgeIds`, `instanceIds` | distance, array (`x5`, `/4`) |
+| `core.rotate` (faceIds, edgeIds, instanceIds, center, axis, angle in degrees) | the turned `faceIds`, `edgeIds`, `instanceIds` | angle |
+| `core.rotateCopies` (same, plus copies and divide) | the copies' ids | angle, array |
 
 How the session works:
 - `execute` is for typed callers. `executeUnchecked` is for untrusted JSON from plugins, MCP or replay.
@@ -180,7 +182,7 @@ How the session works:
 Plugins call `registry.register(def)` and extend the typed `CommandMap` through declaration merging.
 
 **Amend last operation.** After a command finishes, typed values replace its amendable inputs, as in SketchUp.
-- A command opts in by declaring `amendable` fields: `positive` or `signed`, and kind `length` (the default), `count` or `array`. Counts are typed with an `s` suffix, like `48s`. An array field takes `x5` (also `5x`, `*5`) or `/4`, typed on its own: the count goes to the field and the divide choice to its boolean `flag` input.
+- A command opts in by declaring `amendable` fields: `positive` or `signed`, and kind `length` (the default), `count`, `array` or `angle`. A plain typed number fills an angle field when the command has no length fields. Counts are typed with an `s` suffix, like `48s`. An array field takes `x5` (also `5x`, `*5`) or `/4`, typed on its own: the count goes to the field and the divide choice to its boolean `flag` input.
 - Typed lengths fill the length fields in order and counts fill the count fields. Either group may be left out, so typing only `48s` changes only the segment count.
 - `CommandSession.amend` re-runs the command from the document before it and replaces that history entry, so it stays one undo step. If the amended command fails, the original result is kept.
 - Amending ends when any other command runs, on undo or redo, on load, on a left click in the viewport, and on a tool switch. Navigation keeps it available.
@@ -269,6 +271,8 @@ Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] unti
 | 2026-10-26 | Previews draw into separate meshes; picking and inference keep using the committed scene, and the Move tool also excludes the selection it moves | Geometry being moved must not catch the pointer, or the destination would run away. |
 | 2026-10-26 | Points and edges win over faces in every tool's inference, and hidden points are not inferred (Move testing feedback) | Rectangle, Circle and Polygon snapped only to points and the grid, so an edge under the pointer showed "On face"; a hidden midpoint could capture the pointer through a face. |
 | 2026-10-26 | Push/pull infers the level of any point, edge or face under the pointer; hits on faces use the face's exact plane | SketchUp's push-to-surface; float32 mesh hits would leave faces a few millionths of a mm off. |
+| 2026-10-26 | Move and Rotate share one kernel operation (a rigid motion of a selection) and one command implementation; arrays are a transform per copy | Rotating loose geometry follows exactly the stretch and refusal rules of moving it. |
+| 2026-10-26 | Axis inference and arrow-key locks use the open context's axes | Matches SketchUp, where editing a turned group uses its axes. |
 | 2026-10-26 | Solid volume in Entity Info for a group or component whose own geometry is closed and consistently oriented; none when it holds other groups or components | Cheap to compute exactly; nested solids are a later step. |
 
 ## SketchUp parity: shortcuts and modifiers
@@ -280,6 +284,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 | --- | --- |
 | Space | Select |
 | M | Move (milestone 3) |
+| Q | Rotate (milestone 3) |
 | L | Line |
 | R | Rectangle |
 | C | Circle |
@@ -314,8 +319,10 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - **Push/Pull (milestone 3):** while pushing, hovering a point, edge or face anywhere else (other groups and components and faded geometry too) ends the face level with it. Double-clicking a face repeats the last push/pull distance on it.
 - **Inference order, every tool:** endpoints and midpoints first, then points on edges, then faces or the ground. Points and edges hidden behind faces are not inferred.
 
+- **Rotate (milestone 3):** the protractor lies on the face under the pointer or the ground; arrow keys lock it to the red, green or blue axis before the center is clicked. Click the center, the start of the angle and the end, or type an angle. Angles snap to 15 degree steps near them; points and edges under the pointer give exact angles. Ctrl copies and `x5`, `/4` make arrays, as in Move. A plain number typed after a rotation is an angle in degrees.
+- **Axes inside a group or component** are its own axes: arrow-key locks and axis inference follow a turned instance.
+
 **Parity list for later milestones (not built yet):**
-- **Rotate:** the same copy and array rules as Move (milestone 3, step 8).
 - **Push/Pull:** Ctrl creates a new starting face instead of moving the original.
 - **Eraser:** Shift hides edges, Ctrl softens and smooths edges.
 - **Paint Bucket:** Alt (Cmd on Mac) samples a material.
@@ -370,6 +377,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - **Viewport:** instances drawn from shared geometry with their transforms; editing contexts (double-click to open, Esc or a click outside to close, everything outside faded); picking returns context faces and edges, instances in the context, or geometry outside it; inference across all instances and contexts in world coordinates.
 - **Right-click menu** and G for Make Component.
 - **Panels:** Entity Info (one group or component: type, editable definition and instance names, copy count, volume; several items: how many of each type, with total area and length) and Outliner (tree, copy counts, click to select, double-click or F2 to rename, right-click menu).
+- **Rotate tool (step 8):** protractor on faces or locked axes, center, start and angle with inference, 15 degree snapping, typed angles and amend, Ctrl copy and arrays; loose geometry turns with the same rules as moving; axes inside groups follow the group.
 - **Move tool (step 7):** start and destination with shared inference (Line and Move), typed distance, amend, Ctrl copy, arrays (`x5`, `5x`, `*5`, `/4`), loose geometry that stretches with bending and crossing moves refused.
 - **Checkpoint (a) feedback:** double-click, triple-click, window and crossing selection, Ctrl+A; modifiers on groups and components; Make Group and Make Component on mixed selections.
 - **Verification:** 468 unit tests pass and the build succeeds; the stress sweeps pass, including the new 3 (extract and merge), 4 (scene commands) and 5 (moving loose geometry, 1000 seeds). Scripted browser checks (not in the repo) cover instances, contexts, snapping to another copy, the menu and the panels.
@@ -379,10 +387,9 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - Each operation recomputes its whole plane and an adjacency index. That is fine for typical models; very large models may slow down.
 - Undo history is not kept across reloads.
 - There is no file open, save or export yet; the only storage is the browser autosave (milestone 3, steps 9 and 10).
-- No rotate tool yet (milestone 3, step 8); offset comes later.
+- Offset (F) comes next (added to milestone 3 after Rotate).
 - A stretch that would land a point on another point is refused rather than merging the two points (an island that lands on a point does merge).
 - While moving loose geometry, its own endpoints and midpoints at the original position are still inference targets (its faces and edges are not).
-- Axis inference uses the world axes, also inside a group or component; this matters once instances can be rotated (milestone 3, step 8).
 
 ## Next steps (proposed, not yet approved)
 1. File open and save (`.pushform` JSON download and upload) and the first export (glTF or STL, from `faceMeshes`).

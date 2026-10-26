@@ -529,9 +529,17 @@ export class Viewport {
 
   /** A rubber-band line from a to b, in an axis color or the accent color. */
   showLinePreview(a: Vector3, b: Vector3, axis: Axis | null): void {
+    this.showGuides([{ points: [a, b], axis }]);
+  }
+
+  /** Guide lines (a protractor, rubber bands), each in an axis color or the accent color; open or closed. */
+  showGuides(lines: readonly { points: Vector3[]; closed?: boolean; axis?: Axis | null }[]): void {
     this.clearPreview();
-    const material = axis ? AXIS_LINE[axis] : previewLine;
-    this.preview.add(new Line(new BufferGeometry().setFromPoints([a, b]), material));
+    for (const l of lines) {
+      const material = l.axis ? AXIS_LINE[l.axis] : previewLine;
+      const g = new BufferGeometry().setFromPoints(l.points);
+      this.preview.add(l.closed ? new LineLoop(g, material) : new Line(g, material));
+    }
     this.requestRender();
   }
 
@@ -561,6 +569,16 @@ export class Viewport {
    * Axis inference: the red, green or blue axis through `start` whose line on
    * screen passes closest to the pointer, within AXIS_PICK_PX, and the point on it.
    */
+  /**
+   * The red, green or blue axis direction in world coordinates. Inside a group
+   * or component these are its own axes, as in SketchUp, so locks and axis
+   * inference follow a turned instance.
+   */
+  axisDirection(axis: Axis): Vector3 {
+    const a = AXIS_DIRECTION[axis];
+    return this.frameValue.dirToWorld([a.x, a.y, a.z]).normalize();
+  }
+
   axisInference(start: Vector3): { axis: Axis; point: Vector3 } | null {
     const { x, y } = this.picker.mouse;
     const s = this.picker.toScreen(start);
@@ -568,14 +586,15 @@ export class Viewport {
     let best: { axis: Axis; point: Vector3 } | null = null;
     let bestPx = AXIS_PICK_PX;
     for (const axis of ['x', 'y', 'z'] as const) {
-      const e = this.picker.toScreen(start.clone().addScaledVector(AXIS_DIRECTION[axis], this.camera.distance * 0.1));
+      const dir = this.axisDirection(axis);
+      const e = this.picker.toScreen(start.clone().addScaledVector(dir, this.camera.distance * 0.1));
       const dx = e.x - s.x;
       const dy = e.y - s.y;
       const len = Math.hypot(dx, dy);
       if (len < 1) continue;
       const px = Math.abs((x - s.x) * dy - (y - s.y) * dx) / len;
       if (px >= bestPx) continue;
-      const point = this.closestOnLine(start, AXIS_DIRECTION[axis]);
+      const point = this.closestOnLine(start, dir);
       if (!point) continue;
       bestPx = px;
       best = { axis, point };

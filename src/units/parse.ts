@@ -88,8 +88,14 @@ export interface TypedArray {
   divide: boolean;
 }
 
+/**
+ * `angles` holds every part that reads as an angle in degrees: a plain
+ * number, or one marked ° or deg. A plain number is a length too; `bare` is
+ * true when every length was a plain number, so a command that takes an
+ * angle and no length can read them as degrees.
+ */
 export type TypedValuesResult =
-  | { ok: true; lengths: number[]; counts: number[]; arrays: TypedArray[] }
+  | { ok: true; lengths: number[]; counts: number[]; arrays: TypedArray[]; angles: number[]; bare: boolean }
   | { ok: false; error: ParseError };
 
 /** A count typed with an "s" suffix, such as 48s for 48 segments or 6s for 6 sides. */
@@ -97,6 +103,16 @@ const COUNT = /^(\d+)\s*s$/;
 /** Arrays as in SketchUp: x5, 5x and *5 multiply; /4 divides. Typed on their own, since x also separates values. */
 const MULTIPLY = /^(?:[x×*]\s*(\d+)|(\d+)\s*[x×*])$/;
 const DIVIDE = /^\/\s*(\d+)$/;
+/** An angle: a plain number, or one marked with ° or deg. */
+const ANGLE = new RegExp(String.raw`^(-?)\s*${NUM}\s*(°|deg)?$`);
+
+/** Parse a typed angle in degrees (45, -30, 22.5°, 90deg); null when it is not one. */
+export function parseAngle(input: string): number | null {
+  const m = ANGLE.exec(normalize(input));
+  if (!m) return null;
+  const v = Number(m[2]) * (m[1] ? -1 : 1);
+  return Number.isFinite(v) ? v + 0 : null;
+}
 
 /**
  * Parse what the user typed into the measurements box: lengths (either unit
@@ -110,7 +126,7 @@ export function parseTypedValues(input: string, fileUnit: LengthUnit): TypedValu
   const divide = DIVIDE.exec(whole);
   if (multiply || divide) {
     const count = Number(multiply ? (multiply[1] ?? multiply[2]) : divide![1]);
-    return { ok: true, lengths: [], counts: [], arrays: [{ count, divide: !!divide }] };
+    return { ok: true, lengths: [], counts: [], arrays: [{ count, divide: !!divide }], angles: [], bare: false };
   }
   const parts = whole
     .split(LIST_SEPARATOR)
@@ -119,17 +135,27 @@ export function parseTypedValues(input: string, fileUnit: LengthUnit): TypedValu
   if (!parts.length) return { ok: false, error: 'empty' };
   const lengths: number[] = [];
   const counts: number[] = [];
+  const angles: number[] = [];
+  let bare = true;
   for (const part of parts) {
     const count = COUNT.exec(part);
     if (count) {
       counts.push(Number(count[1]));
       continue;
     }
+    const angle = ANGLE.exec(part);
+    if (angle) {
+      angles.push(parseAngle(part)!);
+      // Marked as degrees: not a length.
+      if (angle[3]) continue;
+    } else {
+      bare = false;
+    }
     const r = parseLength(part, fileUnit);
     if (!r.ok) return r;
     lengths.push(r.mm);
   }
-  return { ok: true, lengths, counts, arrays: [] };
+  return { ok: true, lengths, counts, arrays: [], angles, bare };
 }
 
 /** Parse one or more lengths, such as the width and depth of a rectangle. */

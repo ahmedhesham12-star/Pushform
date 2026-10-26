@@ -22,6 +22,7 @@ function context(under: Under) {
     nearestSnap: (filter: (p: Vector3) => boolean) => (under.snap && filter(under.snap.point) ? { ...under.snap, path: [] } : null),
     pickEdge: () => (under.edge ? { edgeId: 'e1', point: under.edge.clone(), path: [], relation: 'context' } : null),
     axisInference: () => null,
+    axisDirection: () => new Vector3(1, 0, 0),
     closestOnLine: () => null,
     planeUnderCursor: () => (under.face ? { faceId: 'f1', onFace: true, ...under.face } : null),
     gridPoint: (_p: Vector3, _n: Vector3, raw: Vector3) => raw.clone(),

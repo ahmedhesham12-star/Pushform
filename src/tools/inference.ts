@@ -1,6 +1,6 @@
 import type { Vector3 } from 'three';
 import { dragStep } from '../units';
-import { AXIS_DIRECTION, type Axis, type MarkerKind } from '../viewport';
+import type { Axis, MarkerKind } from '../viewport';
 import type { ToolContext } from './tool';
 
 /** Arrow keys lock an axis, as in SketchUp: right is red, left is green, up or down is blue. */
@@ -49,11 +49,12 @@ export function inferPoint(ctx: ToolContext, start: Vector3 | null, lock: Axis |
   /** A point along an axis from start, at a distance rounded to the drag step. */
   const onAxis = (s: Vector3, axis: Axis, p: Vector3): Inferred => {
     const step = dragStep(ctx.units());
-    const dist = Math.round(p.clone().sub(s).dot(AXIS_DIRECTION[axis]) / step) * step;
-    return { point: s.clone().addScaledVector(AXIS_DIRECTION[axis], dist), kind: AXIS_MARKER[axis], axis };
+    const dir = vp.axisDirection(axis);
+    const dist = Math.round(p.clone().sub(s).dot(dir) / step) * step;
+    return { point: s.clone().addScaledVector(dir, dist), kind: AXIS_MARKER[axis], axis };
   };
   if (start && lock) {
-    const p = vp.closestOnLine(start, AXIS_DIRECTION[lock]);
+    const p = vp.closestOnLine(start, vp.axisDirection(lock));
     return p ? onAxis(start, lock, p) : null;
   }
   const snap = vp.nearestSnap(() => true);

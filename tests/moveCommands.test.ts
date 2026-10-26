@@ -157,3 +157,66 @@ describe('core.moveCopies', () => {
     expect(bounds(m)).toEqual({ min: [0, 0, 0], max: [1500, 500, 500] });
   });
 });
+
+describe('core.rotate', () => {
+  const quarter = { center: [0, 0, 0] as [number, number, number], axis: [0, 1, 0] as [number, number, number] };
+
+  test('a component turns about the axis; typing an angle amends it, and x3 /3 make arrays', () => {
+    const s = createSession();
+    const c = ok(s.execute('core.makeComponent', { faceIds: box(s, 1000, 0, 200, 200, 200) }));
+    ok(s.execute('core.rotate', { instanceIds: [c.instanceId], ...quarter, angle: 90 }));
+    // The component's origin (1000, 0, 0) turns a quarter about blue: to (0, 0, -1000).
+    expect(translationOf(s, c.instanceId)).toEqual([0, 0, -1000]);
+    expect(type(s, '180').ok).toBe(true);
+    expect(translationOf(s, c.instanceId)).toEqual([-1000, 0, 0]);
+    expect(s.amendTarget()?.values).toEqual([180]);
+    s.undo();
+    expect(translationOf(s, c.instanceId)).toEqual([1000, 0, 0]);
+
+    ok(s.execute('core.rotateCopies', { instanceIds: [c.instanceId], ...quarter, angle: 30, copies: 1, divide: false }));
+    expect(type(s, 'x3').ok).toBe(true);
+    expect(instanceCount(s.doc.scene, c.definitionId)).toBe(4);
+    expect(type(s, '/3').ok).toBe(true);
+    const angles = rootInstances(s)
+      .map((id) => findInstance(s.doc.scene, id)!.instance.transform.translation)
+      .map(([x, , z]) => Math.round((Math.atan2(-z, x) * 180) / Math.PI) + 0)
+      .sort((a, b) => a - b);
+    expect(angles).toEqual([0, 10, 20, 30]);
+    expect(type(s, '22.5°').ok).toBe(true);
+    expect(s.amendTarget()?.values).toEqual([22.5, 3]);
+  });
+
+  test('loose geometry turned a quarter lands on exact coordinates', () => {
+    const s = createSession();
+    const faces = box(s, 0, 0, 1000, 500, 300);
+    ok(s.execute('core.rotate', { faceIds: faces, center: [0, 0, 0], axis: [0, 1, 0], angle: 90 }));
+    const m = definitionModel(s.doc)!;
+    expect(checkModel(m)).toEqual([]);
+    expect(bounds(m)).toEqual({ min: [0, 0, -1000], max: [500, 300, 0] });
+  });
+
+  test('loose geometry turned 45 degrees stays valid', () => {
+    const s = createSession();
+    const faces = box(s, 0, 0, 1000, 500, 300);
+    ok(s.execute('core.rotate', { faceIds: faces, center: [500, 0, 250], axis: [0, 1, 0], angle: 45 }));
+    expect(checkModel(definitionModel(s.doc)!)).toEqual([]);
+  });
+
+  test('twisting a box top would bend its walls: refused', () => {
+    const s = createSession();
+    box(s, 0, 0, 1000, 1000, 500);
+    const top = listFaces(definitionModel(s.doc)!).find((f) => f.normal[1] === 1)!;
+    const r = s.execute('core.rotate', { faceIds: [top.id], center: [500, 500, 500], axis: [0, 1, 0], angle: 30 });
+    expect(r.ok ? '' : r.error.code).toBe('moveBends');
+  });
+
+  test('a plain number after a move is a length, after a rotation an angle', () => {
+    const s = createSession();
+    const g = ok(s.execute('core.makeGroup', { faceIds: box(s, 0, 0, 100, 100, 100) }));
+    ok(s.execute('core.rotate', { instanceIds: [g.instanceId], ...quarter, angle: 10 }));
+    expect(type(s, '20').ok).toBe(true);
+    expect(s.amendTarget()?.values).toEqual([20]);
+    const r = type(s, '500mm');
+    expect(r.ok ? '' : r.error.code).toBe('amendValueCount');
+  });
+});

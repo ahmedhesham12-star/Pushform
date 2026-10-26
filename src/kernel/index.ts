@@ -7,12 +7,12 @@
  * viewport.
  *
  * Mutations (createModel, drawRectangle, drawRegularPolygon, drawLine, pushPull, erase,
- * extractGeometry, transformGeometry, mergeGeometry, moveGeometry, deserialize) are for
+ * extractGeometry, transformGeometry, mergeGeometry, moveGeometry, transformSelection, deserialize) are for
  * src/commands only; everything else is read-only and may be used anywhere.
  */
 import { extract as extractTopology, merge as mergeTopology, transformTopology } from './assembly';
 import { erase as eraseTopology } from './erase';
-import { moveGeometry as moveTopology, type MoveError } from './move';
+import { moveGeometry as moveTopology, transformSelection as transformTopologySelection, type MoveError } from './move';
 import { drawLine as drawTopologyLine } from './lines';
 import { pushPull as pushTopology } from './pushPull';
 import * as q from './query';
@@ -111,6 +111,22 @@ export function moveGeometry(
   vector: Vec3,
 ): { ok: true; model: Model; faceIds: string[]; edgeIds: string[] } | { ok: false; error: MoveError } {
   const r = moveTopology(data(m), faceIds, edgeIds, vector);
+  return r.ok ? { ok: true, model: wrap(r.topology), faceIds: r.faceIds, edgeIds: r.edgeIds } : r;
+}
+
+/**
+ * Apply a rigid motion (a rotation, for one) to selected faces and edges, with
+ * the same rules as moveGeometry: connected geometry stretches unless that
+ * would bend, fold or cross a face.
+ */
+export function transformSelection(
+  m: Model,
+  faceIds: readonly string[],
+  edgeIds: readonly string[],
+  mapPoint: (p: Point3) => Point3,
+  mapVector: (v: Vec3) => Vec3,
+): { ok: true; model: Model; faceIds: string[]; edgeIds: string[] } | { ok: false; error: MoveError } {
+  const r = transformTopologySelection(data(m), faceIds, edgeIds, { mapPoint, mapVector });
   return r.ok ? { ok: true, model: wrap(r.topology), faceIds: r.faceIds, edgeIds: r.edgeIds } : r;
 }
 

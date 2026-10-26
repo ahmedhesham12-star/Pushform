@@ -3,6 +3,7 @@ import { createEraseTool } from './erase';
 import { createPolygonTool } from './polygon';
 import { createLineTool } from './line';
 import { createMoveTool } from './move';
+import { createRotateTool } from './rotate';
 import { createOrbitTool } from './orbit';
 import { createPanTool } from './pan';
 import { createPushPullTool } from './pushPull';
@@ -26,6 +27,7 @@ export function createTools(ctx: ToolContext): Record<ToolId, Tool> {
   return {
     select: createSelectTool(ctx),
     move: createMoveTool(ctx),
+    rotate: createRotateTool(ctx),
     line: createLineTool(ctx),
     rectangle: createRectangleTool(ctx),
     circle: createCircleTool(ctx),

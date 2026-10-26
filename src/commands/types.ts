@@ -66,12 +66,13 @@ type BooleanKeys<I> = { [K in keyof I]-?: I[K] extends boolean ? K : never }[key
  * kind says what the user types: a length (mm, the default), a whole count
  * typed with an "s" suffix, like 48s for segments or 6s for sides, or an
  * array after a copy, typed x5 (multiply) or /4 (divide): the count goes to
- * `key` and whether it divides to the boolean input named by `flag`.
+ * `key` and whether it divides to the boolean input named by `flag`; or an
+ * angle in degrees (a plain number, or one marked °).
  */
 export interface AmendableField<I> {
   readonly key: NumberKeys<I>;
   readonly mode: 'positive' | 'signed';
-  readonly kind?: 'length' | 'count' | 'array';
+  readonly kind?: 'length' | 'count' | 'array' | 'angle';
   readonly flag?: BooleanKeys<I>;
 }
 

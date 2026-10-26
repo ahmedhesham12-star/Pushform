@@ -30,7 +30,17 @@ import {
   type RenameDefinitionInput,
   type RenameInstanceInput,
 } from './instances';
-import { move, moveCopies, type MoveCopiesInput, type MoveInput, type MoveOutput } from './move';
+import {
+  move,
+  moveCopies,
+  rotate,
+  rotateCopies,
+  type MoveCopiesInput,
+  type MoveInput,
+  type MoveOutput,
+  type RotateCopiesInput,
+  type RotateInput,
+} from './move';
 import { pushPull, type PushPullInput, type PushPullOutput } from './pushPull';
 import { setDisplayUnits, type SetDisplayUnitsInput } from './setDisplayUnits';
 
@@ -53,6 +63,8 @@ declare module '../types' {
     'core.copyInstances': { input: CopyInstancesInput; output: CopyInstancesOutput };
     'core.move': { input: MoveInput; output: MoveOutput };
     'core.moveCopies': { input: MoveCopiesInput; output: MoveOutput };
+    'core.rotate': { input: RotateInput; output: MoveOutput };
+    'core.rotateCopies': { input: RotateCopiesInput; output: MoveOutput };
   }
 }
 
@@ -74,6 +86,8 @@ export function registerCoreCommands(registry: CommandRegistry): void {
   registry.register(copyInstances);
   registry.register(move);
   registry.register(moveCopies);
+  registry.register(rotate);
+  registry.register(rotateCopies);
 }
 
 export type {
@@ -90,6 +104,8 @@ export type {
   MoveCopiesInput,
   MoveInput,
   MoveOutput,
+  RotateCopiesInput,
+  RotateInput,
   RenameDefinitionInput,
   RenameInstanceInput,
   DrawCircleInput,

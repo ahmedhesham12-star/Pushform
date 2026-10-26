@@ -8,6 +8,7 @@ import type { ToolId } from './tool';
 export const TOOL_SHORTCUTS: Readonly<Record<string, ToolId>> = {
   ' ': 'select',
   m: 'move',
+  q: 'rotate',
   l: 'line',
   r: 'rectangle',
   c: 'circle',
@@ -22,7 +23,6 @@ export const TOOL_SHORTCUTS: Readonly<Record<string, ToolId>> = {
  * SketchUp meaning when we do. Never assign them to anything else.
  */
 export const RESERVED_SHORTCUTS: Readonly<Record<string, string>> = {
-  q: 'Rotate',
   s: 'Scale',
   f: 'Offset',
   a: '2-point Arc',

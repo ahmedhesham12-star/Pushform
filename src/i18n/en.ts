@@ -75,6 +75,7 @@ export const en = {
 
   'measure.dimensions': 'Dimensions',
   'measure.distance': 'Distance',
+  'measure.copyDistance': 'Copy distance',
   'measure.area': 'Area',
   'measure.length': 'Length',
   'measure.radiusSegments': 'Radius, segments',
@@ -84,6 +85,7 @@ export const en = {
   'measure.count': '{count}s',
   'measure.multiply': 'x{count}',
   'measure.angle': 'Angle',
+  'measure.copyAngle': 'Copy angle',
   'measure.divide': '/{count}',
 
   'message.rectangleAdded': 'Rectangle {width} × {depth} added. Press P to push or pull it.',

@@ -414,9 +414,11 @@ export class App {
       closeContext: (path) => this.setContext(path),
       contextPath: () => this.context,
       setMeasurement: (label, value) => this.measure.set(label, value),
+      setMeasurementLabel: (label) => this.measure.setLabel(label),
       hint: () => {
         this.status.hint();
         this.syncMeasureEditable();
+        this.applyCursor();
       },
       flash: (message, isError) => this.status.flash(message, isError),
       flashError: (error) => this.flashError(error),
@@ -441,6 +443,12 @@ export class App {
     if (hadOperation && !quiet) this.refresh();
     this.status.hint();
     this.syncMeasureEditable();
+    this.applyCursor();
+  }
+
+  /** The tool's cursor, which can change with its state (a plus while Move copies); navigation keeps its own. */
+  private applyCursor(): void {
+    if (!this.nav) this.viewport.canvas.style.cursor = this.tool.cursor;
   }
 
   /** What the measurements box shows when no operation is in progress. */
@@ -467,7 +475,7 @@ export class App {
     this.applyHighlights();
     this.toolbar.setActive(id);
     this.showIdleMeasurement();
-    this.viewport.canvas.style.cursor = this.tool.cursor;
+    this.applyCursor();
     this.status.hint();
     this.syncMeasureEditable();
   }
@@ -882,7 +890,7 @@ export class App {
       if (this.nav) {
         const menuClick = this.nav.menu && !this.nav.dragging;
         this.nav = null;
-        canvas.style.cursor = this.tool.cursor;
+        this.applyCursor();
         // A short right click (no drag) opens the menu, unless an operation is in progress.
         if (menuClick && !this.tool.busy()) this.openContextMenu(e);
         return;

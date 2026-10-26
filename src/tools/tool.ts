@@ -48,6 +48,8 @@ export interface ToolContext {
   /** The open editing context, as an instance path ([] is the root). */
   contextPath(): readonly InstanceId[];
   setMeasurement(label: string, value: string): void;
+  /** Change the measurements box label and keep its value. */
+  setMeasurementLabel(label: string): void;
   /** Re-show the active tool's status hint. */
   hint(): void;
   flash(message: string, isError?: boolean): void;
@@ -58,6 +60,7 @@ export interface ToolContext {
 
 export interface Tool {
   readonly id: ToolId;
+  /** CSS cursor over the viewport; re-read after hint() and cancel (Move shows a plus while copying). */
   readonly cursor: string;
   /** For orbit and pan: left-drag navigates instead of calling the tool. */
   readonly navigation?: 'orbit' | 'pan';

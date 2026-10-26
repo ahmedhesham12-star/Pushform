@@ -2,6 +2,7 @@ import type { Vector3 } from 'three';
 import { t } from '../i18n';
 import { formatLength, parseLengthList } from '../units';
 import type { Axis } from '../viewport';
+import { copyCursor } from './cursors';
 import { AXIS_KEYS, inferPoint } from './inference';
 import { isMac } from './shortcuts';
 import type { Tool, ToolContext } from './tool';
@@ -32,6 +33,7 @@ export function createMoveTool(ctx: ToolContext): Tool {
 
   const fmt = (mm: number) => formatLength(Math.abs(mm), ctx.units());
   const copyKey = () => t(isMac() ? 'key.option' : 'key.ctrl');
+  const label = () => t(copy ? 'measure.copyDistance' : 'measure.distance');
 
   /** The move in the editing context's coordinates: a unit direction and a distance. */
   const local = (s: MoveState): { direction: [number, number, number]; distance: number } | null => {
@@ -53,7 +55,7 @@ export function createMoveTool(ctx: ToolContext): Tool {
   const preview = (s: MoveState) => {
     const m = local(s);
     if (s.end) ctx.viewport.showLinePreview(s.start, s.end, s.axis);
-    ctx.setMeasurement(t('measure.distance'), fmt(m?.distance ?? 0));
+    ctx.setMeasurement(label(), fmt(m?.distance ?? 0));
     if (!m) return ctx.viewport.hidePreview();
     const r = copy
       ? ctx.session.preview('core.moveCopies', { ...input(s, m), copies: 1, divide: false })
@@ -82,14 +84,16 @@ export function createMoveTool(ctx: ToolContext): Tool {
 
   return {
     id: 'move',
-    cursor: 'move',
+    get cursor() {
+      return copy ? copyCursor('move') : 'move';
+    },
     keepsSelection: true,
     hint: () => {
       const key = copyKey();
       if (state) return t(copy ? 'status.move.copy' : 'status.move.target', { key });
       return t(hasSelection(ctx) ? 'status.move.start' : 'status.move.pick', { key });
     },
-    measurementLabel: () => t('measure.distance'),
+    measurementLabel: label,
     busy: () => state !== null,
 
     down(e) {
@@ -99,7 +103,7 @@ export function createMoveTool(ctx: ToolContext): Tool {
       if (!first || !taken) return;
       if (isMac() ? e.altKey : e.ctrlKey) copy = true;
       state = { ...taken, start: first.point, end: null, axis: null };
-      ctx.setMeasurement(t('measure.distance'), fmt(0));
+      ctx.setMeasurement(label(), fmt(0));
       ctx.hint();
     },
 
@@ -137,6 +141,7 @@ export function createMoveTool(ctx: ToolContext): Tool {
       if (e.key === (isMac() ? 'Alt' : 'Control')) {
         copy = !copy;
         if (state) preview(state);
+        else ctx.setMeasurementLabel(label());
         ctx.hint();
         return true;
       }

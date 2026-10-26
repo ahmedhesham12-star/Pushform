@@ -2,6 +2,7 @@ import { Vector3 } from 'three';
 import { t } from '../i18n';
 import { formatAngle, parseAngle } from '../units';
 import type { Axis } from '../viewport';
+import { copyCursor } from './cursors';
 import { AXIS_KEYS, inferPoint, type Inferred } from './inference';
 import { isMac } from './shortcuts';
 import type { Tool, ToolContext } from './tool';
@@ -37,6 +38,7 @@ export function createRotateTool(ctx: ToolContext): Tool {
   let state: RotateState | null = null;
   let lock: Axis | null = null;
   let copy = false;
+  const label = () => t(copy ? 'measure.copyAngle' : 'measure.angle');
 
   const vp = () => ctx.viewport;
   const copyKey = () => t(isMac() ? 'key.option' : 'key.ctrl');
@@ -96,7 +98,7 @@ export function createRotateTool(ctx: ToolContext): Tool {
   };
 
   const preview = (s: RotateState) => {
-    ctx.setMeasurement(t('measure.angle'), formatAngle(s.angle));
+    ctx.setMeasurement(label(), formatAngle(s.angle));
     if (Math.abs(s.angle) < 1e-9) return vp().hidePreview();
     const r = copy
       ? ctx.session.preview('core.rotateCopies', { ...input(s, s.angle), copies: 1, divide: false })
@@ -123,7 +125,9 @@ export function createRotateTool(ctx: ToolContext): Tool {
 
   return {
     id: 'rotate',
-    cursor: 'crosshair',
+    get cursor() {
+      return copy ? copyCursor('crosshair') : 'crosshair';
+    },
     keepsSelection: true,
     hint: () => {
       const key = copyKey();
@@ -131,7 +135,7 @@ export function createRotateTool(ctx: ToolContext): Tool {
       if (!state.start) return t('status.rotate.start', { key });
       return t(copy ? 'status.rotate.copy' : 'status.rotate.angle', { key });
     },
-    measurementLabel: () => t('measure.angle'),
+    measurementLabel: label,
     busy: () => state?.start != null,
     active: () => state !== null,
 
@@ -152,7 +156,7 @@ export function createRotateTool(ctx: ToolContext): Tool {
       if (isMac() ? e.altKey : e.ctrlKey) copy = true;
       state = { ...taken, center: center.point, normal, start: null, angle: 0 };
       guides(state, null);
-      ctx.setMeasurement(t('measure.angle'), formatAngle(0));
+      ctx.setMeasurement(label(), formatAngle(0));
       ctx.hint();
     },
 
@@ -196,6 +200,7 @@ export function createRotateTool(ctx: ToolContext): Tool {
       if (e.key === (isMac() ? 'Alt' : 'Control')) {
         copy = !copy;
         if (state?.start) preview(state);
+        else ctx.setMeasurementLabel(label());
         ctx.hint();
         return true;
       }

@@ -63,6 +63,10 @@ export class MeasurementsBox {
     if (!this.typing) this.input.value = value;
   }
 
+  setLabel(label: string): void {
+    this.label.textContent = label;
+  }
+
   /** Start typing from a key pressed while the canvas had focus. */
   startTyping(firstChar: string): void {
     if (!this.editable) return;

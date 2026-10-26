@@ -1,7 +1,7 @@
 import { t } from '../i18n';
 import type { Tool } from './tool';
 
-/** Left-drag pans. Shift + right-drag pans with any tool (handled by the app). */
+/** Left-drag pans. Shift + middle-drag (or right-drag) pans with any tool (handled by the app). */
 export function createPanTool(): Tool {
   return {
     id: 'pan',

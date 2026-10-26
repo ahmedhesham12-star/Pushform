@@ -221,6 +221,7 @@ Both levels are validated on load.
 | 2026-10-26 | Stretch only when every other edge at a moved vertex is parallel to the push direction; otherwise build walls | Testing found slots reaching a box edge dragged the wall's corners (diagonal edges) and the push applied 0 mm. |
 | 2026-10-26 | Walls and the landed face go through the planar engine: carving cuts covered faces away, adding beside a face keeps it as the shared face, same-orientation neighbors merge | One rule covers slots, notches, tabs, push-through (including faces touching the opposite face's edge) and boxes built against boxes. |
 | 2026-10-26 | A face that would cover its opposite face completely stops 1 mm short | Pushing a box top onto its bottom would otherwise delete the whole solid. |
+| 2026-10-26 | Shortcuts and modifiers match SketchUp defaults; Polygon has no shortcut and G is reserved for Make Component; Option replaces Ctrl on a Mac (product owner) | Target users are SketchUp users; matching their muscle memory is a product requirement. |
 | 2026-10-26 | A wall built by pushing a face down beside a box merges with the box's coplanar, same-facing wall (approved by the product owner) | Matches SketchUp's automatic merging of coplanar neighbors. Covered by the push-down case of repro A. |
 | 2026-10-26 | Segment insertion splits edges from other planes that pass through the segment; a push that stretches into conflicts is redone with walls | Review finding (crossing edges) and randomized push/pull runs. Stretching stays the first choice because it keeps meaning, such as a pocket shrinking as its floor rises; walls are the safe fallback. |
 | 2026-10-26 | One undo step per line segment (approved) | Matches SketchUp; amend changes the last segment. |
@@ -229,6 +230,43 @@ Both levels are validated on load.
 | 2026-10-26 | The measurements box is read-only unless an operation is in progress, the last one can be amended, or the tool takes idle input (a segment count) | Testing feedback: a read-only value looked editable. |
 | 2026-10-26 | happy-dom as a dev dependency, enabled per test file | Unit tests for DOM components without a browser. |
 
+## SketchUp parity: shortcuts and modifiers
+Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
+
+**In place now (milestone 2):**
+
+| Input | Action |
+| --- | --- |
+| Space | Select |
+| L | Line |
+| R | Rectangle |
+| C | Circle |
+| P | Push/Pull |
+| E | Eraser |
+| O | Orbit |
+| H | Pan |
+| Shift+Z | Zoom Extents |
+| Middle drag | Orbit |
+| Shift + middle drag | Pan |
+| Scroll | Zoom (to the cursor) |
+| Polygon | No default shortcut, as in SketchUp |
+
+- **Select modifiers:** Shift toggles items in and out of the selection, Ctrl adds only, Ctrl+Shift removes only.
+- **Right drag** also orbits (and Shift + right drag pans), carried over from the prototype. SketchUp uses the right button for its context menu; this gives way when we add one.
+
+**Reserved for later tools** (never assign them to anything else): M Move, Q Rotate, S Scale, F Offset, A 2-point Arc, B Paint Bucket, G Make Component, T Tape Measure.
+
+**Parity list for later milestones (not built yet):**
+- **Move and Rotate:**
+  - Ctrl toggles copy.
+  - After a copy, typing `x5` makes a multiply array: 5 copies at the same spacing. `5x` and `*5` are accepted too.
+  - Typing `/4` makes a divide array: the gap split into 4 equal spaces.
+  - Arrays are amendable like other operations.
+- **Push/Pull:** Ctrl creates a new starting face instead of moving the original.
+- **Eraser:** Shift hides edges, Ctrl softens and smooths edges.
+- **Paint Bucket:** Alt (Cmd on Mac) samples a material.
+- **Later:** a settings screen for custom shortcuts.
+
 ## Differences from SketchUp
 - **Ground faces face up**, deliberately. SketchUp makes them face down.
 - **New faces in a free plane** use a fixed rule (largest normal component positive), not the camera or neighboring solids. There is no "reverse face" command yet.
@@ -236,8 +274,9 @@ Both levels are validated on load.
 - **A box built against another box** keeps one shared wall, split where the heights differ. This is the behavior the product owner specified (repros A and B). **Unverified against SketchUp** until the product owner confirms it there.
 - **Walls of different solids** that cross each other do not intersect (there is no "intersect faces"). Faces pushed level with a neighbor merge only when they end up adjacent.
 - **Inference is simpler.** There are endpoints, midpoints, points on edges, points on faces, the three axes and arrow-key axis locks. Parallel, perpendicular and "from point" inference are not built yet.
-- **Erase has no modifiers** (no hide or soften while erasing).
-- **Push/pull has no "new face" modifier** (SketchUp's Ctrl).
+- **Erase has no modifiers** yet (Shift hide, Ctrl soften; on the parity list).
+- **Push/pull has no "new face" modifier** yet (Ctrl; on the parity list).
+- **Right drag orbits**, until a context menu takes the right button (see SketchUp parity).
 
 ## Differences from the prototype
 - **Bug fix:** pulling a lone face downward built its side walls facing inward. Walls of a lone face now always face outward.
@@ -259,12 +298,13 @@ Both levels are validated on load.
 **Milestone 2** (2026-10-26), on branch `milestone-2`:
 - **Topology kernel:** shared topology with the invariant checker; overlapping shapes split faces; automatic faces; erase merges and removes faces; generalized push/pull with push-through and clamping at the opposite face; curves and soft edges; triangulation in the kernel.
 - **Tools:** line (axis inference, arrow-key locks, edge snapping, typed lengths), circle and polygon (typed radius and counts), rectangle on the new kernel.
-- **Selection:** faces and edges, curves as one, Shift to add or remove, and Delete with the erase rules.
+- **Selection:** faces and edges, curves as one, SketchUp modifiers (Shift toggles, Ctrl adds, Ctrl+Shift removes; Option on a Mac), and Delete with the erase rules.
+- **Shortcuts** match SketchUp defaults (see SketchUp parity).
 - **Amend:** for line length, circle radius and segments, polygon radius and sides, as well as rectangle and push/pull.
 - **Documents:** version 2 format, with version 1 conversion that keeps face ids.
 - **Testing feedback fixed:** overlapping rectangles split faces instead of failing; the measurements box is read-only when there is nothing to type; push/pull on a face covering part of a neighbor's edge (a slot reaching the box edge) builds straight walls and notches the neighbor instead of dragging its corners.
 - **Verification:**
-  - 320 unit tests pass in about 6 s and the production build succeeds. The randomized rectangle and push/pull runs on horizontal faces (`tests/crossings.test.ts`, about 5.5 s) cover seed 11 for 80 steps, 8 seeds for 40 steps, and the 7 seeds that found bugs. Two longer sweeps of 120 seeds at 60 steps each run with `npm run test:stress` (about 85 s, the two sweeps in parallel); they pass and must pass before a milestone is merged into `main`. Boxes built against boxes follow the behavior the product owner specified (repros A and B in `tests/slots.test.ts`): one shared wall, split where the heights differ. The tests confirm that specification, not SketchUp's behavior, which is still unverified. They include randomized overlapping rectangles (grid-aligned and arbitrary), and randomized slots, notches and tabs on a box, with invariant checks after every step and preview-equals-commit checks.
+  - 329 unit tests pass in about 6 s and the production build succeeds. The randomized rectangle and push/pull runs on horizontal faces (`tests/crossings.test.ts`, about 5.5 s) cover seed 11 for 80 steps, 8 seeds for 40 steps, and the 7 seeds that found bugs. Two longer sweeps of 120 seeds at 60 steps each run with `npm run test:stress` (about 85 s, the two sweeps in parallel); they pass and must pass before a milestone is merged into `main`. Boxes built against boxes follow the behavior the product owner specified (repros A and B in `tests/slots.test.ts`): one shared wall, split where the heights differ. The tests confirm that specification, not SketchUp's behavior, which is still unverified. They include randomized overlapping rectangles (grid-aligned and arbitrary), and randomized slots, notches and tabs on a box, with invariant checks after every step and preview-equals-commit checks.
   - Scripted browser checks (not in the repo) covered: overlaps, pockets and push-through, edge selection and erase, the line tool, circles and polygons, amend, autosave, and loading a milestone 1 autosave.
 
 ### Known limitations

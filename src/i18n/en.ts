@@ -10,7 +10,7 @@ export const en = {
 
   'action.undo': 'Undo',
   'action.redo': 'Redo',
-  'action.zoomFit': 'Zoom to fit',
+  'action.zoomFit': 'Zoom extents',
   'action.clear': 'Clear model',
   'action.withShortcut': '{name} ({key})',
 
@@ -19,6 +19,8 @@ export const en = {
   'key.zoomFit': 'Shift+Z',
   'key.space': 'Space',
   'key.spaceSymbol': '␣',
+  'key.ctrl': 'Ctrl',
+  'key.option': 'Option',
 
   'toolbar.label': 'Tools',
   'tool.select': 'Select',
@@ -32,10 +34,10 @@ export const en = {
   'tool.pan': 'Pan',
 
   'intro.start': 'Press R and click two corners on the ground to draw a rectangle. Then press P, click the rectangle and move up to make it solid.',
-  'intro.navigate': 'Right-drag to orbit, Shift + right-drag to pan, scroll to zoom. Type a size while drawing for exact dimensions, in any unit: 600mm, 2\' 6", 1.5m.',
+  'intro.navigate': 'Middle-drag to orbit, Shift + middle-drag to pan, scroll to zoom. Type a size while drawing for exact dimensions, in any unit: 600mm, 2\' 6", 1.5m.',
 
-  'status.select.idle': 'Click a face or an edge to select it. Shift-click to add or remove.',
-  'status.select.selected': 'Press Delete to erase the selection, Esc to clear it. Shift-click to add or remove.',
+  'status.select.idle': 'Click a face or an edge to select it. Shift toggles, {add} adds, {add}+Shift removes.',
+  'status.select.selected': 'Delete erases the selection, Esc clears it. Shift toggles, {add} adds, {add}+Shift removes.',
   'status.line.first': 'Click to start a line on the ground, a face or a point.',
   'status.line.next': 'Click the next point, or type a length and press Enter. Arrow keys lock an axis; Esc ends the line.',
   'status.circle.center': 'Click the center on the ground or a face. Type a count like 48s to set the segments.',
@@ -47,8 +49,8 @@ export const en = {
   'status.pushPull.idle': 'Click a face to push or pull it.',
   'status.pushPull.active': 'Move to set the distance and click to finish, or type a distance and press Enter.',
   'status.erase': 'Click an edge or a face to erase it. Erasing an edge between two flat faces joins them.',
-  'status.orbit': 'Drag to orbit. Right-drag orbits with any tool.',
-  'status.pan': 'Drag to pan. Shift + right-drag pans with any tool.',
+  'status.orbit': 'Drag to orbit. Middle-drag orbits with any tool.',
+  'status.pan': 'Drag to pan. Shift + middle-drag pans with any tool.',
 
   'measure.dimensions': 'Dimensions',
   'measure.distance': 'Distance',

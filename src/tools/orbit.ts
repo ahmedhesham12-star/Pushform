@@ -1,7 +1,7 @@
 import { t } from '../i18n';
 import type { Tool } from './tool';
 
-/** Left-drag orbits. Right-drag orbits with any tool (handled by the app). */
+/** Left-drag orbits. Middle-drag (or right-drag) orbits with any tool (handled by the app). */
 export function createOrbitTool(): Tool {
   return {
     id: 'orbit',

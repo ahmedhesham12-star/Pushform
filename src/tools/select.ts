@@ -1,11 +1,13 @@
 import { t } from '../i18n';
 import { edgeGroup, edgeLength, faceArea } from '../kernel';
 import { formatArea, formatLength } from '../units';
+import { isMac, selectionMode } from './shortcuts';
 import { sameEntity, type Tool, type ToolContext } from './tool';
 
 /**
  * Click a face or an edge to select it; an edge of a curve selects the whole
- * curve. Shift-click adds or removes; clicking empty space clears.
+ * curve. Modifiers as in SketchUp: Shift toggles, Ctrl adds, Ctrl+Shift
+ * removes (Option instead of Ctrl on a Mac). A plain click on empty space clears.
  */
 export function createSelectTool(ctx: ToolContext): Tool {
   const { selection } = ctx;
@@ -27,24 +29,27 @@ export function createSelectTool(ctx: ToolContext): Tool {
   return {
     id: 'select',
     cursor: 'default',
-    hint: () => (selection.faces.size || selection.edges.size ? t('status.select.selected') : t('status.select.idle')),
+    hint: () => {
+      const add = t(isMac() ? 'key.option' : 'key.ctrl');
+      return t(selection.faces.size || selection.edges.size ? 'status.select.selected' : 'status.select.idle', { add });
+    },
     measurementLabel: () => t('measure.area'),
     busy: () => false,
     down(e) {
       const hit = ctx.viewport.pick();
-      if (!e.shiftKey) {
+      const mode = selectionMode(e, isMac());
+      if (mode === 'replace') {
         selection.faces.clear();
         selection.edges.clear();
       }
-      if (hit?.kind === 'face') {
-        if (selection.faces.has(hit.id)) selection.faces.delete(hit.id);
-        else selection.faces.add(hit.id);
-      } else if (hit?.kind === 'edge') {
-        const group = edgeGroup(ctx.session.doc.model, hit.id);
-        const on = !selection.edges.has(hit.id);
-        for (const id of group) {
-          if (on) selection.edges.add(id);
-          else selection.edges.delete(id);
+      if (hit) {
+        // An edge of a curve stands for the whole curve.
+        const ids = hit.kind === 'edge' ? edgeGroup(ctx.session.doc.model, hit.id) : [hit.id];
+        const set = hit.kind === 'edge' ? selection.edges : selection.faces;
+        const on = mode === 'remove' ? false : mode === 'toggle' ? !set.has(hit.id) : true;
+        for (const id of ids) {
+          if (on) set.add(id);
+          else set.delete(id);
         }
       }
       ctx.applyHighlights();

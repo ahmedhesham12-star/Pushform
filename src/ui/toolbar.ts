@@ -6,10 +6,10 @@ export interface ToolButtonSpec<Id extends string> {
   id: Id;
   label: MessageKey;
   icon: IconName;
-  /** Label for the shortcut key shown on the button. */
-  keyLabel: string;
+  /** Label for the shortcut key shown on the button; omitted for tools without one. */
+  keyLabel?: string;
   /** Name of the key for the tooltip. */
-  keyName: string;
+  keyName?: string;
   /** Start a new group (separator before this button). */
   group?: boolean;
 }
@@ -25,9 +25,9 @@ export class ToolBar<Id extends string> {
       if (s.group) this.element.append(el('hr'));
       const b = el('button');
       b.type = 'button';
-      b.title = t('action.withShortcut', { name: t(s.label), key: s.keyName });
+      b.title = s.keyName ? t('action.withShortcut', { name: t(s.label), key: s.keyName }) : t(s.label);
       b.setAttribute('aria-pressed', 'false');
-      b.append(el('kbd', undefined, s.keyLabel));
+      if (s.keyLabel) b.append(el('kbd', undefined, s.keyLabel));
       b.insertAdjacentHTML('beforeend', ICONS[s.icon]);
       b.append(document.createTextNode(t(s.label)));
       b.addEventListener('click', () => onSelect(s.id));

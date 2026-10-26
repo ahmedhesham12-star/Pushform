@@ -10,6 +10,7 @@ import { createSelectTool } from './select';
 import type { Tool, ToolContext, ToolId } from './tool';
 
 export type { Selection, Tool, ToolContext, ToolId } from './tool';
+export { isMac, RESERVED_SHORTCUTS, selectionMode, shortcutFor, TOOL_SHORTCUTS, type SelectionMode } from './shortcuts';
 
 export function createTools(ctx: ToolContext): Record<ToolId, Tool> {
   return {

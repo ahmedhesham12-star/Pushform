@@ -2,7 +2,7 @@ import { createSession, matchTypedValues, type CommandError, type CommandSession
 import { t, type MessageKey } from './i18n';
 import { bounds, edgeCount, edgeGroup, faceCount, hasEdge, hasFace, snapPoints } from './kernel';
 import { saveAutosave } from './storage';
-import { createTools, type Selection, type Tool, type ToolContext, type ToolId } from './tools';
+import { createTools, shortcutFor, TOOL_SHORTCUTS, type Selection, type Tool, type ToolContext, type ToolId } from './tools';
 import { el } from './ui/dom';
 import { ICONS } from './ui/icons';
 import { Intro } from './ui/intro';
@@ -13,17 +13,6 @@ import { UnitsMenu } from './ui/unitsMenu';
 import { defaultPrecision, formatLength, formatNumber, parseTypedValues, type LengthUnit } from './units';
 import { Viewport, type EdgeHighlight, type Highlight } from './viewport';
 
-/** Keys that switch tools (with no modifier). */
-const TOOL_KEYS: Record<string, ToolId> = {
-  l: 'line',
-  r: 'rectangle',
-  c: 'circle',
-  g: 'polygon',
-  p: 'pushPull',
-  e: 'erase',
-  o: 'orbit',
-  h: 'pan',
-};
 /** Characters that start typing into the measurements box while a tool is busy. */
 const MEASURE_START = /^[0-9.,\-٠-٩۰-۹]$/;
 /** Pointer travel (px) that turns a click into a drag. */
@@ -71,16 +60,22 @@ export class App {
     );
     top.append(brand, this.actions.element);
 
+    // Shortcuts come from TOOL_SHORTCUTS (SketchUp defaults); Polygon has none, as in SketchUp.
+    const key = (id: ToolId) => {
+      const k = shortcutFor(id);
+      if (k === null) return {};
+      return k === ' ' ? { keyLabel: t('key.spaceSymbol'), keyName: t('key.space') } : { keyLabel: k.toUpperCase(), keyName: k.toUpperCase() };
+    };
     const toolSpecs: ToolButtonSpec<ToolId>[] = [
-      { id: 'select', label: 'tool.select', icon: 'select', keyLabel: t('key.spaceSymbol'), keyName: t('key.space') },
-      { id: 'line', label: 'tool.line', icon: 'line', keyLabel: 'L', keyName: 'L' },
-      { id: 'rectangle', label: 'tool.rectangle', icon: 'rectangle', keyLabel: 'R', keyName: 'R' },
-      { id: 'circle', label: 'tool.circle', icon: 'circle', keyLabel: 'C', keyName: 'C' },
-      { id: 'polygon', label: 'tool.polygon', icon: 'polygon', keyLabel: 'G', keyName: 'G' },
-      { id: 'pushPull', label: 'tool.pushPull', icon: 'pushPull', keyLabel: 'P', keyName: 'P' },
-      { id: 'erase', label: 'tool.erase', icon: 'erase', keyLabel: 'E', keyName: 'E' },
-      { id: 'orbit', label: 'tool.orbit', icon: 'orbit', keyLabel: 'O', keyName: 'O', group: true },
-      { id: 'pan', label: 'tool.pan', icon: 'pan', keyLabel: 'H', keyName: 'H' },
+      { id: 'select', label: 'tool.select', icon: 'select', ...key('select') },
+      { id: 'line', label: 'tool.line', icon: 'line', ...key('line') },
+      { id: 'rectangle', label: 'tool.rectangle', icon: 'rectangle', ...key('rectangle') },
+      { id: 'circle', label: 'tool.circle', icon: 'circle', ...key('circle') },
+      { id: 'polygon', label: 'tool.polygon', icon: 'polygon', ...key('polygon') },
+      { id: 'pushPull', label: 'tool.pushPull', icon: 'pushPull', ...key('pushPull') },
+      { id: 'erase', label: 'tool.erase', icon: 'erase', ...key('erase') },
+      { id: 'orbit', label: 'tool.orbit', icon: 'orbit', ...key('orbit'), group: true },
+      { id: 'pan', label: 'tool.pan', icon: 'pan', ...key('pan') },
     ];
     this.toolbar = new ToolBar(toolSpecs, (id) => this.setTool(id));
 
@@ -315,6 +310,10 @@ export class App {
   private bindPointer(): void {
     const canvas = this.viewport.canvas;
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Middle-drag orbits, as in SketchUp; keep the browser from starting autoscroll.
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 1) e.preventDefault();
+    });
 
     canvas.addEventListener('pointerdown', (e) => {
       canvas.setPointerCapture(e.pointerId);
@@ -328,7 +327,7 @@ export class App {
       }
       if (e.button !== 0) return;
       // A click in the viewport starts a new action, so typed values no longer amend the last one.
-      // Navigation (right-drag, wheel, orbit and pan tools) keeps amending available.
+      // Navigation (middle or right drag, wheel, orbit and pan tools) keeps amending available.
       this.session.clearAmend();
       this.down = { x: e.clientX, y: e.clientY };
       this.viewport.setPointer(e);
@@ -434,17 +433,15 @@ export class App {
         this.deleteSelected();
         return;
       }
-      if (e.key === ' ') {
-        e.preventDefault();
-        this.setTool('select');
-        return;
-      }
       if (e.shiftKey && k === 'z') {
         this.zoomToFit();
         return;
       }
-      const id = TOOL_KEYS[k];
-      if (id && !e.shiftKey) this.setTool(id);
+      const id = TOOL_SHORTCUTS[k];
+      if (id && !e.shiftKey) {
+        e.preventDefault();
+        this.setTool(id);
+      }
     });
   }
 }

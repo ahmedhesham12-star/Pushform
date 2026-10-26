@@ -8,8 +8,8 @@
  * definition used by a single instance. Scenes are immutable: updates return
  * a new scene that shares everything unchanged, including Model objects.
  */
-import type { Model } from '../kernel';
-import { compose, IDENTITY, type Transform } from './transform';
+import { bounds, type Bounds, type Model } from '../kernel';
+import { applyPoint, compose, IDENTITY, type Transform } from './transform';
 
 export type DefinitionId = string;
 export type InstanceId = string;
@@ -176,4 +176,54 @@ export function pruneDefinitions(s: Scene): Scene {
   visit(s.rootId);
   if (used.size === s.definitions.size) return s;
   return { ...s, definitions: new Map([...s.definitions].filter(([id]) => used.has(id))) };
+}
+
+/**
+ * A copy of a definition under a new id, sharing its Model (models are
+ * immutable, so the copy only diverges when one of them is edited). Nested
+ * group definitions are copied too, so each group keeps a single instance;
+ * nested components stay shared. Nested instances get new ids.
+ */
+export function duplicateDefinition(s: Scene, id: DefinitionId, patch: Partial<Pick<Definition, 'name' | 'kind'>> = {}): [DefinitionId, Scene] {
+  const d = s.definitions.get(id)!;
+  let next = s;
+  const instances = new Map<InstanceId, Instance>();
+  for (const i of d.instances.values()) {
+    let definitionId = i.definitionId;
+    if (next.definitions.get(definitionId)?.kind === 'group') [definitionId, next] = duplicateDefinition(next, definitionId);
+    let iid: InstanceId;
+    [iid, next] = newId(next, 'i');
+    instances.set(iid, { ...i, id: iid, definitionId });
+  }
+  return addDefinition(next, { kind: d.kind, name: d.name, model: d.model, instances, ...patch });
+}
+
+/** Bounds of a definition's geometry and nested instances in its local space, or null when it is empty. */
+export function definitionBounds(s: Scene, id: DefinitionId): Bounds | null {
+  const d = s.definitions.get(id);
+  if (!d) return null;
+  let out = bounds(d.model);
+  for (const i of d.instances.values()) out = union(out, transformBounds(i.transform, definitionBounds(s, i.definitionId)));
+  return out;
+}
+
+/** The axis-aligned box around a box placed with a transform. */
+export function transformBounds(t: Transform, b: Bounds | null): Bounds | null {
+  if (!b) return null;
+  let out: Bounds | null = null;
+  for (const x of [b.min[0], b.max[0]])
+    for (const y of [b.min[1], b.max[1]])
+      for (const z of [b.min[2], b.max[2]]) {
+        const p = applyPoint(t, [x, y, z]);
+        out = union(out, { min: p, max: p });
+      }
+  return out;
+}
+
+export function union(a: Bounds | null, b: Bounds | null): Bounds | null {
+  if (!a || !b) return a ?? b;
+  return {
+    min: [Math.min(a.min[0], b.min[0]), Math.min(a.min[1], b.min[1]), Math.min(a.min[2], b.min[2])],
+    max: [Math.max(a.max[0], b.max[0]), Math.max(a.max[1], b.max[1]), Math.max(a.max[2], b.max[2])],
+  };
 }

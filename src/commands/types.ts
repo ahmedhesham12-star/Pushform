@@ -12,6 +12,8 @@ export type CommandErrorCode =
   | 'tooSmall'
   | 'notOnPlane'
   | 'nothingToErase'
+  | 'nothingSelected'
+  | 'noSuchInstance'
   | 'noSuchDefinition'
   | 'invalidPrecision'
   | 'nothingToAmend'

@@ -144,7 +144,7 @@ Each command has:
 - a zod input schema (strict, so unknown keys are rejected);
 - a pure `run(doc, input)` that returns a new document plus a JSON output, or an error code.
 
-Core commands:
+Core commands (geometry commands and the group and component commands take the optional `definitionId` of the editing context):
 
 | Command | Output | Amendable |
 | --- | --- | --- |
@@ -153,9 +153,15 @@ Core commands:
 | `core.drawCircle` (center, radius, segments, direction) | `faceIds` | radius, segments (count) |
 | `core.drawPolygon` (center, radius, sides, direction) | `faceIds` | radius, sides (count) |
 | `core.pushPull` | `distance`, `createdFaceIds`, `removedFaceIds` | distance |
-| `core.erase` (faceIds, edgeIds) | `removedFaceIds` | |
+| `core.erase` (faceIds, edgeIds, instanceIds) | `removedFaceIds` | |
 | `core.clearModel` | | |
 | `core.setDisplayUnits` | | |
+| `core.makeGroup` (faceIds, edgeIds, instanceIds) | `definitionId`, `instanceId` | |
+| `core.makeComponent` (same, plus an optional name) | `definitionId`, `instanceId` | |
+| `core.explode` (instanceIds) | `faceIds`, `instanceIds` moved up | |
+| `core.makeUnique` (instanceIds) | `definitionIds` created | |
+| `core.renameDefinition`, `core.renameInstance` | | |
+| `core.copyInstances` (instanceIds, translation) | `instanceIds` | |
 
 How the session works:
 - `execute` is for typed callers. `executeUnchecked` is for untrusted JSON from plugins, MCP or replay.

@@ -10,6 +10,26 @@ import {
   type DrawShapeOutput,
 } from './drawRegularPolygon';
 import { erase, type EraseInput, type EraseOutput } from './erase';
+import {
+  copyInstances,
+  explode,
+  makeComponent,
+  makeGroup,
+  makeUnique,
+  renameDefinition,
+  renameInstance,
+  type CopyInstancesInput,
+  type CopyInstancesOutput,
+  type ExplodeInput,
+  type ExplodeOutput,
+  type MakeComponentInput,
+  type MakeGroupInput,
+  type MakeInstanceOutput,
+  type MakeUniqueInput,
+  type MakeUniqueOutput,
+  type RenameDefinitionInput,
+  type RenameInstanceInput,
+} from './instances';
 import { pushPull, type PushPullInput, type PushPullOutput } from './pushPull';
 import { setDisplayUnits, type SetDisplayUnitsInput } from './setDisplayUnits';
 
@@ -23,6 +43,13 @@ declare module '../types' {
     'core.erase': { input: EraseInput; output: EraseOutput };
     'core.clearModel': { input: ClearModelInput; output: Record<string, never> };
     'core.setDisplayUnits': { input: SetDisplayUnitsInput; output: Record<string, never> };
+    'core.makeGroup': { input: MakeGroupInput; output: MakeInstanceOutput };
+    'core.makeComponent': { input: MakeComponentInput; output: MakeInstanceOutput };
+    'core.explode': { input: ExplodeInput; output: ExplodeOutput };
+    'core.makeUnique': { input: MakeUniqueInput; output: MakeUniqueOutput };
+    'core.renameDefinition': { input: RenameDefinitionInput; output: Record<string, never> };
+    'core.renameInstance': { input: RenameInstanceInput; output: Record<string, never> };
+    'core.copyInstances': { input: CopyInstancesInput; output: CopyInstancesOutput };
   }
 }
 
@@ -35,10 +62,28 @@ export function registerCoreCommands(registry: CommandRegistry): void {
   registry.register(erase);
   registry.register(clearModel);
   registry.register(setDisplayUnits);
+  registry.register(makeGroup);
+  registry.register(makeComponent);
+  registry.register(explode);
+  registry.register(makeUnique);
+  registry.register(renameDefinition);
+  registry.register(renameInstance);
+  registry.register(copyInstances);
 }
 
 export type {
   ClearModelInput,
+  CopyInstancesInput,
+  CopyInstancesOutput,
+  ExplodeInput,
+  ExplodeOutput,
+  MakeComponentInput,
+  MakeGroupInput,
+  MakeInstanceOutput,
+  MakeUniqueInput,
+  MakeUniqueOutput,
+  RenameDefinitionInput,
+  RenameInstanceInput,
   DrawCircleInput,
   DrawPolygonInput,
   DrawShapeOutput,

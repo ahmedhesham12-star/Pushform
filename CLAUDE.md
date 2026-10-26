@@ -30,6 +30,7 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 - Commands whose numeric inputs can be retyped after they finish declare `amendable` fields (`positive` for sizes, `signed` for distances; `kind: 'count'` for counts typed as `48s`). `CommandSession.amend` handles the rest. Do not build amend logic into tools.
 - Commands that create faces return the ids of every face they create.
 - Geometry commands take an optional `definitionId` (the root when omitted) and work in that definition's local coordinates. Read and write geometry with `definitionModel`/`withDefinitionModel`, never by reaching into the scene.
+- A group definition always has exactly one instance. Copying a group (or a definition holding groups) gives the copy its own definition that shares the immutable Model, so the copies diverge only when one is edited; use `duplicateDefinition` for this. Components share one definition between their instances.
 - Lengths are stored in mm. Convert only at the edges, with `parseLength`/`parseLengthList`/`parseTypedValues` and `formatLength`/`formatArea` from `src/units`.
 - Kernel operations work on a `Draft` and return a new topology; never edit a `Topology` in place. Drawing goes through the planar engine (`insertSegment`, `rebuildPlane`), not hand-built faces.
 - Kernel tests run the invariant checker after every operation. Planar changes get randomized cases too (see `tests/planar.test.ts` and `tests/helpers/randomRun.ts`). A seed that finds a bug is pinned as a regression test in `npm test`; long sweeps go in `tests/stress`.

@@ -24,6 +24,8 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
   overlapsHole: 'error.overlapsHole',
   notOnPlane: 'error.notOnPlane',
   noSuchFace: 'error.noSuchFace',
+  nothingSelected: 'error.nothingSelected',
+  noSuchInstance: 'error.noSuchInstance',
 };
 
 export class App {

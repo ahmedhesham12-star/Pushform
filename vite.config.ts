@@ -5,8 +5,9 @@ export default defineConfig({
   base: './',
   build: {
     target: 'es2022',
-    // three.js alone is about 600 kB minified; the warning adds nothing until we code-split.
-    chunkSizeWarningLimit: 800,
+    // three.js alone is about 600 kB minified, the app about 200 kB; the warning adds nothing
+    // until three.js is split out (next steps). Export already loads on demand.
+    chunkSizeWarningLimit: 900,
   },
   test: {
     include: ['tests/**/*.test.ts'],

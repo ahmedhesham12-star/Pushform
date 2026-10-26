@@ -75,3 +75,17 @@ export function deserializeDocument(data: unknown): PushformDocument | null {
   if (!isValidSettings(units)) return null;
   return { scene, units };
 }
+
+/** The contents of a .pushform file: the serialized document as JSON. */
+export function documentToText(doc: PushformDocument): string {
+  return JSON.stringify(serializeDocument(doc));
+}
+
+/** A document read from a .pushform file, or null when the text is not one this version can open. */
+export function documentFromText(text: string): PushformDocument | null {
+  try {
+    return deserializeDocument(JSON.parse(text));
+  } catch {
+    return null;
+  }
+}

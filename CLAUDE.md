@@ -23,7 +23,8 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 - `src/viewport`: three.js rendering, camera, picking and snapping.
 - `src/tools`: one file per tool. Tools change the model only through `session.execute` or `session.preview`.
 - `src/ui`: DOM components.
-- `src/app.ts`: wiring. `src/storage.ts`: autosave.
+- `src/export`: STL and GLB writers. Pure: imports only the kernel and the scene, no DOM. The app loads it on demand.
+- `src/app.ts`: wiring. `src/files.ts`: open and save on the device. `src/storage.ts`: autosave (the recovery copy).
 
 ## Conventions
 - Every model change is a command: namespaced id (`core.x`), zod input schema with `z.strictObject`, JSON-serializable input and output, and a pure `run()` that returns the same document instance when nothing changed.

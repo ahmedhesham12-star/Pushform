@@ -1,6 +1,9 @@
 import {
   createSession,
   definitionModel,
+  documentFromText,
+  documentToText,
+  newDocument,
   matchTypedValues,
   rootModel,
   type CommandError,
@@ -37,7 +40,8 @@ import {
   union,
   type InstanceId,
 } from './scene';
-import { saveAutosave } from './storage';
+import { baseName, openFile, saveFile, type FileHandle, type FileType } from './files';
+import { saveAutosave, saveFileState, type FileState } from './storage';
 import {
   ACTION_SHORTCUTS,
   createTools,
@@ -62,6 +66,9 @@ import { ActionBar, ToolBar, type ToolButtonSpec } from './ui/toolbar';
 import { UnitsMenu } from './ui/unitsMenu';
 import { defaultPrecision, formatAngle, formatArea, formatLength, formatNumber, formatVolume, parseTypedValues, type LengthUnit } from './units';
 import { Viewport, type EdgeHighlight, type Highlight } from './viewport';
+
+/** The .pushform file type, for the open and save dialogs. */
+const PUSHFORM_FILE = (): FileType => ({ description: t('file.typePushform'), mime: 'application/json', extension: '.pushform' });
 
 /** Characters that start typing into the measurements box while a tool is busy. */
 const MEASURE_START = /^[0-9.,\-٠-٩۰-۹x×*/]$/i;
@@ -97,6 +104,12 @@ export class App {
   private readonly unitsMenu: UnitsMenu;
   private readonly intro = new Intro();
   private readonly menu = new ContextMenu();
+  /** The open file: its name without extension (null until saved or opened) and where Save writes. */
+  private fileName: string | null;
+  private fileHandle: FileHandle | null = null;
+  /** The document as last saved or opened; null when the current one has never been saved. */
+  private savedDoc: PushformDocument | null;
+  private readonly fileLabel = el('span', 'file-name');
   private readonly entityInfo: EntityInfo;
   private readonly outliner: Outliner;
   /**
@@ -108,13 +121,22 @@ export class App {
   /** Click count of the last press, from the browser (it follows the system's double-click time). */
   private clicks = 1;
 
-  constructor(root: HTMLElement, doc: PushformDocument) {
+  constructor(root: HTMLElement, doc: PushformDocument, file: FileState = { name: null, unsaved: false }) {
     this.session = createSession(doc);
+    this.fileName = file.name;
+    this.savedDoc = file.unsaved ? null : doc;
 
     const top = el('header', 'top');
     const brand = el('div', 'brand');
     brand.innerHTML = ICONS.brand;
     brand.append(el('b', undefined, t('app.name')), el('span', undefined, t('app.tagline')));
+    const fileButton = el('button', 'file-button', t('file.menu'));
+    fileButton.type = 'button';
+    fileButton.setAttribute('aria-haspopup', 'menu');
+    fileButton.addEventListener('click', () => {
+      const r = fileButton.getBoundingClientRect();
+      this.menu.open(r.left, r.bottom + 2, this.fileMenu());
+    });
     this.unitsMenu = new UnitsMenu((unit, precision) => this.setUnits(unit, precision));
     this.actions = new ActionBar(
       {
@@ -125,7 +147,7 @@ export class App {
       },
       [this.unitsMenu.element],
     );
-    top.append(brand, this.actions.element);
+    top.append(brand, fileButton, this.fileLabel, this.actions.element);
 
     // Shortcuts come from TOOL_SHORTCUTS (SketchUp defaults); Polygon has none, as in SketchUp.
     const key = (id: ToolId) => {
@@ -200,12 +222,18 @@ export class App {
 
     this.session.subscribe((e) => {
       saveAutosave(this.session.doc);
+      this.syncFile();
       this.refresh();
       if (e.reason === 'execute' || e.reason === 'amend') this.showAmendValues();
       this.syncMeasureEditable();
     });
     this.bindPointer();
     this.bindKeyboard();
+    // Closing or reloading with unsaved changes asks first (the autosave still keeps them).
+    window.addEventListener('beforeunload', (e) => {
+      if (this.unsaved()) e.preventDefault();
+    });
+    this.syncFile();
 
     this.refresh();
     this.setTool('rectangle');
@@ -632,6 +660,107 @@ export class App {
     this.menu.open(x, y, entries);
   }
 
+  /* ---------- files ---------- */
+
+  private unsaved(): boolean {
+    return this.session.doc !== this.savedDoc;
+  }
+
+  /** The file name and unsaved marker in the top bar and the window title; remembered for recovery. */
+  private syncFile(): void {
+    const name = this.fileName ?? t('file.untitled');
+    const unsaved = this.unsaved();
+    const marker = unsaved ? t('file.unsavedMarker') : '';
+    this.fileLabel.textContent = `${name}${marker}`;
+    this.fileLabel.title = unsaved ? t('file.unsaved') : '';
+    document.title = t('file.windowTitle', { name, marker });
+    saveFileState({ name: this.fileName, unsaved });
+  }
+
+  private fileMenu(): MenuEntry[] {
+    return [
+      { label: t('file.new'), shortcut: t('key.new'), enabled: true, run: () => this.newFile() },
+      { label: t('file.open'), shortcut: t('key.open'), enabled: true, run: () => void this.openFile() },
+      { label: t('file.save'), shortcut: t('key.save'), enabled: true, run: () => void this.saveFile(false) },
+      { label: t('file.saveAs'), shortcut: t('key.saveAs'), enabled: true, run: () => void this.saveFile(true) },
+      null,
+      { label: t('file.exportStl'), enabled: !this.isEmpty(), run: () => void this.exportFile('stl') },
+      { label: t('file.exportGlb'), enabled: !this.isEmpty(), run: () => void this.exportFile('glb') },
+    ];
+  }
+
+  /** Unsaved changes are only dropped when the user agrees. */
+  private discardOk(): boolean {
+    return !this.unsaved() || window.confirm(t('file.discard', { name: this.fileName ?? t('file.untitled') }));
+  }
+
+  /** Show a document that replaces the current one: no history, no editing context, no selection. */
+  private replaceDocument(doc: PushformDocument, name: string | null, handle: FileHandle | null): void {
+    this.cancel(true);
+    this.context = [];
+    this.clearSelection();
+    this.fileName = name;
+    this.fileHandle = handle;
+    this.savedDoc = doc;
+    this.session.load(doc);
+    this.zoomToFit();
+  }
+
+  private newFile(): void {
+    if (!this.discardOk()) return;
+    this.replaceDocument(newDocument(), null, null);
+    this.status.flash(t('message.newFile'));
+  }
+
+  private async openFile(): Promise<void> {
+    if (!this.discardOk()) return;
+    try {
+      const f = await openFile(PUSHFORM_FILE());
+      if (!f) return;
+      const doc = documentFromText(f.text);
+      if (!doc) return this.status.flash(t('error.fileInvalid'), true);
+      this.replaceDocument(doc, baseName(f.name), f.handle);
+      this.status.flash(t('message.opened', { name: f.name }));
+    } catch {
+      this.status.flash(t('error.fileRead'), true);
+    }
+  }
+
+  /** Save to the open file, or ask where (Save As, or a model never saved). */
+  private async saveFile(as: boolean): Promise<void> {
+    const doc = this.session.doc;
+    try {
+      const r = await saveFile(documentToText(doc), PUSHFORM_FILE(), `${this.fileName ?? t('file.untitled')}.pushform`, as ? null : this.fileHandle);
+      if (!r) return;
+      this.fileName = baseName(r.name);
+      this.fileHandle = r.handle;
+      this.savedDoc = doc;
+      this.syncFile();
+      this.status.flash(t('message.saved', { name: r.name }));
+    } catch {
+      this.status.flash(t('error.fileWrite'), true);
+    }
+  }
+
+  /** STL (mm, Z up) or GLB (meters, Y up) of the whole model, groups and components placed. */
+  private async exportFile(kind: 'stl' | 'glb'): Promise<void> {
+    const name = this.fileName ?? t('file.untitled');
+    const scene = this.session.doc.scene;
+    const type: FileType =
+      kind === 'stl'
+        ? { description: t('file.typeStl'), mime: 'model/stl', extension: '.stl' }
+        : { description: t('file.typeGlb'), mime: 'model/gltf-binary', extension: '.glb' };
+    try {
+      // Loaded on first use, to keep the main bundle small.
+      const { exportGlb, exportStl } = await import('./export');
+      const data = kind === 'stl' ? exportStl(scene) : exportGlb(scene, name);
+      const r = await saveFile(data, type, `${name}${type.extension}`);
+      if (r) this.status.flash(t('message.exported', { name: r.name }));
+    } catch {
+      this.status.flash(t('error.fileWrite'), true);
+    }
+  }
+
   /** Typed values after a finished command replace that command's amendable inputs. */
   private amend(text: string): void {
     const target = this.session.amendTarget();
@@ -803,6 +932,14 @@ export class App {
       if (e.target instanceof HTMLSelectElement) return;
       const mod = e.metaKey || e.ctrlKey;
       const k = e.key.toLowerCase();
+      // Ctrl+N reaches the page only where the browser allows it (an installed app, for one).
+      if (mod && (k === 's' || k === 'o' || k === 'n')) {
+        e.preventDefault();
+        if (k === 's') void this.saveFile(e.shiftKey);
+        else if (k === 'o') void this.openFile();
+        else this.newFile();
+        return;
+      }
       if (mod && k === 'z') {
         e.preventDefault();
         if (e.shiftKey) this.redo();

@@ -433,6 +433,27 @@ li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
   flex: 1;
 }
 
+/* ---------- file button and name ---------- */
+.file-button {
+  padding-block: 5px;
+  padding-inline: 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ui);
+  cursor: pointer;
+}
+.file-button:hover {
+  background: var(--ui-2);
+}
+.file-name {
+  flex: 1;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-2);
+}
+
 /* ---------- right-click menu ---------- */
 /* Physical left/top on purpose: the menu is placed at the pointer's pixel coordinates. */
 .context-menu {

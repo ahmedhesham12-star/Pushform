@@ -80,7 +80,9 @@ src/
               right-click menu, Entity Info and Outliner
   app.ts      wiring: input events, keyboard, selection, editing context, refresh on
               document change
-  storage.ts  autosave to local storage
+  export/     STL and GLB writers (pure: kernel and scene only)
+  files.ts    open and save on the device: File System Access API, or upload and download
+  storage.ts  autosave to local storage (the recovery copy, with the file name)
 tests/        units, kernel (topology, planar, erase, push/pull, lines, shapes),
               commands, precision, measurements box and architecture tests;
               fixtures/ holds a real milestone 1 autosave
@@ -92,8 +94,8 @@ Data flow: a tool reads the viewport (picking, snapping) and calls `session.prev
 ### Layer rules (checked by `tests/architecture.test.ts`)
 - The kernel imports nothing outside `src/kernel` except the `earcut` package, uses no DOM globals, and is imported only through `src/kernel/index.ts`.
 - Only `src/commands` (and `src/scene`, which loads models) may call kernel mutations (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawLine`, `pushPull`, `erase`, `extractGeometry`, `transformGeometry`, `mergeGeometry`, `deserialize`). Everything else uses the read-only queries, such as `listFaces`, `listEdges`, `edgeGroup`, `faceMeshes`, `snapPoints`, `bounds`, `solidVolume` and the preview helpers.
-- `src/scene` imports only the kernel.
-- `src/kernel`, `src/scene`, `src/commands` and `src/units` use no DOM, so commands can run headless for tests, plugins and MCP.
+- `src/scene` imports only the kernel; `src/export` only the kernel and the scene.
+- `src/kernel`, `src/scene`, `src/commands`, `src/units` and `src/export` use no DOM, so commands and exports can run headless for tests, plugins and MCP.
 
 ### Kernel (milestone 2)
 **Data structure: shared topology with edge uses.**
@@ -191,7 +193,7 @@ Plugins call `registry.register(def)` and extend the typed `CommandMap` through 
 - New tools get it by declaring their fields.
 
 ### Document format
-JSON, version 3 (milestone 3): a scene of definitions, each holding a version 2 topology model, and the instances placed in them.
+`.pushform` files are this JSON, version 3 (milestone 3): a scene of definitions, each holding a version 2 topology model, and the instances placed in them.
 ```
 { format: 'pushform', version: 3, units: { unit, precision },
   scene: { root: definition id, next,
@@ -280,6 +282,12 @@ Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] unti
 | 2026-10-26 | Rectangles align to a turned edge or face (product owner); the default rectangle axes are the plane's axes projected into the plane | Drawing on rotated objects followed the world axes and came out skewed; on slanted faces the old axes did not lie in the face. |
 | 2026-10-26 | Offset's new loop follows the pointer (distance from the boundary), and clicks finish on release so a double-click can repeat the last offset | Matches SketchUp; measuring from the first click made an offset started in a face's middle go outward. |
 | 2026-10-26 | `npm test` starts Vitest through `scripts/vitest.mjs`, from the canonical project path | On Windows a working directory with a lowercase drive letter (VS Code terminals can open as d:\) made Vitest load itself twice; every test file then failed before running a test. |
+| 2026-10-26 | Files open and save through the File System Access API where the browser has it (Save writes back to the opened file), otherwise through a file input and a download | Works offline in every browser; nothing leaves the device. |
+| 2026-10-26 | A model is unsaved when the session's document is not the one last saved or opened (documents are immutable) | Undoing back to the saved state clears the marker, as in desktop apps. |
+| 2026-10-26 | The autosave stays the recovery copy and also remembers the file name and whether it was saved; the file handle is not kept across reloads | After a reload, Save asks where again. |
+| 2026-10-26 | STL: binary, millimeters, Z up (a quarter turn about red, no mirroring); every group and component placed | Slicers and CAD tools take Z as up; this is the export-time conversion planned in milestone 1. |
+| 2026-10-26 | GLB: our own writer (approved), meters, Y up; the node tree follows the scene and each definition is one mesh shared by its instances; one double-sided default material; checked with the Khronos glTF validator in the tests (dev dependency, Apache-2.0) | Keeps components as instances in other programs; no exporter dependency in the app. |
+| 2026-10-26 | Export code loads on demand; the bundle warning limit is 900 kB until three.js is split out | The main bundle (about 800 kB, three.js about 600 kB of it) passed the old 800 kB limit. |
 | 2026-10-26 | Solid volume in Entity Info for a group or component whose own geometry is closed and consistently oriented; none when it holds other groups or components | Cheap to compute exactly; nested solids are a later step. |
 
 ## SketchUp parity: shortcuts and modifiers
@@ -301,6 +309,8 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 | O | Orbit |
 | H | Pan |
 | Shift+Z | Zoom Extents |
+| Ctrl+O, Ctrl+S, Ctrl+Shift+S | Open, Save, Save As (milestone 3) |
+| Ctrl+N | New, where the browser lets a page have it (an installed app); otherwise File, New |
 | Middle drag | Orbit |
 | Shift + middle drag | Pan |
 | Scroll | Zoom (to the cursor) |
@@ -384,32 +394,35 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
   - 329 unit tests pass in about 6 s and the production build succeeds. The randomized rectangle and push/pull runs on horizontal faces (`tests/crossings.test.ts`, about 5.5 s) cover seed 11 for 80 steps, 8 seeds for 40 steps, and the 7 seeds that found bugs. Two longer sweeps of 120 seeds at 60 steps each run with `npm run test:stress` (about 85 s, the two sweeps in parallel); they pass and must pass before a milestone is merged into `main`. Boxes built against boxes follow the behavior the product owner specified (repros A and B in `tests/slots.test.ts`): one shared wall, split where the heights differ. The tests confirm that specification, not SketchUp's behavior, which is still unverified. They include randomized overlapping rectangles (grid-aligned and arbitrary), and randomized slots, notches and tabs on a box, with invariant checks after every step and preview-equals-commit checks.
   - Scripted browser checks (not in the repo) covered: overlaps, pockets and push-through, edge selection and erase, the line tool, circles and polygons, amend, autosave, and loading a milestone 1 autosave.
 
-**Milestone 3** (in progress), on branch `milestone-3`. Done through checkpoint (a):
+**Milestone 3** (in progress), on branch `milestone-3`. Done through checkpoint (c):
 - **Scene layer and document version 3**, with version 2 conversion.
 - **Kernel:** extract, rigid transform and merge (explode, copies), solid volume.
 - **Commands:** make group, make component, explode, make unique, rename definition and instance, copy instances, erase instances; nesting.
 - **Viewport:** instances drawn from shared geometry with their transforms; editing contexts (double-click to open, Esc or a click outside to close, everything outside faded); picking returns context faces and edges, instances in the context, or geometry outside it; inference across all instances and contexts in world coordinates.
 - **Right-click menu** and G for Make Component.
 - **Panels:** Entity Info (one group or component: type, editable definition and instance names, copy count, volume; several items: how many of each type, with total area and length) and Outliner (tree, copy counts, click to select, double-click or F2 to rename, right-click menu).
+- **Files (step 9):** New, Open, Save and Save As in a File menu and with Ctrl+O, Ctrl+S, Ctrl+Shift+S (Ctrl+N where allowed); the file name and an unsaved marker in the top bar and the window title; a warning before leaving with unsaved changes; the autosave as the recovery copy.
+- **Export (step 10):** binary STL (mm, Z up) and GLB (meters, Y up), both with every group and component placed; the GLB keeps components as shared meshes and passes the Khronos validator.
 - **Offset tool (added after step 8):** faces (with their holes) and edge chains, sharp corners, curves keep their segment count, amend, double-click repeat, refused when too large.
 - **Checkpoint (b) feedback:** rectangles align to turned edges and faces (an improvement over SketchUp), follow a turned group's axes inside it, and lie on slanted faces; Offset offsets holes too.
 - **Move testing feedback:** edge and point inference win over faces in every tool; hidden points are not inferred; Push/Pull ends level with points, edges and faces anywhere; double-click repeats the last push/pull.
 - **Rotate tool (step 8):** protractor on faces or locked axes, center, start and angle with inference, 15 degree snapping, typed angles and amend, Ctrl copy and arrays; loose geometry turns with the same rules as moving; axes inside groups follow the group.
 - **Move tool (step 7):** start and destination with shared inference (Line and Move), typed distance, amend, Ctrl copy, arrays (`x5`, `5x`, `*5`, `/4`), loose geometry that stretches with bending and crossing moves refused.
 - **Checkpoint (a) feedback:** double-click, triple-click, window and crossing selection, Ctrl+A; modifiers on groups and components; Make Group and Make Component on mixed selections.
-- **Verification:** 522 unit tests pass and the build succeeds; the stress sweeps pass, including the new 3 (extract and merge), 4 (scene commands) and 5 (moving loose geometry, 1000 seeds). Scripted browser checks (not in the repo) cover instances, contexts, snapping to another copy, the menu and the panels.
+- **Verification:** 540 unit tests pass and the build succeeds; the stress sweeps pass, including the new 3 (extract and merge), 4 (scene commands) and 5 (moving loose geometry, 1000 seeds). Scripted browser checks (not in the repo) cover instances, contexts, snapping to another copy, the menu and the panels.
 
 ### Known limitations
 - The differences from SketchUp listed above.
 - Each operation recomputes its whole plane and an adjacency index. That is fine for typical models; very large models may slow down.
 - Undo history is not kept across reloads.
-- There is no file open, save or export yet; the only storage is the browser autosave (milestone 3, steps 9 and 10).
+- In a normal browser tab, Ctrl+N opens a browser window; New is in the File menu. Without the File System Access API (Firefox, Safari), every save is a download.
+- Export covers STL and GLB; OBJ and DXF are next steps. Edges without faces are not exported.
 - A stretch that would land a point on another point is refused rather than merging the two points (an island that lands on a point does merge).
 - While moving loose geometry, its own endpoints and midpoints at the original position are still inference targets (its faces and edges are not).
 
 ## Next steps (proposed, not yet approved)
-1. File open and save (`.pushform` JSON download and upload) and the first export (glTF or STL, from `faceMeshes`).
-2. Move, copy, rotate and offset tools, then components (also needed for imports).
+1. Milestone 4, to be planned: folding moved geometry into planar triangles first; Scale and Flip; arcs; tags; materials; solid tools; hardware import; OBJ and DXF export.
+2. Offset of the edges of a face's holes alone, and SketchUp's other offset cases, if needed.
 3. Kernel: intersecting faces of different solids, and confirming the box-against-box result in SketchUp (product owner).
 4. Inference: parallel, perpendicular and "from point", and a reverse-face command.
 5. Arabic locale: catalog, an Arabic-capable font, and an RTL layout pass.

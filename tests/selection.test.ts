@@ -23,7 +23,7 @@ function box(s: CommandSession, x: number, z: number, w: number, d: number, h: n
     .filter((f) => !before.has(f));
 }
 
-const emptySelection = (): Selection => ({ faces: new Set(), edges: new Set(), instances: new Set(), hovered: null });
+const emptySelection = (): Selection => ({ faces: new Set(), edges: new Set(), instances: new Set(), guides: new Set(), hovered: null });
 
 describe('double- and triple-click queries', () => {
   test('a face with its edges, an edge with its faces', () => {

@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { t } from '../../i18n';
 import { erase as kernelErase, hasEdge, hasFace } from '../../kernel';
-import { getDefinition } from '../../scene';
+import { getDefinition, removeGuides } from '../../scene';
 import { withDefinitionModel } from '../document';
 import type { CommandDef } from '../types';
 import { removeInstances } from './instances';
@@ -14,8 +14,10 @@ export const eraseInput = z
     edgeIds: z.array(z.string().min(1)),
     /** Groups and component instances placed in the context. */
     instanceIds: z.array(z.string().min(1)).optional(),
+    /** Guide lines and points of the context. */
+    guideIds: z.array(z.string().min(1)).optional(),
   })
-  .refine((v) => v.faceIds.length + v.edgeIds.length + (v.instanceIds?.length ?? 0) > 0, { message: 'nothing to erase' });
+  .refine((v) => v.faceIds.length + v.edgeIds.length + (v.instanceIds?.length ?? 0) + (v.guideIds?.length ?? 0) > 0, { message: 'nothing to erase' });
 export type EraseInput = z.infer<typeof eraseInput>;
 export interface EraseOutput {
   /** Faces that no longer exist: erased, removed with an edge, or merged into another face. */
@@ -23,10 +25,10 @@ export interface EraseOutput {
 }
 
 /**
- * Erase faces, edges and instances in one undo step. Erasing a face keeps its
- * edges. Erasing an edge between two coplanar faces merges them; otherwise the
- * faces it bounds go with it. Erasing any edge of a curve erases the whole
- * curve. Definitions no instance uses any more are removed.
+ * Erase faces, edges, instances and guides in one undo step. Erasing a face
+ * keeps its edges. Erasing an edge between two coplanar faces merges them;
+ * otherwise the faces it bounds go with it. Erasing any edge of a curve erases
+ * the whole curve. Definitions no instance uses any more are removed.
  */
 export const erase: CommandDef<EraseInput, EraseOutput> = {
   id: 'core.erase',
@@ -40,7 +42,8 @@ export const erase: CommandDef<EraseInput, EraseOutput> = {
     const edges = input.edgeIds.filter((e) => hasEdge(target.model, e));
     const context = getDefinition(doc.scene, contextId)!;
     const instances = (input.instanceIds ?? []).filter((i) => context.instances.has(i));
-    if (!faces.length && !edges.length && !instances.length) {
+    const guides = (input.guideIds ?? []).filter((g) => context.guides.has(g));
+    if (!faces.length && !edges.length && !instances.length && !guides.length) {
       return { ok: false, error: { code: 'nothingToErase', detail: JSON.stringify(input) } };
     }
     let next = doc;
@@ -51,6 +54,7 @@ export const erase: CommandDef<EraseInput, EraseOutput> = {
       removedFaceIds = r.removedFaceIds;
     }
     if (instances.length) next = { ...next, scene: removeInstances(next.scene, contextId, instances) };
+    if (guides.length) next = { ...next, scene: removeGuides(next.scene, contextId, guides) };
     return { ok: true, doc: next, output: { removedFaceIds } };
   },
 };

@@ -6,13 +6,13 @@ import type { Highlight, Picked, Viewport } from '../viewport';
 export type ToolId = 'select' | 'move' | 'rotate' | 'line' | 'rectangle' | 'circle' | 'polygon' | 'pushPull' | 'offset' | 'erase' | 'orbit' | 'pan';
 
 export interface EntityRef {
-  kind: 'face' | 'edge' | 'instance';
+  kind: 'face' | 'edge' | 'instance' | 'guide';
   id: string;
 }
 
 /**
- * Selected faces, edges and instances of the editing context, and the entity
- * under the pointer. Not part of the document, so not undoable. Selecting one
+ * Selected faces, edges, instances and guides of the editing context, and the
+ * entity under the pointer. Not part of the document, so not undoable. Selecting one
  * edge of a curve selects the whole curve, so `edges` always holds complete
  * curves.
  */
@@ -20,6 +20,7 @@ export interface Selection {
   readonly faces: Set<string>;
   readonly edges: Set<string>;
   readonly instances: Set<InstanceId>;
+  readonly guides: Set<string>;
   hovered: EntityRef | null;
 }
 

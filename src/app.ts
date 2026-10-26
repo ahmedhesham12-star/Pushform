@@ -41,7 +41,7 @@ import {
   type InstanceId,
 } from './scene';
 import { baseName, openFile, saveFile, type FileHandle, type FileType } from './files';
-import { saveAutosave, saveFileState, type FileState } from './storage';
+import { loadViewSettings, saveAutosave, saveFileState, saveViewSettings, type FileState } from './storage';
 import {
   ACTION_SHORTCUTS,
   arrayBeforeCopy,
@@ -92,7 +92,7 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
 export class App {
   readonly session: CommandSession;
   readonly viewport: Viewport;
-  private readonly selection: Selection = { faces: new Set(), edges: new Set(), instances: new Set(), hovered: null };
+  private readonly selection: Selection = { faces: new Set(), edges: new Set(), instances: new Set(), guides: new Set(), hovered: null };
   /** The open editing context: instance ids from the root down ([] is the root). */
   private context: readonly InstanceId[] = [];
   private readonly tools: Record<ToolId, Tool>;
@@ -137,6 +137,13 @@ export class App {
       const r = fileButton.getBoundingClientRect();
       this.menu.open(r.left, r.bottom + 2, this.fileMenu());
     });
+    const viewButton = el('button', 'file-button', t('view.menu'));
+    viewButton.type = 'button';
+    viewButton.setAttribute('aria-haspopup', 'menu');
+    viewButton.addEventListener('click', () => {
+      const r = viewButton.getBoundingClientRect();
+      this.menu.open(r.left, r.bottom + 2, this.viewMenu());
+    });
     this.unitsMenu = new UnitsMenu((unit, precision) => this.setUnits(unit, precision));
     this.actions = new ActionBar(
       {
@@ -147,7 +154,7 @@ export class App {
       },
       [this.unitsMenu.element],
     );
-    top.append(brand, fileButton, this.fileLabel, this.actions.element);
+    top.append(brand, fileButton, viewButton, this.fileLabel, this.actions.element);
 
     // Shortcuts come from TOOL_SHORTCUTS (SketchUp defaults); Polygon has none, as in SketchUp.
     const key = (id: ToolId) => {
@@ -216,6 +223,7 @@ export class App {
 
     root.append(top, this.toolbar.element, view, panel, footer, this.menu.element);
     this.viewport = new Viewport(view);
+    this.viewport.setGuidesVisible(loadViewSettings().guides);
 
     this.tools = createTools(this.toolContext());
     this.tool = this.tools.rectangle;
@@ -250,13 +258,15 @@ export class App {
     this.viewport.showScene(doc.scene, this.context);
     this.viewport.setSnapTargets(doc.scene);
     const m = this.contextModel();
-    const placed = pathDefinition(doc.scene, this.context)!.instances;
+    const { instances: placed, guides } = pathDefinition(doc.scene, this.context)!;
     const s = this.selection;
     for (const f of s.faces) if (!hasFace(m, f)) s.faces.delete(f);
     for (const e of s.edges) if (!hasEdge(m, e)) s.edges.delete(e);
     for (const i of s.instances) if (!placed.has(i)) s.instances.delete(i);
+    for (const g of s.guides) if (!guides.has(g)) s.guides.delete(g);
     const h = s.hovered;
-    const exists = h && (h.kind === 'face' ? hasFace(m, h.id) : h.kind === 'edge' ? hasEdge(m, h.id) : placed.has(h.id));
+    const exists =
+      h && (h.kind === 'face' ? hasFace(m, h.id) : h.kind === 'edge' ? hasEdge(m, h.id) : h.kind === 'guide' ? guides.has(h.id) : placed.has(h.id));
     if (h && !exists) s.hovered = null;
     this.applyHighlights();
     this.intro.setVisible(this.isEmpty());
@@ -287,6 +297,10 @@ export class App {
     for (const i of instances) boxes.set(i, 'selected');
     if (hovered?.kind === 'instance' && !instances.has(hovered.id)) boxes.set(hovered.id, kind === 'erase' ? 'erase' : 'hover');
     this.viewport.highlightInstances(boxes);
+    const guides = new Map<string, EdgeHighlight>();
+    for (const g of this.selection.guides) guides.set(g, 'selected');
+    if (hovered?.kind === 'guide' && !guides.has(hovered.id)) guides.set(hovered.id, kind === 'erase' ? 'erase' : 'hover');
+    this.viewport.highlightGuides(guides);
     // Every selection change ends here, so the panels follow it.
     this.entityInfo.show(this.entityInfoData());
     this.outliner.sync();
@@ -299,15 +313,15 @@ export class App {
 
   /** What Entity Info shows for the current selection. */
   private entityInfoData(): EntityInfoData {
-    const { faces, edges, instances } = this.selection;
-    if (!faces.size && !edges.size && !instances.size) return { kind: 'none' };
+    const { faces, edges, instances, guides } = this.selection;
+    if (!faces.size && !edges.size && !instances.size && !guides.size) return { kind: 'none' };
     const doc = this.session.doc;
     const count = (n: number) => formatNumber(n);
     if (instances.size) {
       const id = [...instances][0]!;
       const i = pathDefinition(doc.scene, this.context)?.instances.get(id);
       const def = i && doc.scene.definitions.get(i.definitionId);
-      if (instances.size === 1 && !faces.size && !edges.size && i && def && def.kind !== 'root') {
+      if (instances.size === 1 && !faces.size && !edges.size && !guides.size && i && def && def.kind !== 'root') {
         // Volume is only shown for geometry without nested groups or components.
         const volume = def.instances.size ? null : solidVolume(def.model);
         return {
@@ -332,13 +346,14 @@ export class App {
       { label: t('info.components'), count: components },
       { label: t('info.faces'), count: faces.size },
       { label: t('info.edges'), count: edges.size },
+      { label: t('info.guides'), count: guides.size },
     ]
       .filter((c) => c.count > 0)
       .map((c) => ({ label: c.label, count: count(c.count) }));
     const m = this.contextModel();
     const area = faces.size ? formatArea([...faces].reduce((s, f) => s + faceArea(m, f), 0), doc.units) : null;
     const length = edges.size ? formatLength([...edges].reduce((s, e) => s + edgeLength(m, e), 0), doc.units) : null;
-    return { kind: 'selection', total: count(faces.size + edges.size + instances.size), counts, area, length };
+    return { kind: 'selection', total: count(faces.size + edges.size + instances.size + guides.size), counts, area, length };
   }
 
   /** Ctrl+A: everything in the open context (switching to the Select tool). */
@@ -348,7 +363,9 @@ export class App {
     this.clearSelection();
     for (const f of listFaces(m)) this.selection.faces.add(f.id);
     for (const e of listEdges(m)) this.selection.edges.add(e.id);
-    for (const i of pathDefinition(this.session.doc.scene, this.context)!.instances.keys()) this.selection.instances.add(i);
+    const context = pathDefinition(this.session.doc.scene, this.context)!;
+    for (const i of context.instances.keys()) this.selection.instances.add(i);
+    if (this.viewport.guidesVisible) for (const g of context.guides.keys()) this.selection.guides.add(g);
     this.applyHighlights();
     this.measure.set(this.tool.measurementLabel(), '');
     this.status.hint();
@@ -393,10 +410,16 @@ export class App {
     this.selection.faces.clear();
     this.selection.edges.clear();
     this.selection.instances.clear();
+    this.selection.guides.clear();
     this.selection.hovered = null;
   }
 
   private hasSelection(): boolean {
+    return this.selection.faces.size + this.selection.edges.size + this.selection.instances.size + this.selection.guides.size > 0;
+  }
+
+  /** Whether faces, edges or instances are selected (what grouping and moving act on). */
+  private hasGeometry(): boolean {
     return this.selection.faces.size + this.selection.edges.size + this.selection.instances.size > 0;
   }
 
@@ -497,20 +520,21 @@ export class App {
   }
 
   private clear(): void {
-    if (this.isEmpty()) return;
+    if (this.isEmpty() && !rootDefinition(this.session.doc.scene).guides.size) return;
     this.cancel(true);
     this.clearSelection();
     if (this.session.execute('core.clearModel', {}).ok) this.status.flash(t('message.cleared'));
   }
 
-  /** Erase the selected faces, edges and instances in one step. */
+  /** Erase the selected faces, edges, instances and guides in one step. */
   private deleteSelected(): void {
     const faceIds = [...this.selection.faces];
     const edgeIds = [...this.selection.edges];
     const instanceIds = [...this.selection.instances];
-    if (!faceIds.length && !edgeIds.length && !instanceIds.length) return;
+    const guideIds = [...this.selection.guides];
+    if (!faceIds.length && !edgeIds.length && !instanceIds.length && !guideIds.length) return;
     this.clearSelection();
-    const r = this.session.execute('core.erase', { definitionId: this.viewport.frame.definitionId, faceIds, edgeIds, instanceIds });
+    const r = this.session.execute('core.erase', { definitionId: this.viewport.frame.definitionId, faceIds, edgeIds, instanceIds, guideIds });
     if (r.ok) this.status.flash(t('message.erased'));
     else this.flashError(r.error);
   }
@@ -543,7 +567,7 @@ export class App {
 
   /** Make the selection a group or a component, and select the new instance. */
   private makeInstance(kind: 'group' | 'component'): void {
-    if (!this.hasSelection()) return this.status.flash(t('error.nothingSelected'), true);
+    if (!this.hasGeometry()) return this.status.flash(t('error.nothingSelected'), true);
     this.cancel(true);
     const input = this.selectionInput();
     const r = kind === 'group' ? this.session.execute('core.makeGroup', input) : this.session.execute('core.makeComponent', input);
@@ -617,7 +641,8 @@ export class App {
     this.viewport.setPointer(e);
     const hit = this.viewport.pick();
     if (hit && hit.kind !== 'outside') {
-      const set = hit.kind === 'edge' ? this.selection.edges : hit.kind === 'face' ? this.selection.faces : this.selection.instances;
+      const sets = { edge: this.selection.edges, face: this.selection.faces, instance: this.selection.instances, guide: this.selection.guides };
+      const set = sets[hit.kind];
       if (!set.has(hit.id)) {
         this.clearSelection();
         for (const id of hit.kind === 'edge' ? edgeGroup(this.contextModel(), hit.id) : [hit.id]) set.add(id);
@@ -633,13 +658,14 @@ export class App {
     const scene = this.session.doc.scene;
     const placed = pathDefinition(scene, this.context)!.instances;
     const any = this.hasSelection();
-    const onlyOne = this.selection.instances.size === 1 && !this.selection.faces.size && !this.selection.edges.size;
+    const geometry = this.hasGeometry();
+    const onlyOne = this.selection.instances.size === 1 && !this.selection.faces.size && !this.selection.edges.size && !this.selection.guides.size;
     const single = onlyOne ? [...this.selection.instances][0]! : null;
     const singleKind = single ? scene.definitions.get(placed.get(single)?.definitionId ?? '')?.kind : undefined;
     const contextKind = this.context.length ? pathDefinition(scene, this.context)!.kind : undefined;
     const entries: MenuEntry[] = [
-      { label: t('menu.makeComponent'), shortcut: t('key.makeComponent'), enabled: any, run: () => this.makeInstance('component') },
-      { label: t('menu.makeGroup'), enabled: any, run: () => this.makeInstance('group') },
+      { label: t('menu.makeComponent'), shortcut: t('key.makeComponent'), enabled: geometry, run: () => this.makeInstance('component') },
+      { label: t('menu.makeGroup'), enabled: geometry, run: () => this.makeInstance('group') },
       null,
       {
         label: t(singleKind === 'component' ? 'menu.editComponent' : 'menu.editGroup'),
@@ -656,6 +682,7 @@ export class App {
       { label: t('menu.makeUnique'), enabled: this.canMakeUnique(), run: () => this.makeUniqueSelected() },
       null,
       { label: t('menu.delete'), shortcut: t('key.delete'), enabled: any, run: () => this.deleteSelected() },
+      this.deleteGuidesEntry(),
       {
         label: t('menu.zoomSelection'),
         enabled: any,
@@ -666,6 +693,37 @@ export class App {
       },
     ];
     this.menu.open(x, y, entries);
+  }
+
+  /* ---------- view ---------- */
+
+  private viewMenu(): MenuEntry[] {
+    const shown = this.viewport.guidesVisible;
+    return [{ label: t(shown ? 'view.hideGuides' : 'view.showGuides'), enabled: true, run: () => this.setGuidesVisible(!shown) }, this.deleteGuidesEntry()];
+  }
+
+  private deleteGuidesEntry(): MenuEntry {
+    const count = pathDefinition(this.session.doc.scene, this.context)?.guides.size ?? 0;
+    return { label: t('menu.deleteGuides'), enabled: count > 0, run: () => this.deleteGuides() };
+  }
+
+  /** Show or hide guides on this device; hidden guides cannot be selected, so they leave the selection. */
+  private setGuidesVisible(on: boolean): void {
+    this.viewport.setGuidesVisible(on);
+    saveViewSettings({ guides: on });
+    if (!on) {
+      this.selection.guides.clear();
+      if (this.selection.hovered?.kind === 'guide') this.selection.hovered = null;
+      this.applyHighlights();
+    }
+  }
+
+  /** Delete every guide of the open editing context in one step. */
+  private deleteGuides(): void {
+    this.cancel(true);
+    const r = this.session.execute('core.deleteGuides', { definitionId: this.viewport.frame.definitionId });
+    if (!r.ok) return this.flashError(r.error);
+    if (r.output.count) this.status.flash(t('message.guidesDeleted', { count: formatNumber(r.output.count) }));
   }
 
   /* ---------- files ---------- */

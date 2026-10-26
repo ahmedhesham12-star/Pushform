@@ -13,6 +13,7 @@ import {
 } from '../../kernel';
 import {
   addDefinition,
+  addGuide,
   applyPoint,
   applyVector,
   compose,
@@ -28,6 +29,7 @@ import {
   setModel,
   snapTransform,
   transformBounds,
+  transformGuide,
   translation,
   union,
   updateDefinition,
@@ -178,7 +180,7 @@ export interface ExplodeOutput {
 /**
  * Replace instances by their contents: the geometry merges into the parent's
  * geometry (coplanar faces join, crossing edges split), and nested instances
- * move up to the parent. Definitions no longer used are removed.
+ * and guides move up to the parent. Definitions no longer used are removed.
  */
 export const explode: CommandDef<ExplodeInput, ExplodeOutput> = {
   id: 'core.explode',
@@ -205,6 +207,7 @@ export const explode: CommandDef<ExplodeInput, ExplodeOutput> = {
         [nid, scene] = placeCopy(scene, parent.id, j, compose(T, j.transform));
         instanceIds.push(nid);
       }
+      for (const g of def.guides.values()) [, scene] = addGuide(scene, parent.id, transformGuide(T, g));
     }
     if (!exploded) return { ok: false, error: { code: 'noSuchInstance', detail: input.instanceIds.join(', ') } };
     scene = pruneDefinitions(scene);

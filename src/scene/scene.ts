@@ -9,6 +9,7 @@
  * a new scene that shares everything unchanged, including Model objects.
  */
 import { bounds, type Bounds, type Model } from '../kernel';
+import type { Guide, GuideId } from './guides';
 import { applyPoint, compose, IDENTITY, type Transform } from './transform';
 
 export type DefinitionId = string;
@@ -30,17 +31,22 @@ export interface Definition {
   readonly model: Model;
   /** Instances placed inside this definition, in its local space. */
   readonly instances: ReadonlyMap<InstanceId, Instance>;
+  /** Guide lines and points, in its local space. */
+  readonly guides: ReadonlyMap<GuideId, Guide>;
 }
+
+/** What a new definition needs; guides start empty unless given. */
+export type NewDefinition = Omit<Definition, 'id' | 'guides'> & { readonly guides?: ReadonlyMap<GuideId, Guide> };
 
 export interface Scene {
   readonly rootId: DefinitionId;
   readonly definitions: ReadonlyMap<DefinitionId, Definition>;
-  /** Next id number for definitions and instances. */
+  /** Next id number for definitions, instances and guides. */
   readonly next: number;
 }
 
 export function createScene(rootModel: Model): Scene {
-  const root: Definition = { id: 'd1', kind: 'root', name: '', model: rootModel, instances: new Map() };
+  const root: Definition = { id: 'd1', kind: 'root', name: '', model: rootModel, instances: new Map(), guides: new Map() };
   return { rootId: root.id, definitions: new Map([[root.id, root]]), next: 2 };
 }
 
@@ -139,11 +145,11 @@ export function setModel(s: Scene, id: DefinitionId, model: Model): Scene {
   return withDefinition(s, { ...d, model });
 }
 
-export const newId = (s: Scene, prefix: 'd' | 'i'): [string, Scene] => [`${prefix}${s.next}`, { ...s, next: s.next + 1 }];
+export const newId = (s: Scene, prefix: 'd' | 'i' | 'g'): [string, Scene] => [`${prefix}${s.next}`, { ...s, next: s.next + 1 }];
 
-export function addDefinition(s: Scene, def: Omit<Definition, 'id'>): [DefinitionId, Scene] {
+export function addDefinition(s: Scene, def: NewDefinition): [DefinitionId, Scene] {
   const [id, next] = newId(s, 'd');
-  return [id, withDefinition(next, { ...def, id })];
+  return [id, withDefinition(next, { guides: new Map(), ...def, id })];
 }
 
 export function putInstance(s: Scene, parent: DefinitionId, instance: Instance): Scene {
@@ -179,7 +185,7 @@ export function pruneDefinitions(s: Scene): Scene {
 }
 
 /**
- * A copy of a definition under a new id, sharing its Model (models are
+ * A copy of a definition under a new id, sharing its Model and guides (both
  * immutable, so the copy only diverges when one of them is edited). Nested
  * group definitions are copied too, so each group keeps a single instance;
  * nested components stay shared. Nested instances get new ids.
@@ -195,7 +201,7 @@ export function duplicateDefinition(s: Scene, id: DefinitionId, patch: Partial<P
     [iid, next] = newId(next, 'i');
     instances.set(iid, { ...i, id: iid, definitionId });
   }
-  return addDefinition(next, { kind: d.kind, name: d.name, model: d.model, instances, ...patch });
+  return addDefinition(next, { kind: d.kind, name: d.name, model: d.model, instances, guides: d.guides, ...patch });
 }
 
 /** Bounds of a definition's geometry and nested instances in its local space, or null when it is empty. */

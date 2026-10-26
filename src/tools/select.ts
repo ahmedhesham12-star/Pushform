@@ -27,6 +27,7 @@ export interface SelectionItems {
   faces?: Iterable<string>;
   edges?: Iterable<string>;
   instances?: Iterable<InstanceId>;
+  guides?: Iterable<string>;
 }
 
 /**
@@ -39,6 +40,7 @@ export function applySelection(selection: Selection, mode: SelectionMode, items:
     selection.faces.clear();
     selection.edges.clear();
     selection.instances.clear();
+    selection.guides.clear();
   }
   const change = (set: Set<string>, ids: Iterable<string> | undefined) => {
     for (const id of ids ?? []) {
@@ -50,6 +52,7 @@ export function applySelection(selection: Selection, mode: SelectionMode, items:
   change(selection.faces, items.faces);
   change(selection.edges, items.edges);
   change(selection.instances, items.instances);
+  change(selection.guides, items.guides);
 }
 
 /** Edges with the rest of their curves, so the selection always holds whole curves. */
@@ -57,7 +60,8 @@ const withCurves = (m: Model, edges: Iterable<string>) => new Set([...edges].fla
 
 /**
  * The Select tool, with SketchUp's methods:
- * - click selects a face, an edge (a whole curve) or a group or component;
+ * - click selects a face, an edge (a whole curve), a guide, or a group or
+ *   component;
  * - double-click a face for the face and its edges, an edge for the edge and
  *   its faces, a group or component to edit it;
  * - triple-click for everything connected to the face or edge;
@@ -75,7 +79,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
   /** Total area of the selected faces, or total length of the selected edges. */
   const showSize = () => {
     const m = model();
-    const only = (n: number) => n > 0 && n === selection.faces.size + selection.edges.size + selection.instances.size;
+    const only = (n: number) => n > 0 && n === selection.faces.size + selection.edges.size + selection.instances.size + selection.guides.size;
     if (only(selection.faces.size)) {
       const area = [...selection.faces].reduce((s, f) => s + faceArea(m, f), 0);
       ctx.setMeasurement(t('measure.area'), formatArea(area, ctx.units()));
@@ -107,6 +111,8 @@ export function createSelectTool(ctx: ToolContext): Tool {
     const m = model();
     if (hit.kind === 'instance') {
       applySelection(selection, mode, { instances: [hit.id] }, !selection.instances.has(hit.id));
+    } else if (hit.kind === 'guide') {
+      applySelection(selection, mode, { guides: [hit.id] }, !selection.guides.has(hit.id));
     } else if (hit.kind === 'face') {
       applySelection(selection, mode, { faces: [hit.id] }, !selection.faces.has(hit.id));
     } else {
@@ -116,7 +122,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
 
   /** Double click: a face with its edges, an edge with its faces; a group or component opens. */
   const doubleClick = (hit: Picked | null, mode: SelectionMode) => {
-    if (!hit || hit.kind === 'outside') return click(hit, mode);
+    if (!hit || hit.kind === 'outside' || hit.kind === 'guide') return click(hit, mode);
     if (hit.kind === 'instance') return ctx.openContext(hit.id);
     const m = model();
     // The first click already toggled the entity, so a toggle adds here.
@@ -131,15 +137,15 @@ export function createSelectTool(ctx: ToolContext): Tool {
 
   /** Triple click: everything connected to the face or edge. */
   const tripleClick = (hit: Picked | null, mode: SelectionMode) => {
-    if (!hit || hit.kind === 'outside') return click(hit, mode);
+    if (!hit || hit.kind === 'outside' || hit.kind === 'guide') return click(hit, mode);
     if (hit.kind === 'instance') return click(hit, mode);
     const m = model();
     const all = connectedGeometry(m, hit.kind === 'face' ? [hit.id] : [], hit.kind === 'edge' ? [hit.id] : []);
     applySelection(selection, mode === 'toggle' ? 'add' : mode, { faces: all.faceIds, edges: withCurves(m, all.edgeIds) });
   };
 
-  /** Faces, edges and instances of the open context, as seen on screen. */
-  const windowItems = (): { faces: WindowItem[]; edges: WindowItem[]; instances: WindowItem[] } => {
+  /** Faces, edges, instances and guides of the open context, as seen on screen. */
+  const windowItems = (): { faces: WindowItem[]; edges: WindowItem[]; instances: WindowItem[]; guides: WindowItem[] } => {
     const vp = ctx.viewport;
     const frame = vp.frame;
     const screen = (p: Vector3): ScreenPoint => {
@@ -174,7 +180,22 @@ export function createSelectTool(ctx: ToolContext): Tool {
         .map((e) => [screen(new Vector3(...e.a)), screen(new Vector3(...e.b))] as const);
       instances.push({ id: i.id, points, segments });
     }
-    return { faces, edges, instances };
+    // Guide lines reach past any window, so only a crossing takes them; guide points are points.
+    const guides: WindowItem[] = [];
+    if (vp.guidesVisible) {
+      for (const [id, g] of pathDefinition(scene, context)?.guides ?? []) {
+        const p = frame.toWorld(g.point);
+        if (g.kind === 'point') {
+          guides.push({ id, points: [screen(p)], segments: [] });
+          continue;
+        }
+        const seg = vp.guideSegment(p, frame.dirToWorld(g.direction));
+        if (!seg) continue;
+        const [a, b] = seg.map(screen) as [ScreenPoint, ScreenPoint];
+        guides.push({ id, points: [a, b], segments: [[a, b] as const] });
+      }
+    }
+    return { faces, edges, instances, guides };
   };
 
   const windowSelect = (end: { x: number; y: number }) => {
@@ -189,6 +210,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
       faces: windowHits(items.faces, rect, crossing),
       edges,
       instances: windowHits(items.instances, rect, crossing),
+      guides: windowHits(items.guides, rect, crossing),
     });
   };
 
@@ -198,7 +220,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
     keepsSelection: true,
     hint: () => {
       const add = t(isMac() ? 'key.option' : 'key.ctrl');
-      const any = selection.faces.size || selection.edges.size || selection.instances.size;
+      const any = selection.faces.size || selection.edges.size || selection.instances.size || selection.guides.size;
       return t(any ? 'status.select.selected' : 'status.select.idle', { add });
     },
     measurementLabel: () => t('measure.area'),

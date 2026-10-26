@@ -193,15 +193,17 @@ Plugins call `registry.register(def)` and extend the typed `CommandMap` through 
 - New tools get it by declaring their fields.
 
 ### Document format
-`.pushform` files are this JSON, version 3 (milestone 3): a scene of definitions, each holding a version 2 topology model, and the instances placed in them.
+`.pushform` files are this JSON, version 4 (milestone 4): a scene of definitions, each holding a version 2 topology model, the instances placed in them and its guides. Version 3 (milestone 3) is the same without guides and still opens.
 ```
-{ format: 'pushform', version: 3, units: { unit, precision },
+{ format: 'pushform', version: 4, units: { unit, precision },
   scene: { root: definition id, next,
            definitions: { id: { kind: 'root' | 'group' | 'component', name,
                                 model: <version 2 model, below>,
                                 instances: { id: { definition, name,
                                   transform: { rotation: [x, y, z, w], translation: [x, y, z],
-                                               scale: [1, 1, 1] } } } } } } }
+                                               scale: [1, 1, 1] } } },
+                                guides?: { id: { kind: 'line', point, direction }
+                                              | { kind: 'point', point } } } } } }
 
 model: { kind: 'topology', version: 2, next,
          vertices: { id: [x, y, z] },
@@ -209,7 +211,7 @@ model: { kind: 'topology', version: 2, next,
          faces: { id: { normal, outer: [vertex ids], holes: [[vertex ids]] } },
          curves: { id: { kind, edges, segments, center, normal, radius } } }
 ```
-Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] until Flip and Scale arrive in milestone 4, instances only of existing non-root definitions, no nesting cycles. **Version 2 documents** (milestone 2) load as the root definition; the conversion is tested against a milestone 2 autosave (`tests/fixtures/milestone2-autosave.json`).
+Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] until Flip and Scale arrive in milestone 4, instances only of existing non-root definitions, no nesting cycles, guide lines with a non-zero direction (stored as a unit vector). **Version 2 documents** (milestone 2) load as the root definition; the conversion is tested against a milestone 2 autosave (`tests/fixtures/milestone2-autosave.json`).
 
 **Version 1 documents** (milestone 1 autosaves, face-loop models) are converted on load:
 - Corners at the same position become one shared vertex, and every loop side becomes a shared edge.
@@ -294,6 +296,11 @@ Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] unti
 | 2026-10-26 | Folding (milestone 4): a stretched face bent out of its plane is triangulated where it was, diagonals are flipped until every fold is a ridge seen from the face's front, and triangles left in one plane join into one piece; the largest piece keeps the face's id. Fold edges are soft only when the face has a soft edge (part of a smooth surface). A fold that would turn a piece over or cross other geometry is refused (`moveCrosses`); `moveBends` is gone | Matches SketchUp 2023 (see "Verified in SketchUp"). |
 | 2026-10-26 | Move with nothing selected takes the endpoint under the pointer on its own, so a corner can be moved; Rotate does not (`core.move` and `core.rotate` take `vertexIds`) | SketchUp parity. Rotate's first click places the center, which often snaps to a corner. |
 | 2026-10-26 | A move is also checked in every face plane (and the ground) through a moved point | Stress sweep 5 with corners (seed 5441): a moved point landed inside an edge that stayed put. |
+| 2026-10-26 | Guides belong to a definition, next to its geometry, in its local coordinates (document version 4); copies of a group keep them, and exploding moves them up to the parent | Guides live in the editing context (product owner); keeping them out of the kernel means they never split or join geometry. |
+| 2026-10-26 | Commands: `core.addGuideLine` (through two points), `core.addGuideOffset` (parallel to an edge, amend: distance), `core.addGuidePoint` (amend: distance), `core.addGuideAngle` (the Protractor, amend: angle), `core.deleteGuides` (the open context); `core.erase` takes `guideIds` | One command per way of making a guide, so each amends what was typed. |
+| 2026-10-26 | Guide lines are drawn dashed, cut to the part of the line in view (rebuilt when the camera moves); guide points as crosses of constant screen size | Infinite lines cannot be drawn, and lines passing behind the camera did not draw at all. |
+| 2026-10-26 | Inference with guides: guide points and intersections (guide with guide, guide with edge, near the pointer) rank with endpoints; points on guide lines come after points on edges | SketchUp's order; a guide line also gives a rectangle its direction, like an edge. |
+| 2026-10-26 | Hiding guides (View menu) is a setting of this device, not of the file; hidden guides are not drawn, picked or snapped to. Delete All Guides acts on the open editing context | The product owner approved these defaults with the milestone 4 plan. |
 
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
@@ -325,7 +332,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 | Double-click a face / an edge | The face and its edges / the edge and its faces |
 | Triple-click a face or edge | Everything connected to it |
 | Drag left to right / right to left | Window (fully inside, solid outline) / crossing (touched, dashed outline) |
-| Ctrl+A | Select everything in the open context |
+| Ctrl+A | Select everything in the open context (guides too, when shown) |
 | Esc with nothing selected | Close the group or component being edited |
 | Short right click | Context menu (milestone 3) |
 

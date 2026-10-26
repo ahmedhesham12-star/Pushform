@@ -4,6 +4,7 @@
  * to everything visible, inside the editing context or not.
  */
 import { listEdges, snapPoints, type Model, type Point3, type SnapKind } from '../kernel';
+import { transformGuide, type Guide, type GuideId } from './guides';
 import { placedInstances, rootDefinition, type Definition, type InstanceId, type Scene } from './scene';
 import { applyPoint, IDENTITY, type Transform } from './transform';
 
@@ -67,6 +68,22 @@ export function worldEdges(s: Scene): WorldEdge[] {
     const m = p.definition.model;
     if (!local.has(m)) local.set(m, listEdges(m).filter((e) => !e.soft));
     for (const e of local.get(m)!) out.push({ edgeId: e.id, a: applyPoint(p.world, e.a), b: applyPoint(p.world, e.b), path: p.path });
+  }
+  return out;
+}
+
+export interface WorldGuide {
+  readonly guideId: GuideId;
+  /** The guide in world coordinates. */
+  readonly guide: Guide;
+  readonly path: readonly InstanceId[];
+}
+
+/** The guides of every placement, in world coordinates. */
+export function worldGuides(s: Scene): WorldGuide[] {
+  const out: WorldGuide[] = [];
+  for (const p of placements(s)) {
+    for (const [guideId, g] of p.definition.guides) out.push({ guideId, guide: transformGuide(p.world, g), path: p.path });
   }
   return out;
 }

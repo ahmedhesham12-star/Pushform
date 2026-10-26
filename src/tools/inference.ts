@@ -14,36 +14,48 @@ export interface Inferred {
   kind: MarkerKind;
   /** The axis the point lies on from the start point, if inferred along one. */
   axis: Axis | null;
-  /** The edge the point lies on, when inferred on one (its ends, world). */
+  /** The edge or guide line the point lies on, when inferred on one (two points on it, world). */
   edge?: { a: Vector3; b: Vector3 };
+}
+
+/** A point on a guide line near the pointer, with the line as its edge. */
+function onGuide(ctx: ToolContext): Inferred | null {
+  const g = ctx.viewport.pickGuide('all', ['line']);
+  if (!g?.direction) return null;
+  return { point: g.point.clone(), kind: 'guide', axis: null, edge: { a: g.point.clone(), b: g.point.clone().add(g.direction) } };
 }
 
 /**
  * A point on a drawing plane (Rectangle, Circle, Polygon, and Line on a face
- * or the ground), by inference: an endpoint or midpoint on the plane, else a
- * point on an edge lying in the plane, else `raw` snapped to the grid.
- * Points and edges win over the face whenever they are within the pick
- * tolerance. Shows the inference marker.
+ * or the ground), by inference: an endpoint, midpoint, guide point or
+ * intersection on the plane, else a point on an edge or guide line lying in
+ * the plane, else `raw` snapped to the grid. Points, edges and guides win over
+ * the face whenever they are within the pick tolerance. Shows the inference
+ * marker.
  */
 export function inferOnPlane(ctx: ToolContext, planePoint: Vector3, normal: Vector3, raw: Vector3, fallback: MarkerKind): Inferred {
   const vp = ctx.viewport;
   const onPlane = (p: Vector3) => Math.abs(p.clone().sub(planePoint).dot(normal)) < ON_PLANE;
   const snap = vp.nearestSnap(onPlane);
   const edge = snap ? null : vp.pickEdge('all');
+  const guide = snap || (edge && onPlane(edge.point)) ? null : onGuide(ctx);
   const found: Inferred = snap
     ? { point: snap.point.clone(), kind: snap.kind, axis: null }
     : edge && onPlane(edge.point)
       ? { point: edge.point.clone(), kind: 'edge', axis: null, edge: { a: edge.a, b: edge.b } }
-      : { point: vp.gridPoint(planePoint, normal, raw), kind: fallback, axis: null };
+      : guide && onPlane(guide.point)
+        ? guide
+        : { point: vp.gridPoint(planePoint, normal, raw), kind: fallback, axis: null };
   vp.showMarker(found.point, found.kind);
   return found;
 }
 
 /**
  * Where a point goes by inference, shared by the Line, Move and Rotate tools:
- * an axis lock first, then endpoints and midpoints, points on edges, the axes
- * through `start`, and finally the face or ground under the pointer (snapped
- * to the grid). Everything visible counts, including geometry outside the
+ * an axis lock first, then endpoints, midpoints, guide points and
+ * intersections, points on edges, points on guide lines, the axes through
+ * `start`, and finally the face or ground under the pointer (snapped to the
+ * grid). Everything visible counts, including geometry outside the
  * editing context; the viewport skips what it was told to exclude.
  */
 export function inferPoint(ctx: ToolContext, start: Vector3 | null, lock: Axis | null): Inferred | null {
@@ -63,6 +75,8 @@ export function inferPoint(ctx: ToolContext, start: Vector3 | null, lock: Axis |
   if (snap) return { point: snap.point.clone(), kind: snap.kind, axis: null };
   const edge = vp.pickEdge('all');
   if (edge) return { point: edge.point.clone(), kind: 'edge', axis: null, edge: { a: edge.a, b: edge.b } };
+  const guide = onGuide(ctx);
+  if (guide) return guide;
   if (start) {
     const a = vp.axisInference(start);
     if (a) return onAxis(start, a.axis, a.point);

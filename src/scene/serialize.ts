@@ -1,4 +1,5 @@
 import { deserialize, serialize, type Model, type SerializedTopology } from '../kernel';
+import { guideLine, guidePoint, type Guide } from './guides';
 import { contains, createScene, type Definition, type DefinitionKind, type Instance, type Scene } from './scene';
 import type { Quat, Transform } from './transform';
 
@@ -8,7 +9,13 @@ export interface SerializedTransform {
   scale: number[];
 }
 
-/** Version 3 scene: definitions, each with its topology and the instances inside it. */
+export type SerializedGuide = { kind: 'line'; point: number[]; direction: number[] } | { kind: 'point'; point: number[] };
+
+/**
+ * The scene of a version 3 or 4 document: definitions, each with its topology
+ * and the instances inside it. Version 4 (milestone 4) adds guides, left out
+ * when a definition has none.
+ */
 export interface SerializedScene {
   root: string;
   next: number;
@@ -19,6 +26,7 @@ export interface SerializedScene {
       name: string;
       model: SerializedTopology;
       instances: Record<string, { definition: string; name: string; transform: SerializedTransform }>;
+      guides?: Record<string, SerializedGuide>;
     }
   >;
 }
@@ -35,6 +43,13 @@ export function serializeScene(s: Scene): SerializedScene {
       };
     }
     definitions[id] = { kind: d.kind, name: d.name, model: serialize(d.model), instances };
+    if (d.guides.size) {
+      const guides: Record<string, SerializedGuide> = {};
+      for (const [gid, g] of d.guides) {
+        guides[gid] = g.kind === 'line' ? { kind: 'line', point: [...g.point], direction: [...g.direction] } : { kind: 'point', point: [...g.point] };
+      }
+      definitions[id].guides = guides;
+    }
   }
   return { root: s.rootId, next: s.next, definitions };
 }
@@ -53,7 +68,15 @@ function transform(v: unknown): Transform | null {
   return { rotation: q as unknown as Quat, translation: v.translation as unknown as Transform['translation'], scale: [1, 1, 1] };
 }
 
-/** Validate and load a version 3 scene. Returns null for invalid data. */
+function guide(v: unknown): Guide | null {
+  if (!isObject(v) || !numbers(v.point, 3)) return null;
+  const point = v.point as unknown as [number, number, number];
+  if (v.kind === 'point') return guidePoint(point);
+  if (v.kind === 'line' && numbers(v.direction, 3)) return guideLine(point, v.direction as unknown as [number, number, number]);
+  return null;
+}
+
+/** Validate and load a version 3 or 4 scene. Returns null for invalid data. */
 export function deserializeScene(data: unknown): Scene | null {
   if (!isObject(data) || typeof data.root !== 'string' || !Number.isInteger(data.next) || !isObject(data.definitions)) return null;
   const definitions = new Map<string, Definition>();
@@ -68,7 +91,16 @@ export function deserializeScene(data: unknown): Scene | null {
       if (!t) return null;
       instances.set(iid, { id: iid, definitionId: ri.definition, name: ri.name, transform: t });
     }
-    definitions.set(id, { id, kind: raw.kind as DefinitionKind, name: raw.name, model, instances });
+    const guides = new Map<string, Guide>();
+    if (raw.guides !== undefined) {
+      if (!isObject(raw.guides)) return null;
+      for (const [gid, rg] of Object.entries(raw.guides)) {
+        const g = guide(rg);
+        if (!g) return null;
+        guides.set(gid, g);
+      }
+    }
+    definitions.set(id, { id, kind: raw.kind as DefinitionKind, name: raw.name, model, instances, guides });
   }
   const root = definitions.get(data.root);
   if (!root || root.kind !== 'root') return null;

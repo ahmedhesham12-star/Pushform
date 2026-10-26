@@ -4,6 +4,8 @@ import { deserializeDocument, serializeDocument, type PushformDocument } from '.
 const AUTOSAVE_KEY = 'pushform.autosave.v1';
 /** The open file's name and whether the autosaved document has changes not saved to it. */
 const FILE_KEY = 'pushform.file.v1';
+/** View settings of this device (not saved in files), such as whether guides are shown. */
+const VIEW_KEY = 'pushform.view.v1';
 
 export function loadAutosave(): PushformDocument | null {
   try {
@@ -43,6 +45,28 @@ export function loadFileState(): FileState {
 export function saveFileState(state: FileState): void {
   try {
     localStorage.setItem(FILE_KEY, JSON.stringify(state));
+  } catch {
+    // As for the autosave.
+  }
+}
+
+export interface ViewSettings {
+  guides: boolean;
+}
+
+export function loadViewSettings(): ViewSettings {
+  try {
+    const raw = JSON.parse(localStorage.getItem(VIEW_KEY) ?? 'null') as Partial<ViewSettings> | null;
+    if (raw && typeof raw.guides === 'boolean') return { guides: raw.guides };
+  } catch {
+    // Unreadable: fall through.
+  }
+  return { guides: true };
+}
+
+export function saveViewSettings(settings: ViewSettings): void {
+  try {
+    localStorage.setItem(VIEW_KEY, JSON.stringify(settings));
   } catch {
     // As for the autosave.
   }

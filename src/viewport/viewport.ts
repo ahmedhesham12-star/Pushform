@@ -27,15 +27,19 @@ import {
   pathDefinition,
   pathTransform,
   worldEdges,
+  worldGuides,
   worldSnapPoints,
   type InstanceId,
   type Scene as PushformScene,
   type WorldEdge,
+  type WorldGuide,
 } from '../scene';
 import { gridStep, isImperial, MM_PER, type UnitSettings } from '../units';
 import { OrbitCamera } from './camera';
 import { toPoint, toVector } from './convert';
 import { Frame } from './frame';
+import { meet, MEET } from './meet';
+import { guideSegment, GuidesView } from './guidesView';
 import { InstancesView } from './instancesView';
 import { SnapMarker, type MarkerKind } from './marker';
 import { ModelView, type EdgeHighlight } from './modelView';
@@ -51,6 +55,8 @@ const MAX_GROUND_DISTANCE = 300_000;
 const SNAP_RADIUS_PX = 14;
 /** How close (pixels) the pointer must be to an edge to pick it. */
 const EDGE_PICK_PX = 6;
+/** Lines this close (pixels) to the pointer are tried for intersection points. */
+const INTERSECT_PX = 24;
 
 const PREVIEW_COLOR = 0x1d5c86;
 const previewFill = new MeshBasicMaterial({
@@ -107,17 +113,29 @@ export interface EdgeHit {
  * geometry outside the context (faded; `path` says where it belongs).
  */
 export type Picked =
-  | { kind: 'face' | 'edge'; id: string; point: Vector3 }
+  | { kind: 'face' | 'edge' | 'guide'; id: string; point: Vector3 }
   | { kind: 'instance'; id: InstanceId; point: Vector3 }
   | { kind: 'outside'; path: readonly InstanceId[]; point: Vector3 };
 
 export interface SnapCandidate {
   point: Vector3;
-  kind: 'end' | 'mid';
+  /** Endpoint, midpoint, guide point, or where a guide crosses a guide or an edge. */
+  kind: 'end' | 'mid' | 'guidePoint' | 'intersection';
   /** Instance path of the geometry the point belongs to. */
   path: readonly InstanceId[];
   /** The vertex at an endpoint, in the model of the definition at `path`. */
   vertex?: string;
+}
+
+/** A guide near the pointer: the point on a guide line closest to it, or a guide point. */
+export interface GuideHit {
+  guideId: string;
+  kind: 'line' | 'point';
+  point: Vector3;
+  /** A guide line's direction (unit, world). */
+  direction?: Vector3;
+  path: readonly InstanceId[];
+  relation: 'context' | 'inside' | 'outside';
 }
 
 /** Entities of the editing context that picking and inference skip (the selection being moved). */
@@ -141,6 +159,9 @@ export class Viewport {
   private readonly modelView = new ModelView();
   private readonly instancesView = new InstancesView();
   private readonly preview = new Group();
+  private readonly guidesView = new GuidesView();
+  private guideList: WorldGuide[] = [];
+  private guidesOn = true;
   private frameValue = Frame.ROOT;
   private context: readonly InstanceId[] = [];
   private shown: PushformScene | null = null;
@@ -185,7 +206,7 @@ export class Viewport {
       axis(AXIS_COLOR.z, new Vector3(0, 0, -1)),
       axis(AXIS_COLOR.y, new Vector3(0, 1, 0)),
     );
-    this.scene.add(this.modelView.group, this.instancesView.group, this.previewModel.group, this.previewInstances.group, this.preview);
+    this.scene.add(this.modelView.group, this.instancesView.group, this.previewModel.group, this.previewInstances.group, this.guidesView.group, this.preview);
     this.showPreviewMeshes(false);
 
     new ResizeObserver(() => this.resize()).observe(container);
@@ -202,6 +223,7 @@ export class Viewport {
     this.pending = true;
     requestAnimationFrame(() => {
       this.pending = false;
+      this.guidesView.update(this.camera.camera, this.camera.target);
       this.renderer.render(this.scene, this.camera.camera);
     });
   }
@@ -221,6 +243,7 @@ export class Viewport {
     this.contextModel = def.model;
     this.modelView.build(def.model, this.frameValue.matrix);
     this.instancesView.build(scene, context);
+    this.showGuideList();
     this.showPreviewMeshes(false);
     this.requestRender();
   }
@@ -323,6 +346,41 @@ export class Viewport {
   setSnapTargets(scene: PushformScene): void {
     this.snaps = worldSnapPoints(scene).map((s) => ({ point: toVector(s.point), kind: s.kind, path: s.path, ...(s.vertex ? { vertex: s.vertex } : {}) }));
     this.worldEdgeList = worldEdges(scene);
+    this.guideList = worldGuides(scene);
+    this.showGuideList();
+  }
+
+  /** Show or hide guides; hidden guides are not drawn, picked or snapped to. */
+  setGuidesVisible(on: boolean): void {
+    this.guidesOn = on;
+    this.guidesView.group.visible = on;
+    this.requestRender();
+  }
+
+  get guidesVisible(): boolean {
+    return this.guidesOn;
+  }
+
+  private showGuideList(): void {
+    this.guidesView.show(this.guideList.map((g) => ({ id: g.guideId, path: g.path, faded: contextRelation(g.path, this.context) !== 'context', guide: g.guide })));
+    this.requestRender();
+  }
+
+  /** The drawn part of a guide line (world), as window selection sees it; null when out of view. */
+  guideSegment(point: Vector3, direction: Vector3): [Vector3, Vector3] | null {
+    return guideSegment(point, direction.clone().normalize(), this.camera.camera, this.camera.target);
+  }
+
+  /** Guides of the editing context in highlight colors. */
+  highlightGuides(guides: ReadonlyMap<string, EdgeHighlight>): void {
+    this.guidesView.highlight(guides);
+    this.requestRender();
+  }
+
+  /** Guide points as inference points, while guides are shown. */
+  private get guidePoints(): SnapCandidate[] {
+    if (!this.guidesOn) return [];
+    return this.guideList.filter((g) => g.guide.kind === 'point').map((g) => ({ point: toVector(g.guide.point), kind: 'guidePoint', path: g.path }));
   }
 
   get snapCandidates(): readonly SnapCandidate[] {
@@ -408,13 +466,79 @@ export class Viewport {
   }
 
   /**
+   * The guide nearest the pointer on screen, within EDGE_PICK_PX, that no face
+   * hides: guide points before lines. Scope 'context' looks only at the
+   * editing context's guides (to select or erase them); 'all' includes every
+   * placement's (for inference). Nothing while guides are hidden.
+   */
+  pickGuide(scope: 'context' | 'all' = 'context', kinds: readonly ('line' | 'point')[] = ['point', 'line']): GuideHit | null {
+    if (!this.guidesOn) return null;
+    const { x, y } = this.picker.mouse;
+    const near: { px: number; hit: GuideHit }[] = [];
+    for (const g of this.guideList) {
+      const relation = contextRelation(g.path, this.context);
+      if ((scope === 'context' && relation !== 'context') || !kinds.includes(g.guide.kind)) continue;
+      const direction = g.guide.kind === 'line' ? toVector(g.guide.direction) : undefined;
+      const point = direction ? this.closestOnLine(toVector(g.guide.point), direction) : toVector(g.guide.point);
+      if (!point) continue;
+      const s = this.picker.toScreen(point);
+      if (s.z > 1) continue;
+      // Points win over lines: a line counts as farther by the pick distance.
+      const px = Math.hypot(s.x - x, s.y - y) + (g.guide.kind === 'line' ? EDGE_PICK_PX : 0);
+      if (px < 2 * EDGE_PICK_PX) near.push({ px, hit: { guideId: g.guideId, kind: g.guide.kind, point, ...(direction ? { direction } : {}), path: g.path, relation } });
+    }
+    near.sort((a, b) => a.px - b.px);
+    return near.find((n) => !this.hidden(n.hit.point))?.hit ?? null;
+  }
+
+  /**
+   * Where guide lines cross each other or an edge, near the pointer: inference
+   * points like endpoints. Lines in 3D cross only when they pass within MEET.
+   */
+  private intersections(): SnapCandidate[] {
+    if (!this.guidesOn) return [];
+    const { x, y } = this.picker.mouse;
+    const nearPointer = (p: Vector3 | null) => {
+      if (!p) return false;
+      const s = this.picker.toScreen(p);
+      return s.z <= 1 && Math.hypot(s.x - x, s.y - y) < INTERSECT_PX;
+    };
+    const lines: { p: Vector3; d: Vector3; path: readonly InstanceId[] }[] = [];
+    for (const g of this.guideList) {
+      if (g.guide.kind !== 'line') continue;
+      const l = { p: toVector(g.guide.point), d: toVector(g.guide.direction), path: g.path };
+      if (nearPointer(this.closestOnLine(l.p, l.d))) lines.push(l);
+    }
+    if (!lines.length) return [];
+    const edges = this.worldEdgeList
+      .map((e) => ({ a: toVector(e.a), b: toVector(e.b), path: e.path }))
+      .filter((e) => !this.isExcluded(e.path) && nearPointer(this.closestOnSegment(e.a, e.b)));
+    const out: SnapCandidate[] = [];
+    lines.forEach((l, i) => {
+      for (const m of lines.slice(i + 1)) {
+        const p = meet(l.p, l.d, m.p, m.d);
+        if (p) out.push({ point: p.point, kind: 'intersection', path: l.path });
+      }
+      for (const e of edges) {
+        const len = e.a.distanceTo(e.b);
+        const p = meet(l.p, l.d, e.a, e.b.clone().sub(e.a).normalize());
+        if (p && p.t >= -MEET && p.t <= len + MEET) out.push({ point: p.point, kind: 'intersection', path: e.path });
+      }
+    });
+    return out;
+  }
+
+  /**
    * The entity under the pointer: an edge of the context when one is close,
-   * otherwise whatever face is in front: the context's, an instance in it, or
-   * geometry outside it. Edges of instances count when no face is hit.
+   * then a guide of the context, otherwise whatever face is in front: the
+   * context's, an instance in it, or geometry outside it. Edges of instances
+   * count when no face is hit.
    */
   pick(): Picked | null {
     const e = this.pickEdge('all');
     if (e?.relation === 'context') return { kind: 'edge', id: e.edgeId, point: e.point };
+    const g = this.pickGuide('context');
+    if (g) return { kind: 'guide', id: g.guideId, point: g.point };
     const hit = this.hits()[0];
     const faceId = hit?.object.userData.faceId as string | undefined;
     if (hit && faceId) return { kind: 'face', id: faceId, point: hit.point.clone() };
@@ -479,7 +603,7 @@ export class Viewport {
   nearestSnap(filter: (p: Vector3) => boolean): SnapCandidate | null {
     const { x, y } = this.picker.mouse;
     const near: { d: number; s: SnapCandidate }[] = [];
-    for (const s of this.snaps) {
+    for (const s of [...this.snaps, ...this.guidePoints, ...this.intersections()]) {
       if (!filter(s.point) || this.isExcluded(s.path)) continue;
       if (this.excludedPoints.some((x) => x.distanceToSquared(s.point) < 1e-12)) continue;
       const p = this.picker.toScreen(s.point);
@@ -677,3 +801,4 @@ function axis(color: number, dir: Vector3): Group {
   g.add(dashed);
   return g;
 }
+

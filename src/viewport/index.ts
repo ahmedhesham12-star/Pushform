@@ -10,6 +10,7 @@ export {
 } from './viewport';
 export { Frame } from './frame';
 export type { Highlight, EdgeHighlight } from './modelView';
+export type { ShownGuide } from './guidesView';
 export type { MarkerKind } from './marker';
 export type { FaceHit } from './picking';
 export { toPoint, toVector } from './convert';

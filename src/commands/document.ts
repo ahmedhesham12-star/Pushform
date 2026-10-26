@@ -22,13 +22,15 @@ export interface PushformDocument {
 }
 
 /**
- * Version 3 holds a scene of definitions and instances. Version 2 (milestone 2)
- * held one topology model and version 1 (milestone 1) a face-loop model; both
- * are converted when loaded, becoming the root definition.
+ * Version 4 (milestone 4) holds a scene of definitions and instances, with
+ * guides. Version 3 (milestone 3) is the same without guides. Version 2
+ * (milestone 2) held one topology model and version 1 (milestone 1) a
+ * face-loop model; both are converted when loaded, becoming the root
+ * definition.
  */
 export interface SerializedDocument {
   format: 'pushform';
-  version: 3;
+  version: 4;
   units: UnitSettings;
   scene: SerializedScene;
 }
@@ -54,16 +56,16 @@ export function withDefinitionModel(doc: PushformDocument, id: DefinitionId | un
 }
 
 export function serializeDocument(doc: PushformDocument): SerializedDocument {
-  return { format: 'pushform', version: 3, units: { ...doc.units }, scene: serializeScene(doc.scene) };
+  return { format: 'pushform', version: 4, units: { ...doc.units }, scene: serializeScene(doc.scene) };
 }
 
-/** Validate and load a saved document (version 1, 2 or 3). Returns null when the data is not a valid document. */
+/** Validate and load a saved document (version 1 to 4). Returns null when the data is not a valid document. */
 export function deserializeDocument(data: unknown): PushformDocument | null {
   if (typeof data !== 'object' || data === null) return null;
   const d = data as { format?: unknown; version?: unknown; model?: unknown; scene?: unknown; units?: Partial<UnitSettings> };
-  if (d.format !== 'pushform' || (d.version !== 1 && d.version !== 2 && d.version !== 3)) return null;
+  if (d.format !== 'pushform' || ![1, 2, 3, 4].includes(d.version as number)) return null;
   let scene: Scene | null;
-  if (d.version === 3) {
+  if (d.version === 3 || d.version === 4) {
     scene = deserializeScene(d.scene);
   } else {
     const model = deserialize(d.model);

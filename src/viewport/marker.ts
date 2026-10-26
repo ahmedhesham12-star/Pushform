@@ -1,6 +1,18 @@
 import { t } from '../i18n';
 
-export type MarkerKind = 'end' | 'mid' | 'edge' | 'face' | 'ground' | 'plane' | 'axisX' | 'axisY' | 'axisZ';
+export type MarkerKind =
+  | 'end'
+  | 'mid'
+  | 'edge'
+  | 'face'
+  | 'ground'
+  | 'plane'
+  | 'axisX'
+  | 'axisY'
+  | 'axisZ'
+  | 'guide'
+  | 'guidePoint'
+  | 'intersection';
 
 const LABELS: Record<MarkerKind, (() => string) | null> = {
   end: () => t('snap.endpoint'),
@@ -12,6 +24,9 @@ const LABELS: Record<MarkerKind, (() => string) | null> = {
   axisX: () => t('snap.onRedAxis'),
   axisY: () => t('snap.onBlueAxis'),
   axisZ: () => t('snap.onGreenAxis'),
+  guide: () => t('snap.onGuide'),
+  guidePoint: () => t('snap.guidePoint'),
+  intersection: () => t('snap.intersection'),
 };
 
 const COLORS: Record<MarkerKind, string> = {
@@ -24,6 +39,9 @@ const COLORS: Record<MarkerKind, string> = {
   axisX: 'var(--axis-x)',
   axisY: 'var(--axis-y)',
   axisZ: 'var(--axis-z)',
+  guide: 'var(--edge-snap)',
+  guidePoint: 'var(--end)',
+  intersection: 'var(--end)',
 };
 
 /** The inference marker drawn over the canvas at a snapped point. */

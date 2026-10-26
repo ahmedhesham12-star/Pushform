@@ -11,6 +11,19 @@ import {
 } from './drawRegularPolygon';
 import { erase, type EraseInput, type EraseOutput } from './erase';
 import {
+  addGuideAngle,
+  addGuideLine,
+  addGuideOffset,
+  addGuidePoint,
+  deleteGuides,
+  type AddGuideAngleInput,
+  type AddGuideLineInput,
+  type AddGuideOffsetInput,
+  type AddGuidePointInput,
+  type DeleteGuidesInput,
+  type GuideOutput,
+} from './guides';
+import {
   copyInstances,
   explode,
   makeComponent,
@@ -67,6 +80,11 @@ declare module '../types' {
     'core.rotate': { input: RotateInput; output: MoveOutput };
     'core.rotateCopies': { input: RotateCopiesInput; output: MoveOutput };
     'core.offset': { input: OffsetInput; output: OffsetOutput };
+    'core.addGuideLine': { input: AddGuideLineInput; output: GuideOutput };
+    'core.addGuideOffset': { input: AddGuideOffsetInput; output: GuideOutput };
+    'core.addGuidePoint': { input: AddGuidePointInput; output: GuideOutput };
+    'core.addGuideAngle': { input: AddGuideAngleInput; output: GuideOutput };
+    'core.deleteGuides': { input: DeleteGuidesInput; output: { count: number } };
   }
 }
 
@@ -91,9 +109,20 @@ export function registerCoreCommands(registry: CommandRegistry): void {
   registry.register(rotate);
   registry.register(rotateCopies);
   registry.register(offset);
+  registry.register(addGuideLine);
+  registry.register(addGuideOffset);
+  registry.register(addGuidePoint);
+  registry.register(addGuideAngle);
+  registry.register(deleteGuides);
 }
 
 export type {
+  AddGuideAngleInput,
+  AddGuideLineInput,
+  AddGuideOffsetInput,
+  AddGuidePointInput,
+  DeleteGuidesInput,
+  GuideOutput,
   ClearModelInput,
   CopyInstancesInput,
   CopyInstancesOutput,

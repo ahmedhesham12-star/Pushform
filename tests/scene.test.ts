@@ -148,15 +148,15 @@ describe('scene serialization (version 3)', () => {
 });
 
 describe('documents', () => {
-  test('new documents save as version 3 and load back', () => {
+  test('new documents save as version 4 and load back', () => {
     const s = createSession();
     s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 1000, depth: 500 });
     const saved = JSON.parse(JSON.stringify(serializeDocument(s.doc)));
-    expect(saved.version).toBe(3);
+    expect(saved.version).toBe(4);
     expect(serializeDocument(deserializeDocument(saved)!)).toEqual(saved);
   });
 
-  test('a milestone 2 (version 2) autosave becomes the root definition of a version 3 document', () => {
+  test('a milestone 2 (version 2) autosave becomes the root definition of a version 4 document', () => {
     const v2 = JSON.parse(readFileSync(join(__dirname, 'fixtures/milestone2-autosave.json'), 'utf8'));
     expect(v2.version).toBe(2);
     const doc = deserializeDocument(v2)!;
@@ -166,15 +166,15 @@ describe('documents', () => {
     expect(serialize(rootModel(doc))).toEqual(v2.model);
     expect(faceCount(rootModel(doc))).toBe(Object.keys(v2.model.faces).length);
     expect(checkModel(rootModel(doc))).toEqual([]);
-    const v3 = serializeDocument(doc);
-    expect(v3.version).toBe(3);
-    expect(v3.scene.definitions[v3.scene.root]!.model).toEqual(v2.model);
+    const saved = serializeDocument(doc);
+    expect(saved.version).toBe(4);
+    expect(saved.scene.definitions[saved.scene.root]!.model).toEqual(v2.model);
   });
 
-  test('a milestone 1 (version 1) autosave converts through to version 3', () => {
+  test('a milestone 1 (version 1) autosave converts through to version 4', () => {
     const v1 = JSON.parse(readFileSync(join(__dirname, 'fixtures/milestone1-autosave.json'), 'utf8'));
     const doc = deserializeDocument(v1)!;
-    expect(serializeDocument(doc).version).toBe(3);
+    expect(serializeDocument(doc).version).toBe(4);
     expect(faceCount(rootModel(doc))).toBe(Object.keys(v1.model.faces).length);
   });
 

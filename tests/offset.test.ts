@@ -69,28 +69,57 @@ describe('offsetting a face', () => {
     expect([fresh.kind, fresh.segments, fresh.edges.length]).toEqual(['polygon', 6, 6]);
   });
 
-  test('a face with a hole: inward until the new loop would cross the hole', () => {
+  test('a face with a hole: inward shrinks the outer loop and grows the hole', () => {
     const outer = rect(emptyTopology(), 0, 0, 1000, 1000);
     const inner = rect(outer.topology, 400, 400, 200, 200, outer.faceIds[0]!);
     const t = inner.topology;
     const ring = [...t.faces].find(([, f]) => f.holes.length)![0];
     const r = done(offset(t, ring, [], 100));
-    expect(r.topology.faces.size).toBe(3);
-    // At 350 the hole lies inside the new loop (fine); at 450 the new loop would sit inside the hole.
-    done(offset(t, ring, [], 350));
-    expect(offset(t, ring, [], 450)).toEqual({ ok: false, error: 'offsetTooLarge' });
-    // Outward is never limited by the hole.
-    done(offset(t, ring, [], -200));
+    expect(r.edgeIds).toHaveLength(8);
+    // Outer ring 0..100, the offset face 100..900 with a hole 300..700, the ring around the hole, and the inner face.
+    expect(areas(r.topology)).toEqual([40000, 120000, 1000000 - 640000, 640000 - 160000].sort((x, y) => x - y));
+    // At 200 the grown hole would touch the shrunken outer loop.
+    expect(offset(t, ring, [], 200)).toEqual({ ok: false, error: 'offsetTooLarge' });
+    done(offset(t, ring, [], 150));
+  });
+
+  test('a face with a hole: outward grows the outer loop and shrinks the hole, filling the ring inside it', () => {
+    const outer = rect(emptyTopology(), 0, 0, 1000, 1000);
+    const hole = rect(outer.topology, 400, 400, 200, 200, outer.faceIds[0]!);
+    // Without the inner face the hole is open.
+    const holeFace = hole.faceIds.find((f) => hole.topology.faces.get(f)!.holes.length === 0)!;
+    const ring0 = hole.faceIds.find((f) => f !== holeFace) ?? [...hole.topology.faces.keys()].find((f) => f !== holeFace)!;
+    const t: Topology = { ...hole.topology, faces: new Map([...hole.topology.faces].filter(([f]) => f !== holeFace)) };
+    expect(validate(t)).toEqual([]);
+    const r = done(offset(t, ring0, [], -50));
+    // Outer ring 0..-50, the original face, and a ring 450..550 inside the old hole.
+    expect(areas(r.topology)).toEqual([1100 * 1100 - 1000000, 1000000 - 40000, 40000 - 10000].sort((x, y) => x - y));
+    // The hole would collapse at 100.
+    expect(offset(t, ring0, [], -100)).toEqual({ ok: false, error: 'offsetTooLarge' });
+  });
+});
+
+describe('offsetting a face with a round hole', () => {
+  test('the hole grows as a new circle with the same segment count', () => {
+    const outer = rect(emptyTopology(), -1000, -1000, 2000, 2000);
+    const c = drawRegularPolygon(outer.topology, { kind: 'circle', faceId: outer.faceIds[0]!, center: [0, 0, 0], radius: 300, segments: 24 });
+    if (!c.ok) throw new Error(c.error);
+    const ring = [...c.topology.faces].find(([, f]) => f.holes.length)![0];
+    const r = done(offset(c.topology, ring, [], 100));
+    const grown = [...r.topology.curves.values()].filter((x) => x.radius > 300);
+    expect(grown.map((x) => [x.kind, x.segments, x.edges.length])).toEqual([['circle', 24, 24]]);
+    expect(grown[0]!.radius).toBeCloseTo(300 + 100 / Math.cos(Math.PI / 24), 4);
   });
 });
 
 describe('offsetting a face with a hole near its edge', () => {
-  test('the new loop would run across the hole: refused', () => {
+  test('the grown hole would run across the outer loop: refused', () => {
     const outer = rect(emptyTopology(), 0, 0, 1000, 1000);
     const inner = rect(outer.topology, 100, 400, 200, 200, outer.faceIds[0]!);
     const ring = [...inner.topology.faces].find(([, f]) => f.holes.length)![0];
     expect(offset(inner.topology, ring, [], 200)).toEqual({ ok: false, error: 'offsetTooLarge' });
-    done(offset(inner.topology, ring, [], 50));
+    expect(offset(inner.topology, ring, [], 50)).toEqual({ ok: false, error: 'offsetTooLarge' });
+    done(offset(inner.topology, ring, [], 20));
   });
 });
 

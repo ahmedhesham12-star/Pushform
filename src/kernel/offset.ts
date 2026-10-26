@@ -1,10 +1,11 @@
 /**
- * Offset, as the Offset tool does: a copy of a face's outer boundary, or of a
- * chain of edges in one plane, at a distance in that plane. Straight edges
- * keep sharp (mitered) corners; circle and polygon edges come out as a new
- * curve with the same segment count around the same center. The new edges go
- * through the planar engine, so an inward offset splits the face into an
- * inner face and a ring, and an outward one closes a ring around it.
+ * Offset, as the Offset tool does: a copy of a face's loops (its outer
+ * boundary and its holes), or of a chain of edges in one plane, at a distance
+ * in that plane. An inward offset shrinks the outer boundary and grows the
+ * holes; an outward one does the opposite. Straight edges keep sharp
+ * (mitered) corners; circle and polygon edges come out as a new curve with
+ * the same segment count around the same center. The new edges go through
+ * the planar engine, so the face splits into the offset face and rings.
  */
 import { snapPoint, VERTEX_TOLERANCE } from './precision';
 import { add, dot, length, scale, sub, type Vec3 } from './vec';
@@ -24,22 +25,30 @@ import {
   type Plane,
   type Vec2,
 } from './geometry';
-import { insertSegment, rebuildPlane } from './planar';
+import { insertSegment, rebuildPlane, type RegionRule } from './planar';
 import { GROUND, GROUND_NORMAL } from './shapes';
 import type { CurveId, EdgeId, FaceId, Point3, Topology, VertexId } from './types';
 
 export type OffsetError = 'offsetTooLarge' | 'offsetNotChain' | 'noSuchFace';
 
-/** What is offset: points in order (a closed loop is counter-clockwise around the normal), in one plane. */
-export interface OffsetPath {
-  readonly plane: Plane;
-  /** Orientation of new faces, and the side convention: positive distances go to the left, inward for a loop. */
-  readonly normal: Vec3;
+/** A loop or chain of points, with the curve of each segment (points[i] to points[i + 1]), if any. */
+export interface OffsetLoop {
   readonly points: readonly Point3[];
-  readonly closed: boolean;
-  /** Curve of each segment (points[i] to points[i + 1]), if it belongs to one. */
   readonly curves: readonly (CurveId | null)[];
-  /** The face whose boundary this is, if any; its holes limit an inward offset. */
+}
+
+/**
+ * What is offset, in one plane: a main loop or chain (a closed loop is
+ * counter-clockwise around the normal) and, for a face, its holes (clockwise).
+ * Positive distances go to the left of every loop: into the face.
+ */
+export interface OffsetPath extends OffsetLoop {
+  readonly plane: Plane;
+  /** Orientation of new faces, and the side convention. */
+  readonly normal: Vec3;
+  readonly closed: boolean;
+  readonly holes: readonly OffsetLoop[];
+  /** The face whose loops these are, if any. */
   readonly faceId: FaceId | null;
 }
 
@@ -55,17 +64,13 @@ export function offsetPath(t: Topology, faceId: FaceId | null, edgeIds: readonly
   if (faceId !== null) {
     const f = t.faces.get(faceId);
     if (!f) return { ok: false, error: 'noSuchFace' };
-    const loop = f.outer;
+    const asLoop = (loop: readonly VertexId[]): OffsetLoop => ({
+      points: loop.map(P),
+      curves: loop.map((v, i) => curveOf(v, loop[(i + 1) % loop.length]!)),
+    });
     return {
       ok: true,
-      path: {
-        plane: planeThrough(f.normal, P(loop[0]!)),
-        normal: f.normal,
-        points: loop.map(P),
-        closed: true,
-        curves: loop.map((v, i) => curveOf(v, loop[(i + 1) % loop.length]!)),
-        faceId,
-      },
+      path: { plane: planeThrough(f.normal, P(f.outer[0]!)), normal: f.normal, ...asLoop(f.outer), closed: true, holes: f.holes.map(asLoop), faceId },
     };
   }
 
@@ -117,7 +122,7 @@ export function offsetPath(t: Topology, faceId: FaceId | null, edgeIds: readonly
   const points = order.map(P);
   const segments = closed ? order.length : order.length - 1;
   const curves = Array.from({ length: segments }, (_, i) => curveOf(order[i]!, order[(i + 1) % order.length]!));
-  return { ok: true, path: { plane, normal: normal!, points, closed, curves, faceId: null } };
+  return { ok: true, path: { plane, normal: normal!, points, closed, curves, holes: [], faceId: null } };
 }
 
 const left = (d: Vec2): Vec2 => [-d[1], d[0]];
@@ -126,29 +131,36 @@ const unit2 = (d: Vec2): Vec2 => {
   return [d[0] / l, d[1] / l];
 };
 
-/** The path's points in the plane's 2D basis. */
-function flat(path: OffsetPath): { basis: Basis; pts: Vec2[]; level: number } {
+/** The path's loops in the plane's 2D basis: the main one first, then the holes. */
+function flat(path: OffsetPath): { basis: Basis; loops: Vec2[][]; level: number } {
   const basis = planeBasis(path.normal);
-  return { basis, pts: path.points.map((p) => to2(basis, p)), level: dot(path.points[0]!, path.normal) };
+  const loops = [path, ...path.holes].map((l) => l.points.map((p) => to2(basis, p)));
+  return { basis, loops, level: dot(path.points[0]!, path.normal) };
 }
 
+/** Whether a 2D point is inside a face with these loops (inside the outer one, outside every hole). */
+const insideLoops = (q: Vec2, loops: readonly Vec2[][]) => pointInPolygon(q, loops[0]!) && !loops.slice(1).some((h) => pointInPolygon(q, h));
+
 /**
- * Signed distance from a point (projected into the path's plane) to the path:
- * positive inside a loop or to the left of an open chain, as the offset
- * distance that would pass through the point.
+ * Signed distance from a point (projected into the path's plane) to the
+ * nearest loop: positive inside the face (or to the left of an open chain),
+ * as the offset distance that would pass through the point.
  */
 export function offsetDistance(path: OffsetPath, p: Point3): number {
-  const { basis, pts } = flat(path);
+  const { basis, loops } = flat(path);
   const q = to2(basis, p);
-  const n = path.closed ? pts.length : pts.length - 1;
-  let best = { distance: Infinity, i: 0 };
-  for (let i = 0; i < n; i++) {
-    const r = pointSegment(q, pts[i]!, pts[(i + 1) % pts.length]!);
-    if (r.distance < best.distance) best = { distance: r.distance, i };
-  }
-  if (path.closed) return pointInPolygon(q, pts) ? best.distance : -best.distance;
-  const a = pts[best.i]!;
-  const b = pts[best.i + 1]!;
+  let best = { distance: Infinity, a: q, b: q };
+  loops.forEach((pts, k) => {
+    const n = path.closed || k > 0 ? pts.length : pts.length - 1;
+    for (let i = 0; i < n; i++) {
+      const a = pts[i]!;
+      const b = pts[(i + 1) % pts.length]!;
+      const r = pointSegment(q, a, b);
+      if (r.distance < best.distance) best = { distance: r.distance, a, b };
+    }
+  });
+  if (path.closed) return insideLoops(q, loops) ? best.distance : -best.distance;
+  const { a, b } = best;
   const side = (b[0] - a[0]) * (q[1] - a[1]) - (b[1] - a[1]) * (q[0] - a[0]);
   return side >= 0 ? best.distance : -best.distance;
 }
@@ -193,7 +205,8 @@ function offsetFlat(pts: readonly Vec2[], closed: boolean, distance: number): Ve
       if (segmentCrossing(out[i]!, out[(i + 1) % out.length]!, out[j]!, out[(j + 1) % out.length]!)) return null;
     }
   }
-  if (closed && signedArea(out) <= 0) return null;
+  // A closed loop keeps its winding (counter-clockwise outer loops, clockwise holes).
+  if (closed && signedArea(out) * Math.sign(signedArea(pts)) <= 0) return null;
   return out;
 }
 
@@ -201,33 +214,41 @@ export type OffsetResult =
   | { ok: true; topology: Topology; faceIds: FaceId[]; edgeIds: EdgeId[] }
   | { ok: false; error: OffsetError };
 
-/** Offset a face's outer boundary (faceId) or a chain of edges by a signed distance: positive inward or to the left. */
+/** Whether two closed loops cross or touch (a vertex of one on an edge of the other). */
+function loopsMeet(a: readonly Vec2[], b: readonly Vec2[]): boolean {
+  const segs = (l: readonly Vec2[]) => l.map((p, i) => [p, l[(i + 1) % l.length]!] as const);
+  for (const [p, q] of segs(a)) for (const [r, s] of segs(b)) if (segmentCrossing(p, q, r, s)) return true;
+  const touches = (pts: readonly Vec2[], other: readonly Vec2[]) =>
+    pts.some((p) => segs(other).some(([r, s]) => pointSegment(p, r, s).distance <= VERTEX_TOLERANCE));
+  return touches(a, b) || touches(b, a);
+}
+
+/**
+ * Offset a face's loops (faceId) or a chain of edges by a signed distance:
+ * positive into the face (the outer loop shrinks, holes grow) or to the left
+ * of a chain. Refused when a loop would collapse, or loops would cross or touch.
+ */
 export function offset(t: Topology, faceId: FaceId | null, edgeIds: readonly EdgeId[], distance: number): OffsetResult {
   const found = offsetPath(t, faceId, edgeIds);
   if (!found.ok) return found;
   const path = found.path;
-  const { basis, pts, level } = flat(path);
-  const out = offsetFlat(pts, path.closed, distance);
-  if (!out) return { ok: false, error: 'offsetTooLarge' };
-
-  // Inward, the new loop must not run across a hole of the face.
-  const face = path.faceId ? t.faces.get(path.faceId) : undefined;
-  if (face && distance > 0) {
-    const holes = face.holes.map((h) => h.map((v) => to2(basis, t.vertices.get(v)!.p)));
-    for (const h of holes) {
-      for (let i = 0; i < out.length; i++) {
-        for (let j = 0; j < h.length; j++) {
-          if (segmentCrossing(out[i]!, out[(i + 1) % out.length]!, h[j]!, h[(j + 1) % h.length]!)) return { ok: false, error: 'offsetTooLarge' };
-        }
-      }
-      // A hole partly inside the new loop means crossing too; a loop inside a hole is off the face.
-      if (h.some((q) => pointInPolygon(q, out)) && !h.every((q) => pointInPolygon(q, out))) return { ok: false, error: 'offsetTooLarge' };
-      if (out.some((q) => pointInPolygon(q, h))) return { ok: false, error: 'offsetTooLarge' };
+  const { basis, loops, level } = flat(path);
+  const outs: Vec2[][] = [];
+  for (const [k, pts] of loops.entries()) {
+    const out = offsetFlat(pts, path.closed || k > 0, distance);
+    if (!out) return { ok: false, error: 'offsetTooLarge' };
+    outs.push(out);
+  }
+  // The new holes stay inside the new outer loop, apart from it and from each other.
+  for (let i = 1; i < outs.length; i++) {
+    if (!pointInPolygon(outs[i]![0]!, outs[0]!)) return { ok: false, error: 'offsetTooLarge' };
+    for (let j = 0; j < i; j++) {
+      if (loopsMeet(outs[i]!, outs[j]!)) return { ok: false, error: 'offsetTooLarge' };
+      if (j > 0 && (pointInPolygon(outs[i]![0]!, outs[j]!) || pointInPolygon(outs[j]![0]!, outs[i]!))) return { ok: false, error: 'offsetTooLarge' };
     }
   }
 
   const to3 = (q: Vec2): Point3 => snapPoint(add(add(scale(basis.u, q[0]), scale(basis.v, q[1])), scale(path.normal, level)));
-  const points = out.map(to3);
   const d = new Draft(t);
   // Each source curve gets one new curve around the same center.
   const newCurves = new Map<CurveId, CurveId>();
@@ -239,14 +260,26 @@ export function offset(t: Topology, faceId: FaceId | null, edgeIds: readonly Edg
     return newCurves.get(c)!;
   };
   const drawn = new Set<EdgeId>();
-  const segs = path.closed ? points.length : points.length - 1;
-  for (let i = 0; i < segs; i++) {
-    const a = points[i]!;
-    const b = points[(i + 1) % points.length]!;
-    const curve = curveFor(path.curves[i] ?? null, a);
-    for (const e of insertSegment(d, path.plane, a, b, { curve })) drawn.add(e);
-  }
-  const created = new Set(rebuildPlane(d, path.plane, path.normal, drawn).created);
+  [path, ...path.holes].forEach((loop, k) => {
+    const points = outs[k]!.map(to3);
+    const segs = path.closed || k > 0 ? points.length : points.length - 1;
+    for (let i = 0; i < segs; i++) {
+      const a = points[i]!;
+      const b = points[(i + 1) % points.length]!;
+      const curve = curveFor(loop.curves[i] ?? null, a);
+      for (const e of insertSegment(d, path.plane, a, b, { curve })) drawn.add(e);
+    }
+  });
+  // For a face, every region of the offset shape is a face, also a ring inside a hole that shrank;
+  // the new holes stay open.
+  const rule: RegionRule | undefined = path.faceId
+    ? (sample, covers) => {
+        if (covers.length) return undefined;
+        if (insideLoops(sample, outs)) return { owner: null, normal: path.normal };
+        return pointInPolygon(sample, outs[0]!) ? { drop: true } : undefined;
+      }
+    : undefined;
+  const created = new Set(rebuildPlane(d, path.plane, path.normal, drawn, null, new Set(), rule).created);
   // New edges can also lie in another face's plane (an offset along a wall): rebuild those too.
   for (const f of [...d.faces.values()]) {
     const pl = planeThrough(f.normal, d.point(f.outer[0]!));

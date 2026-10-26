@@ -109,6 +109,15 @@ export type Picked =
 export interface SnapCandidate {
   point: Vector3;
   kind: 'end' | 'mid';
+  /** Instance path of the geometry the point belongs to. */
+  path: readonly InstanceId[];
+}
+
+/** Entities of the editing context that picking and inference skip (the selection being moved). */
+export interface PickExclusions {
+  readonly faces: ReadonlySet<string>;
+  readonly edges: ReadonlySet<string>;
+  readonly instances: ReadonlySet<InstanceId>;
 }
 
 /** The 3D view: rendering, camera, picking and inference snapping. */
@@ -127,6 +136,11 @@ export class Viewport {
   private context: readonly InstanceId[] = [];
   private shown: PushformScene | null = null;
   private worldEdgeList: WorldEdge[] = [];
+  /** Previews draw here, so picking and inference keep using the committed scene. */
+  private readonly previewModel = new ModelView();
+  private readonly previewInstances = new InstancesView();
+  private previewing = false;
+  private excluded: PickExclusions | null = null;
   private grid: GridHelper | null = null;
   private imperialGrid = false;
   private snapStep = 50;
@@ -158,7 +172,8 @@ export class Viewport {
       axis(AXIS_COLOR.z, new Vector3(0, 0, -1)),
       axis(AXIS_COLOR.y, new Vector3(0, 1, 0)),
     );
-    this.scene.add(this.modelView.group, this.instancesView.group, this.preview);
+    this.scene.add(this.modelView.group, this.instancesView.group, this.previewModel.group, this.previewInstances.group, this.preview);
+    this.showPreviewMeshes(false);
 
     new ResizeObserver(() => this.resize()).observe(container);
     this.readTheme();
@@ -192,7 +207,58 @@ export class Viewport {
     this.frameValue = new Frame(context.length ? def.id : undefined, pathTransform(scene, context));
     this.modelView.build(def.model, this.frameValue.matrix);
     this.instancesView.build(scene, context);
+    this.showPreviewMeshes(false);
     this.requestRender();
+  }
+
+  /**
+   * Show a command's preview in place of the committed scene. Picking and
+   * inference keep using the committed scene underneath, so geometry being
+   * moved never catches the pointer. showScene or hidePreview ends it.
+   */
+  showPreviewScene(scene: PushformScene): void {
+    const def = pathDefinition(scene, this.context) ?? pathDefinition(scene, [])!;
+    this.previewModel.build(def.model, this.frameValue.matrix);
+    this.previewInstances.build(scene, this.context);
+    this.showPreviewMeshes(true);
+    this.requestRender();
+  }
+
+  hidePreview(): void {
+    if (!this.previewing) return;
+    this.showPreviewMeshes(false);
+    this.requestRender();
+  }
+
+  private showPreviewMeshes(on: boolean): void {
+    this.previewing = on;
+    this.previewModel.group.visible = this.previewInstances.group.visible = on;
+    this.modelView.group.visible = this.instancesView.group.visible = !on;
+  }
+
+  /** Skip these entities in picking and inference (the selection being moved), or nothing. */
+  setExcluded(excluded: PickExclusions | null): void {
+    this.excluded = excluded;
+  }
+
+  /** Whether geometry at `path`, or a face or edge of the context, is excluded. */
+  private isExcluded(path: readonly InstanceId[], face?: string, edge?: string): boolean {
+    const ex = this.excluded;
+    if (!ex) return false;
+    const relation = contextRelation(path, this.context);
+    if (relation === 'inside') return ex.instances.has(path[this.context.length]!);
+    if (relation !== 'context') return false;
+    return (face !== undefined && ex.faces.has(face)) || (edge !== undefined && ex.edges.has(edge));
+  }
+
+  /** Raycast hits on the committed scene, nearest first, without excluded entities. */
+  private hits() {
+    return this.picker.raycaster.intersectObjects(this.allPickables, false).filter((h) => {
+      const faceId = h.object.userData.faceId as string | undefined;
+      if (faceId) return !this.isExcluded(this.context, faceId);
+      const placed = this.instancesView.placementOf(h);
+      return !placed || !this.isExcluded(placed.placement.path);
+    });
   }
 
   /** The editing context's coordinate frame: tools convert world points to its local coordinates. */
@@ -206,7 +272,7 @@ export class Viewport {
    * committed scene only, as in the prototype.
    */
   setSnapTargets(scene: PushformScene): void {
-    this.snaps = worldSnapPoints(scene).map((s) => ({ point: toVector(s.point), kind: s.kind }));
+    this.snaps = worldSnapPoints(scene).map((s) => ({ point: toVector(s.point), kind: s.kind, path: s.path }));
     this.worldEdgeList = worldEdges(scene);
   }
 
@@ -223,8 +289,9 @@ export class Viewport {
     }
   }
 
+  /** Paint a face of what is shown: the preview while there is one, otherwise the committed scene. */
   paint(faceId: string, kind: Parameters<ModelView['paint']>[1]): void {
-    this.modelView.paint(faceId, kind);
+    (this.previewing ? this.previewModel : this.modelView).paint(faceId, kind);
     this.requestRender();
   }
 
@@ -249,14 +316,14 @@ export class Viewport {
 
   /** A face of the editing context under the pointer, unless something else is in front of it. */
   pickFace(): FaceHit | null {
-    const hit = this.picker.raycaster.intersectObjects(this.allPickables, false)[0];
+    const hit = this.hits()[0];
     const faceId = hit?.object.userData.faceId as string | undefined;
     return hit && faceId ? { faceId, point: hit.point.clone() } : null;
   }
 
   /** The nearest point under the pointer on any visible geometry (for zooming). */
   pickPoint(): Vector3 | null {
-    return this.picker.raycaster.intersectObjects(this.allPickables, false)[0]?.point.clone() ?? null;
+    return this.hits()[0]?.point.clone() ?? null;
   }
 
   /**
@@ -272,6 +339,7 @@ export class Viewport {
     const candidates: { px: number; edge: WorldEdge; point: Vector3 }[] = [];
     for (const edge of this.worldEdgeList) {
       if (scope === 'context' && contextRelation(edge.path, this.context) !== 'context') continue;
+      if (this.isExcluded(edge.path, undefined, edge.edgeId)) continue;
       const e = { a: toVector(edge.a), b: toVector(edge.b) };
       const a = this.picker.toScreen(e.a);
       const b = this.picker.toScreen(e.b);
@@ -305,7 +373,7 @@ export class Viewport {
   pick(): Picked | null {
     const e = this.pickEdge('all');
     if (e?.relation === 'context') return { kind: 'edge', id: e.edgeId, point: e.point };
-    const hit = this.picker.raycaster.intersectObjects(this.allPickables, false)[0];
+    const hit = this.hits()[0];
     const faceId = hit?.object.userData.faceId as string | undefined;
     if (hit && faceId) return { kind: 'face', id: faceId, point: hit.point.clone() };
     const placed = hit ? this.instancesView.placementOf(hit) : null;
@@ -345,7 +413,7 @@ export class Viewport {
 
   /** The face under the cursor (the context's, or any group's), or the context's ground when no face is hit. */
   planeUnderCursor(): PlaneHit | null {
-    const hit = this.picker.raycaster.intersectObjects(this.allPickables, false)[0];
+    const hit = this.hits()[0];
     const faceId = hit?.object.userData.faceId as string | undefined;
     if (hit && faceId) {
       const normal = this.normalOf(faceId);
@@ -365,7 +433,7 @@ export class Viewport {
     let bestDistance = SNAP_RADIUS_PX;
     const { x, y } = this.picker.mouse;
     for (const s of this.snaps) {
-      if (!filter(s.point)) continue;
+      if (!filter(s.point) || this.isExcluded(s.path)) continue;
       const p = this.picker.toScreen(s.point);
       if (p.z > 1) continue;
       const d = Math.hypot(p.x - x, p.y - y);

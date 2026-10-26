@@ -18,7 +18,7 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 ## Layers (enforced by tests/architecture.test.ts)
 - `src/kernel`: pure geometry in millimeters: a shared topology of vertices, edges, faces and curves. No three.js, no DOM, no imports from other layers; the only package allowed is `earcut`. Import it only through `src/kernel/index.ts`. The `Model` type is opaque. Kernel tests check `validate()` (via `checkModel`) after every operation.
 - `src/scene`: definitions (each with its own kernel Model), instances and rigid transforms (quaternion, translation in mm, scale fixed at [1, 1, 1] until milestone 4). Pure: imports only the kernel, no three.js or DOM. Scenes are immutable.
-- `src/commands`: the only code that may call kernel mutations (besides `src/scene` loading models) (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawLine`, `pushPull`, `erase`, `deserialize`). No three.js or DOM.
+- `src/commands`: the only code that may call kernel mutations (besides `src/scene` loading models) (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawLine`, `pushPull`, `erase`, `extractGeometry`, `transformGeometry`, `mergeGeometry`, `moveGeometry`, `deserialize`). No three.js or DOM.
 - `src/units`, `src/i18n`: shared foundations.
 - `src/viewport`: three.js rendering, camera, picking and snapping.
 - `src/tools`: one file per tool. Tools change the model only through `session.execute` or `session.preview`.
@@ -31,7 +31,7 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 - Commands that create faces return the ids of every face they create.
 - Geometry commands take an optional `definitionId` (the root when omitted) and work in that definition's local coordinates. Read and write geometry with `definitionModel`/`withDefinitionModel`, never by reaching into the scene.
 - A group definition always has exactly one instance. Copying a group (or a definition holding groups) gives the copy its own definition that shares the immutable Model, so the copies diverge only when one is edited; use `duplicateDefinition` for this. Components share one definition between their instances.
-- Tools work in world coordinates (picking, inference and previews). When they call a command they convert with `ctx.viewport.frame` (`toLocal`, `dirToLocal`, `normalToLocal`) and pass `frame.definitionId`, so they work the same inside any group or component. Inference uses the world snap points and edges of every placement (`worldSnapPoints`, `worldEdges`), including faded geometry outside the editing context.
+- Tools work in world coordinates (picking, inference and previews). When they call a command they convert with `ctx.viewport.frame` (`toLocal`, `dirToLocal`, `normalToLocal`) and pass `frame.definitionId`, so they work the same inside any group or component. Inference goes through `inferPoint` in `src/tools/inference.ts` and uses the world snap points and edges of every placement (`worldSnapPoints`, `worldEdges`), including faded geometry outside the editing context. Previews go through `ctx.showPreview`, which never changes what picking sees.
 - Lengths are stored in mm. Convert only at the edges, with `parseLength`/`parseLengthList`/`parseTypedValues` and `formatLength`/`formatArea` from `src/units`.
 - Kernel operations work on a `Draft` and return a new topology; never edit a `Topology` in place. Drawing goes through the planar engine (`insertSegment`, `rebuildPlane`), not hand-built faces.
 - Kernel tests run the invariant checker after every operation. Planar changes get randomized cases too (see `tests/planar.test.ts` and `tests/helpers/randomRun.ts`). A seed that finds a bug is pinned as a regression test in `npm test`; long sweeps go in `tests/stress`.
@@ -39,7 +39,7 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 - All user-visible text goes through `t()` with keys in `src/i18n/en.ts`. Never put text in HTML, icons or code literals.
 - Numbers shown to users go through Intl (via `src/units`).
 - CSS uses logical properties (`inline`/`block`, `start`/`end`). The only physical coordinates are those of the snap marker, the selection rectangle and the right-click menu, which follow pointer pixels.
-- Shortcuts and modifiers match SketchUp defaults (PROJECT.md, "SketchUp parity"). Tool and action keys live in `src/tools/shortcuts.ts` (G is Make Component); never assign a reserved key (M, Q, S, F, A, B, T) to anything else. On a Mac, Option replaces Ctrl as a modifier.
+- Shortcuts and modifiers match SketchUp defaults (PROJECT.md, "SketchUp parity"). Tool and action keys live in `src/tools/shortcuts.ts` (G is Make Component); never assign a reserved key (Q, S, F, A, B, T) to anything else. On a Mac, Option replaces Ctrl as a modifier.
 - Error codes are stable strings (`tooSmall`, `noSuchFace`); the UI maps them to messages.
 - Match the surrounding code: small modules, few comments, and comments explain why.
 - Kernel and units changes need tests in `tests/`.

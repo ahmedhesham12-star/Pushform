@@ -1,13 +1,12 @@
 import { Vector3 } from 'three';
 import { t } from '../i18n';
-import { dragStep, formatLength, parseLengthList } from '../units';
-import { AXIS_DIRECTION, toPoint, toVector, type Axis, type MarkerKind } from '../viewport';
+import { formatLength, parseLengthList } from '../units';
+import { toPoint, toVector, type Axis } from '../viewport';
+import { AXIS_KEYS, inferPoint } from './inference';
 import type { Tool, ToolContext } from './tool';
 
 /** Pointer travel (px) after a click that starts the next segment's rubber band. */
 const MOVE_PX = 3;
-const AXIS_KEYS: Record<string, Axis> = { ArrowRight: 'x', ArrowLeft: 'z', ArrowUp: 'y', ArrowDown: 'y' };
-const AXIS_MARKER: Record<Axis, MarkerKind> = { x: 'axisX', y: 'axisY', z: 'axisZ' };
 
 interface Chain {
   /** First point of the chain. */
@@ -35,32 +34,7 @@ export function createLineTool(ctx: ToolContext): Tool {
   let chain: Chain | null = null;
   let lock: Axis | null = null;
 
-  /** Where the next point goes, by inference: snap points, edges, axes, then the face or ground. */
-  const infer = (start: Vector3 | null): { point: Vector3; kind: MarkerKind; axis: Axis | null } | null => {
-    const vp = ctx.viewport;
-    /** A point along an axis from start, at a distance rounded to the drag step. */
-    const onAxis = (s: Vector3, axis: Axis, p: Vector3) => {
-      const step = dragStep(ctx.units());
-      const dist = Math.round(p.clone().sub(s).dot(AXIS_DIRECTION[axis]) / step) * step;
-      return { point: s.clone().addScaledVector(AXIS_DIRECTION[axis], dist), kind: AXIS_MARKER[axis], axis };
-    };
-    if (start && lock) {
-      const p = vp.closestOnLine(start, AXIS_DIRECTION[lock]);
-      return p ? onAxis(start, lock, p) : null;
-    }
-    const snap = vp.nearestSnap(() => true);
-    if (snap) return { point: snap.point.clone(), kind: snap.kind, axis: null };
-    const edge = vp.pickEdge('all');
-    if (edge) return { point: edge.point.clone(), kind: 'edge', axis: null };
-    if (start) {
-      const a = vp.axisInference(start);
-      if (a) return onAxis(start, a.axis, a.point);
-    }
-    const pl = vp.planeUnderCursor();
-    if (!pl) return null;
-    const p = vp.snapOnPlane(pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground');
-    return { point: p, kind: pl.onFace ? 'face' : 'ground', axis: null };
-  };
+  const infer = (start: Vector3 | null) => inferPoint(ctx, start, start ? lock : null);
 
   const fmt = (mm: number) => formatLength(mm, ctx.units());
 

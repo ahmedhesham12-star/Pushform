@@ -64,7 +64,7 @@ import { defaultPrecision, formatArea, formatLength, formatNumber, formatVolume,
 import { Viewport, type EdgeHighlight, type Highlight } from './viewport';
 
 /** Characters that start typing into the measurements box while a tool is busy. */
-const MEASURE_START = /^[0-9.,\-٠-٩۰-۹]$/;
+const MEASURE_START = /^[0-9.,\-٠-٩۰-۹x×*/]$/i;
 /** Pointer travel (px) that turns a click into a drag. */
 const DRAG_THRESHOLD = 6;
 
@@ -133,6 +133,7 @@ export class App {
     };
     const toolSpecs: ToolButtonSpec<ToolId>[] = [
       { id: 'select', label: 'tool.select', icon: 'select', ...key('select') },
+      { id: 'move', label: 'tool.move', icon: 'move', ...key('move') },
       { id: 'line', label: 'tool.line', icon: 'line', ...key('line') },
       { id: 'rectangle', label: 'tool.rectangle', icon: 'rectangle', ...key('rectangle') },
       { id: 'circle', label: 'tool.circle', icon: 'circle', ...key('circle') },
@@ -375,7 +376,7 @@ export class App {
       units: () => this.session.doc.units,
       applyHighlights: (kind) => this.applyHighlights(kind),
       showCommitted: () => this.refresh(),
-      showPreview: (doc) => this.viewport.showScene(doc.scene, this.context),
+      showPreview: (doc) => this.viewport.showPreviewScene(doc.scene),
       openContext: (id) => this.openContext(id),
       closeContext: (path) => this.setContext(path),
       contextPath: () => this.context,
@@ -428,7 +429,7 @@ export class App {
     this.session.clearAmend();
     this.cancel();
     this.tool = this.tools[id];
-    if (id !== 'select') this.clearSelection();
+    if (!this.tools[id].keepsSelection) this.clearSelection();
     this.selection.hovered = null;
     this.applyHighlights();
     this.toolbar.setActive(id);
@@ -636,6 +637,15 @@ export class App {
     const matched = parsed.ok ? matchTypedValues(target.fields, parsed) : null;
     const r = matched?.ok ? this.session.amend(matched.value) : null;
     if (r?.ok) {
+      // A moved or copied selection follows the amend (copies of loose geometry get new ids).
+      const out = r.output as { faceIds?: string[]; edgeIds?: string[]; instanceIds?: string[] };
+      if (target.commandId === 'core.move' || target.commandId === 'core.moveCopies') {
+        this.clearSelection();
+        for (const f of out.faceIds ?? []) this.selection.faces.add(f);
+        for (const e of out.edgeIds ?? []) this.selection.edges.add(e);
+        for (const i of out.instanceIds ?? []) this.selection.instances.add(i);
+        this.applyHighlights();
+      }
       this.status.flash(t('message.amended', { command: def?.title() ?? target.commandId, values: this.amendValuesText() }));
       return;
     }
@@ -654,6 +664,10 @@ export class App {
       .map((v, i) => {
         const field = target.fields[i]!;
         if (field.kind === 'count') return t('measure.count', { count: formatNumber(Math.abs(v)) });
+        if (field.kind === 'array') {
+          const divide = field.flag !== undefined && target.input[field.flag] === true;
+          return t(divide ? 'measure.divide' : 'measure.multiply', { count: formatNumber(Math.abs(v)) });
+        }
         return formatLength(field.mode === 'positive' ? Math.abs(v) : v, units);
       })
       .join(t('measure.listSeparator'));
@@ -775,6 +789,11 @@ export class App {
       if (e.target instanceof HTMLInputElement) return;
       // The open menu handles its own keys.
       if (this.menu.isOpen) return;
+      // Ctrl (Option on a Mac) pressed on its own goes to the tool: Move toggles copying with it.
+      if (e.key === (isMac() ? 'Alt' : 'Control') && !e.repeat) {
+        if (this.tool.key?.(e)) e.preventDefault();
+        return;
+      }
       // Leave keys alone in other form controls (the units menu).
       if (e.target instanceof HTMLSelectElement) return;
       const mod = e.metaKey || e.ctrlKey;

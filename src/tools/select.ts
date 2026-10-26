@@ -195,6 +195,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
   return {
     id: 'select',
     cursor: 'default',
+    keepsSelection: true,
     hint: () => {
       const add = t(isMac() ? 'key.option' : 'key.ctrl');
       const any = selection.faces.size || selection.edges.size || selection.instances.size;

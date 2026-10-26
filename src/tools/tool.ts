@@ -3,7 +3,7 @@ import type { InstanceId } from '../scene';
 import type { UnitSettings } from '../units';
 import type { Highlight, Picked, Viewport } from '../viewport';
 
-export type ToolId = 'select' | 'line' | 'rectangle' | 'circle' | 'polygon' | 'pushPull' | 'erase' | 'orbit' | 'pan';
+export type ToolId = 'select' | 'move' | 'line' | 'rectangle' | 'circle' | 'polygon' | 'pushPull' | 'erase' | 'orbit' | 'pan';
 
 export interface EntityRef {
   kind: 'face' | 'edge' | 'instance';
@@ -61,6 +61,8 @@ export interface Tool {
   readonly cursor: string;
   /** For orbit and pan: left-drag navigates instead of calling the tool. */
   readonly navigation?: 'orbit' | 'pan';
+  /** The tool works on the selection (Select, Move), so switching to it keeps it. */
+  readonly keepsSelection?: boolean;
   hint(): string;
   /** Label for the measurements box while this tool is active. */
   measurementLabel(): string;
@@ -71,7 +73,10 @@ export interface Tool {
    * busy (a line chain between segments, where typing amends the last one).
    */
   active?(): boolean;
-  /** Handle a key the tool uses itself (arrow keys for axis locks). Returns true when handled. */
+  /**
+   * Handle a key the tool uses itself (arrow keys for axis locks; Ctrl or
+   * Option pressed on its own, to toggle copying). Returns true when handled.
+   */
   key?(e: KeyboardEvent): boolean;
   /**
    * True when the tool takes typed input even with no operation in progress,

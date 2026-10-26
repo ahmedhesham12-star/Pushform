@@ -169,6 +169,8 @@ Core commands (geometry commands and the group and component commands take the o
 | `core.makeUnique` (instanceIds) | `definitionIds` created | |
 | `core.renameDefinition`, `core.renameInstance` | | |
 | `core.copyInstances` (instanceIds, translation) | `instanceIds` | |
+| `core.move` (faceIds, edgeIds, instanceIds, direction, distance) | the moved `faceIds`, `edgeIds`, `instanceIds` | distance |
+| `core.moveCopies` (same, plus copies and divide) | the copies' `faceIds`, `edgeIds`, `instanceIds` | distance, array (`x5`, `/4`) |
 
 How the session works:
 - `execute` is for typed callers. `executeUnchecked` is for untrusted JSON from plugins, MCP or replay.
@@ -178,7 +180,7 @@ How the session works:
 Plugins call `registry.register(def)` and extend the typed `CommandMap` through declaration merging.
 
 **Amend last operation.** After a command finishes, typed values replace its amendable inputs, as in SketchUp.
-- A command opts in by declaring `amendable` fields: `positive` or `signed`, and kind `length` (the default) or `count`. Counts are typed with an `s` suffix, like `48s`.
+- A command opts in by declaring `amendable` fields: `positive` or `signed`, and kind `length` (the default), `count` or `array`. Counts are typed with an `s` suffix, like `48s`. An array field takes `x5` (also `5x`, `*5`) or `/4`, typed on its own: the count goes to the field and the divide choice to its boolean `flag` input.
 - Typed lengths fill the length fields in order and counts fill the count fields. Either group may be left out, so typing only `48s` changes only the segment count.
 - `CommandSession.amend` re-runs the command from the document before it and replaces that history entry, so it stays one undo step. If the amended command fails, the original result is kept.
 - Amending ends when any other command runs, on undo or redo, on load, on a left click in the viewport, and on a tool switch. Navigation keeps it available.
@@ -260,6 +262,11 @@ Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] unti
 | 2026-10-26 | Windows and crossings select hidden items too; a group or component is inside a window when its bounding box is, and a crossing takes it when it touches one of its edges | Matches SketchUp, which selects through the model; the bounding-box rule is the product owner's. |
 | 2026-10-26 | Double- and triple-clicks use the browser's click count, which follows the system's double-click time | Separate quick clicks at one spot behave the same as in the rest of the system. |
 | 2026-10-26 | Clicks select on release; a press that moves 6 px becomes a window | A drag that starts on a face must not select that face first. |
+| 2026-10-26 | Moving loose geometry stretches what is connected to it; a stretch that would bend a face out of its plane, fold it, run it into other geometry in its plane or land a point on a point is refused (approved: blocked moves). Folding into planar triangles is the first milestone 4 step | Keeps every face flat and the topology valid without an intersection engine. |
+| 2026-10-26 | Geometry not connected to anything moves in place and keeps its ids; when it lands on other geometry it is extracted and merged back, so points landing on points join (approved) | The planar engine already merges coplanar faces and splits edges for explode and copies. |
+| 2026-10-26 | Move and copy are two commands: `core.move` (amend: distance) and `core.moveCopies` (amend: distance, array) | Arrays only make sense after a copy; typing `x5` after a plain move says the values do not fit. |
+| 2026-10-26 | Typed arrays are recognized only when typed on their own | `x` also separates values (`600 x 400`). |
+| 2026-10-26 | Previews draw into separate meshes; picking and inference keep using the committed scene, and the Move tool also excludes the selection it moves | Geometry being moved must not catch the pointer, or the destination would run away. |
 | 2026-10-26 | Solid volume in Entity Info for a group or component whose own geometry is closed and consistently oriented; none when it holds other groups or components | Cheap to compute exactly; nested solids are a later step. |
 
 ## SketchUp parity: shortcuts and modifiers
@@ -270,6 +277,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 | Input | Action |
 | --- | --- |
 | Space | Select |
+| M | Move (milestone 3) |
 | L | Line |
 | R | Rectangle |
 | C | Circle |
@@ -299,12 +307,10 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 
 **Reserved for later tools** (never assign them to anything else): M Move, Q Rotate, S Scale, F Offset, A 2-point Arc, B Paint Bucket, T Tape Measure.
 
+- **Move (milestone 3):** Ctrl (Option on a Mac) toggles copying, tapped during the move or held at the first click. After a copy, typing `x5` makes a multiply array (5 copies at the same spacing; `5x` and `*5` too) and `/4` a divide array (the distance split into 4 equal steps). Arrays and distances are amendable like other operations. Arrow keys lock an axis, as in the Line tool. With nothing selected, Move takes the face, edge, group or component under the pointer.
+
 **Parity list for later milestones (not built yet):**
-- **Move and Rotate:**
-  - Ctrl toggles copy.
-  - After a copy, typing `x5` makes a multiply array: 5 copies at the same spacing. `5x` and `*5` are accepted too.
-  - Typing `/4` makes a divide array: the gap split into 4 equal spaces.
-  - Arrays are amendable like other operations.
+- **Rotate:** the same copy and array rules as Move (milestone 3, step 8).
 - **Push/Pull:** Ctrl creates a new starting face instead of moving the original.
 - **Eraser:** Shift hides edges, Ctrl softens and smooths edges.
 - **Paint Bucket:** Alt (Cmd on Mac) samples a material.
@@ -359,15 +365,18 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - **Viewport:** instances drawn from shared geometry with their transforms; editing contexts (double-click to open, Esc or a click outside to close, everything outside faded); picking returns context faces and edges, instances in the context, or geometry outside it; inference across all instances and contexts in world coordinates.
 - **Right-click menu** and G for Make Component.
 - **Panels:** Entity Info (one group or component: type, editable definition and instance names, copy count, volume; several items: how many of each type, with total area and length) and Outliner (tree, copy counts, click to select, double-click or F2 to rename, right-click menu).
+- **Move tool (step 7):** start and destination with shared inference (Line and Move), typed distance, amend, Ctrl copy, arrays (`x5`, `5x`, `*5`, `/4`), loose geometry that stretches with bending and crossing moves refused.
 - **Checkpoint (a) feedback:** double-click, triple-click, window and crossing selection, Ctrl+A; modifiers on groups and components; Make Group and Make Component on mixed selections.
-- **Verification:** 427 unit tests pass and the build succeeds; the new stress sweeps 3 (extract and merge) and 4 (scene commands) pass. Scripted browser checks (not in the repo) cover instances, contexts, snapping to another copy, the menu and the panels.
+- **Verification:** 468 unit tests pass and the build succeeds; the stress sweeps pass, including the new 3 (extract and merge), 4 (scene commands) and 5 (moving loose geometry, 1000 seeds). Scripted browser checks (not in the repo) cover instances, contexts, snapping to another copy, the menu and the panels.
 
 ### Known limitations
 - The differences from SketchUp listed above.
 - Each operation recomputes its whole plane and an adjacency index. That is fine for typical models; very large models may slow down.
 - Undo history is not kept across reloads.
 - There is no file open, save or export yet; the only storage is the browser autosave (milestone 3, steps 9 and 10).
-- No move or rotate tools yet (milestone 3, steps 7 and 8); offset comes later.
+- No rotate tool yet (milestone 3, step 8); offset comes later.
+- A stretch that would land a point on another point is refused rather than merging the two points (an island that lands on a point does merge).
+- While moving loose geometry, its own endpoints and midpoints at the original position are still inference targets (its faces and edges are not).
 - Axis inference uses the world axes, also inside a group or component; this matters once instances can be rotated (milestone 3, step 8).
 
 ## Next steps (proposed, not yet approved)

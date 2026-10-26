@@ -1,6 +1,6 @@
 import { definitionModel } from '../commands';
 import { t } from '../i18n';
-import { edgeGroup, faceEdges } from '../kernel';
+import { edgeGroup, faceEdges, listEdges } from '../kernel';
 import { formatNumber, parseTypedValues, type LengthUnit } from '../units';
 import { entityOf, type ToolContext } from './tool';
 
@@ -9,6 +9,8 @@ export interface Taken {
   faceIds: string[];
   edgeIds: string[];
   instanceIds: string[];
+  /** A corner taken on its own (nothing selected, the pointer on an endpoint). */
+  vertexIds?: string[];
 }
 
 /**
@@ -27,12 +29,23 @@ export const hasSelection = (ctx: ToolContext) => ctx.selection.faces.size + ctx
 /**
  * The selection to move or rotate: the current one, or with nothing selected
  * the face, edge, group or component under the pointer (which becomes the
- * selection, as in SketchUp). Inference skips it from now on, so it cannot
- * snap to itself. Null when there is nothing to take.
+ * selection, as in SketchUp). With `corners` (Move), an endpoint under the
+ * pointer moves on its own. Inference skips what was taken from now on, so it
+ * cannot snap to itself. Null when there is nothing to take.
  */
-export function takeSelection(ctx: ToolContext): Taken | null {
+export function takeSelection(ctx: ToolContext, corners = false): Taken | null {
   const { selection } = ctx;
   const m = definitionModel(ctx.session.doc, ctx.viewport.frame.definitionId)!;
+  const corner = corners && cornerUnder(ctx);
+  if (corner) {
+    const frame = ctx.viewport.frame;
+    const at = frame.toWorld(corner.point);
+    const middles = listEdges(m)
+      .filter((e) => [e.a, e.b].some((p) => p.every((c, i) => c === corner.point[i])))
+      .map((e) => frame.toWorld([(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2, (e.a[2] + e.b[2]) / 2]));
+    ctx.viewport.setExcluded({ faces: new Set(), edges: new Set(), instances: new Set(), points: [at, ...middles] });
+    return { faceIds: [], edgeIds: [], instanceIds: [], vertexIds: [corner.vertex] };
+  }
   if (!hasSelection(ctx)) {
     const hit = entityOf(ctx.viewport.pick());
     if (!hit) return null;
@@ -59,10 +72,19 @@ export function selectResult(ctx: ToolContext, out: Taken): void {
   ctx.applyHighlights();
 }
 
-/** Hover feedback while idle: with nothing selected, highlight what a click would take. */
-export function hoverTakeable(ctx: ToolContext): void {
+/** With nothing selected: the editing context's endpoint under the pointer, which Move and Rotate take on their own. */
+function cornerUnder(ctx: ToolContext): { vertex: string; point: [number, number, number] } | null {
+  if (hasSelection(ctx)) return null;
+  const snap = ctx.viewport.nearestSnap(() => true);
+  const context = ctx.contextPath();
+  if (snap?.kind !== 'end' || !snap.vertex || snap.path.length !== context.length || snap.path.some((id, i) => id !== context[i])) return null;
+  return { vertex: snap.vertex, point: ctx.viewport.frame.toLocal(snap.point) };
+}
+
+/** Hover feedback while idle: with nothing selected, highlight what a click would take (nothing for a corner). */
+export function hoverTakeable(ctx: ToolContext, corners = false): void {
   if (hasSelection(ctx)) return;
-  const hovered = entityOf(ctx.viewport.pick());
+  const hovered = corners && cornerUnder(ctx) ? null : entityOf(ctx.viewport.pick());
   const h = ctx.selection.hovered;
   if (hovered?.kind !== h?.kind || hovered?.id !== h?.id) {
     ctx.selection.hovered = hovered;

@@ -10,4 +10,9 @@ describe('stress sweep 5: moving loose geometry', () => {
   test.each(Array.from({ length: 1000 }, (_, i) => 3000 + i))('seed %i, 20 steps', (seed) => {
     randomMoveRun(seed, 20);
   });
+
+  // Milestone 4: single corners too, so faces fold.
+  test.each(Array.from({ length: 500 }, (_, i) => 5000 + i))('seed %i with corners', (seed) => {
+    randomMoveRun(seed, 20, true);
+  });
 });

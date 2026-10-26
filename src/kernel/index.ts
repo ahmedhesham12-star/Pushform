@@ -102,8 +102,9 @@ export function erase(m: Model, faceIds: readonly string[], edgeIds: readonly st
 
 /**
  * Move faces and edges by a vector (the Move tool). Connected geometry
- * stretches; a move that would bend a stretched face out of its plane, fold
- * it or cross other geometry is refused. Geometry not connected to anything
+ * stretches, and stretched faces bent out of their plane fold into flat
+ * pieces; a move that would turn a face over or cross other geometry is
+ * refused. Geometry not connected to anything
  * merges where it lands. Returns the same model when the vector is zero.
  */
 export function moveGeometry(
@@ -111,15 +112,16 @@ export function moveGeometry(
   faceIds: readonly string[],
   edgeIds: readonly string[],
   vector: Vec3,
+  vertexIds: readonly string[] = [],
 ): { ok: true; model: Model; faceIds: string[]; edgeIds: string[] } | { ok: false; error: MoveError } {
-  const r = moveTopology(data(m), faceIds, edgeIds, vector);
+  const r = moveTopology(data(m), faceIds, edgeIds, vector, vertexIds);
   return r.ok ? { ok: true, model: wrap(r.topology), faceIds: r.faceIds, edgeIds: r.edgeIds } : r;
 }
 
 /**
  * Apply a rigid motion (a rotation, for one) to selected faces and edges, with
- * the same rules as moveGeometry: connected geometry stretches unless that
- * would bend, fold or cross a face.
+ * the same rules as moveGeometry: connected geometry stretches and folds,
+ * unless that would turn a face over or cross other geometry.
  */
 export function transformSelection(
   m: Model,
@@ -127,8 +129,9 @@ export function transformSelection(
   edgeIds: readonly string[],
   mapPoint: (p: Point3) => Point3,
   mapVector: (v: Vec3) => Vec3,
+  vertexIds: readonly string[] = [],
 ): { ok: true; model: Model; faceIds: string[]; edgeIds: string[] } | { ok: false; error: MoveError } {
-  const r = transformTopologySelection(data(m), faceIds, edgeIds, { mapPoint, mapVector });
+  const r = transformTopologySelection(data(m), faceIds, edgeIds, { mapPoint, mapVector }, vertexIds);
   return r.ok ? { ok: true, model: wrap(r.topology), faceIds: r.faceIds, edgeIds: r.edgeIds } : r;
 }
 
@@ -190,6 +193,9 @@ export const faceMeshes = (m: Model) => meshes(data(m));
 export const listEdges = (m: Model) => q.listEdges(data(m));
 export const getEdge = (m: Model, id: string) => q.getEdge(data(m), id);
 export const hasEdge = (m: Model, id: string): boolean => data(m).edges.has(id);
+
+/** Whether the model has a vertex with this id. */
+export const hasVertex = (m: Model, id: string): boolean => data(m).vertices.has(id);
 export const edgeCount = (m: Model) => data(m).edges.size;
 export const edgeLength = (m: Model, id: string) => q.edgeLength(data(m), id);
 /** An edge's whole curve, or just the edge: what selecting or erasing it affects. */

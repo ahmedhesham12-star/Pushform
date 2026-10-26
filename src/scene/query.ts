@@ -36,6 +36,8 @@ export interface WorldSnap {
   readonly point: Point3;
   readonly kind: SnapKind;
   readonly path: readonly InstanceId[];
+  /** The vertex at an endpoint, in its definition's model. */
+  readonly vertex?: string;
 }
 
 export interface WorldEdge {
@@ -52,7 +54,7 @@ export function worldSnapPoints(s: Scene): WorldSnap[] {
   for (const p of placements(s)) {
     const m = p.definition.model;
     if (!local.has(m)) local.set(m, snapPoints(m));
-    for (const sp of local.get(m)!) out.push({ point: applyPoint(p.world, sp.point), kind: sp.kind, path: p.path });
+    for (const sp of local.get(m)!) out.push({ point: applyPoint(p.world, sp.point), kind: sp.kind, path: p.path, ...(sp.vertex ? { vertex: sp.vertex } : {}) });
   }
   return out;
 }

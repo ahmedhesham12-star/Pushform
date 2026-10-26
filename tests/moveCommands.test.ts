@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { createSession, definitionModel, matchTypedValues, type CommandSession } from '../src/commands';
-import { bounds, checkModel, listFaces } from '../src/kernel';
+import { bounds, checkModel, listFaces, snapPoints } from '../src/kernel';
 import { findInstance, getDefinition, instanceCount } from '../src/scene';
 import { parseTypedValues } from '../src/units';
 
@@ -202,12 +202,26 @@ describe('core.rotate', () => {
     expect(checkModel(definitionModel(s.doc)!)).toEqual([]);
   });
 
-  test('twisting a box top would bend its walls: refused', () => {
+  test('twisting a box top folds its walls (milestone 4; was refused)', () => {
     const s = createSession();
     box(s, 0, 0, 1000, 1000, 500);
     const top = listFaces(definitionModel(s.doc)!).find((f) => f.normal[1] === 1)!;
     const r = s.execute('core.rotate', { faceIds: [top.id], center: [500, 500, 500], axis: [0, 1, 0], angle: 30 });
-    expect(r.ok ? '' : r.error.code).toBe('moveBends');
+    expect(r.ok).toBe(true);
+    expect(checkModel(definitionModel(s.doc)!)).toEqual([]);
+    expect(listFaces(definitionModel(s.doc)!)).toHaveLength(10);
+  });
+
+  test('a single vertex moves on its own, folding the faces around it', () => {
+    const s = createSession();
+    box(s, 0, 0, 1000, 1000, 500);
+    const m = definitionModel(s.doc)!;
+    const corner = snapPoints(m).find((p) => p.kind === 'end' && p.point.every((c, i) => c === [1000, 500, 1000][i]))!.vertex!;
+    const r = s.execute('core.move', { vertexIds: [corner], direction: [0, 1, 0], distance: 200 });
+    expect(r.ok).toBe(true);
+    expect(checkModel(definitionModel(s.doc)!)).toEqual([]);
+    expect(listFaces(definitionModel(s.doc)!)).toHaveLength(7);
+    expect(bounds(definitionModel(s.doc)!)!.max[1]).toBe(700);
   });
 
   test('a plain number after a move is a length, after a rotation an angle', () => {

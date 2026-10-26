@@ -116,6 +116,8 @@ export interface SnapCandidate {
   kind: 'end' | 'mid';
   /** Instance path of the geometry the point belongs to. */
   path: readonly InstanceId[];
+  /** The vertex at an endpoint, in the model of the definition at `path`. */
+  vertex?: string;
 }
 
 /** Entities of the editing context that picking and inference skip (the selection being moved). */
@@ -123,6 +125,8 @@ export interface PickExclusions {
   readonly faces: ReadonlySet<string>;
   readonly edges: ReadonlySet<string>;
   readonly instances: ReadonlySet<InstanceId>;
+  /** More points (world) inference skips: a corner being moved and the middles of its edges. */
+  readonly points?: readonly Vector3[];
 }
 
 /** The 3D view: rendering, camera, picking and inference snapping. */
@@ -249,7 +253,7 @@ export class Viewport {
   /** Skip these entities in picking and inference (the selection being moved), or nothing. */
   setExcluded(excluded: PickExclusions | null): void {
     this.excluded = excluded;
-    this.excludedPoints = [];
+    this.excludedPoints = [...(excluded?.points ?? [])];
     if (!excluded?.edges.size) return;
     for (const e of this.worldEdgeList) {
       if (contextRelation(e.path, this.context) !== 'context' || !excluded.edges.has(e.edgeId)) continue;
@@ -317,7 +321,7 @@ export class Viewport {
    * committed scene only, as in the prototype.
    */
   setSnapTargets(scene: PushformScene): void {
-    this.snaps = worldSnapPoints(scene).map((s) => ({ point: toVector(s.point), kind: s.kind, path: s.path }));
+    this.snaps = worldSnapPoints(scene).map((s) => ({ point: toVector(s.point), kind: s.kind, path: s.path, ...(s.vertex ? { vertex: s.vertex } : {}) }));
     this.worldEdgeList = worldEdges(scene);
   }
 

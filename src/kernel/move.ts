@@ -2,19 +2,21 @@
  * Moving and rotating loose geometry, as the Move and Rotate tools do. The
  * selected faces and edges go through a rigid motion with their vertices;
  * geometry made only of moving vertices goes along. Geometry connected to the
- * selection stretches, unless that would bend a face out of its plane or fold
- * or cross it, which is refused.
+ * selection stretches; a stretched face bent out of its plane folds into flat
+ * pieces, as in SketchUp. A move that would turn a face over or run it into
+ * other geometry is refused.
  */
 import { EPSILON, VERTEX_TOLERANCE, snapPoint } from './precision';
 import { add, cleanNormal, dot, length, sub, type Vec3 } from './vec';
 import { Draft } from './draft';
 import { onPlane, planeThrough, polygonNormal, samePlane, type Plane } from './geometry';
 import { extract, merge, transformTopology } from './assembly';
+import { foldFace } from './fold';
 import { faceShapeProblems, planeProblems } from './validate';
 import { GROUND } from './shapes';
 import type { EdgeId, FaceId, Point3, Topology, VertexId } from './types';
 
-export type MoveError = 'moveBends' | 'moveCrosses';
+export type MoveError = 'moveCrosses';
 
 export type MoveResult =
   | {
@@ -32,13 +34,26 @@ export interface RigidMap {
   readonly mapVector: (v: Vec3) => Vec3;
 }
 
-export function moveGeometry(t: Topology, faceIds: readonly FaceId[], edgeIds: readonly EdgeId[], vector: Vec3): MoveResult {
-  return transformSelection(t, faceIds, edgeIds, { mapPoint: (p) => add(p, vector), mapVector: (v) => v });
+export function moveGeometry(
+  t: Topology,
+  faceIds: readonly FaceId[],
+  edgeIds: readonly EdgeId[],
+  vector: Vec3,
+  vertexIds: readonly VertexId[] = [],
+): MoveResult {
+  return transformSelection(t, faceIds, edgeIds, { mapPoint: (p) => add(p, vector), mapVector: (v) => v }, vertexIds);
 }
 
-export function transformSelection(t: Topology, faceIds: readonly FaceId[], edgeIds: readonly EdgeId[], map: RigidMap): MoveResult {
+/** Faces, edges and single vertices (a corner moved on its own) through a rigid motion. */
+export function transformSelection(
+  t: Topology,
+  faceIds: readonly FaceId[],
+  edgeIds: readonly EdgeId[],
+  map: RigidMap,
+  vertexIds: readonly VertexId[] = [],
+): MoveResult {
   const d = new Draft(t);
-  const moving = new Set<VertexId>();
+  const moving = new Set<VertexId>(vertexIds.filter((v) => t.vertices.has(v)));
   for (const f of faceIds) {
     const face = t.faces.get(f);
     if (face) for (const v of [face.outer, ...face.holes].flat()) moving.add(v);
@@ -71,22 +86,29 @@ export function transformSelection(t: Topology, faceIds: readonly FaceId[], edge
     if (length(sub(d.point(a), d.point(b))) <= VERTEX_TOLERANCE) return { ok: false, error: 'moveCrosses' };
   }
 
-  // Stretched faces must stay flat and keep their orientation; they take their new plane's normal.
+  // Stretched faces keep their orientation and take their new plane's normal; bent ones fold into flat pieces.
   const touched = new Set<FaceId>();
   for (const v of moving) for (const f of d.facesOfVertex(v)) touched.add(f);
-  for (const f of touched) {
+  const folds: EdgeId[] = [];
+  for (const f of [...touched]) {
     if (rigidSet.has(f)) continue;
     const face = d.face(f);
     const n = polygonNormal(face.outer.map((v) => d.point(v)));
-    if (!n || dot(n, face.normal) <= 0) return { ok: false, error: 'moveCrosses' };
-    const plane = planeThrough(n, d.point(face.outer[0]!));
-    if ([face.outer, ...face.holes].flat().some((v) => !onPlane(plane, d.point(v)))) return { ok: false, error: 'moveBends' };
-    d.setFace(f, { ...face, normal: cleanNormal(n) });
+    const plane = n && planeThrough(n, d.point(face.outer[0]!));
+    if (plane && [face.outer, ...face.holes].flat().every((v) => onPlane(plane, d.point(v)))) {
+      if (dot(n, face.normal) <= 0) return { ok: false, error: 'moveCrosses' };
+      d.setFace(f, { ...face, normal: cleanNormal(n) });
+      continue;
+    }
+    const fold = foldFace(d, t, f);
+    if (!fold) return { ok: false, error: 'moveCrosses' };
+    for (const p of fold.faceIds) touched.add(p);
+    folds.push(...fold.edgeIds);
   }
 
   // A hole moved out of the face around it (in one jump, so no edges cross) is refused too.
   if ([...touched].some((f) => faceShapeProblems(d, f).length)) return { ok: false, error: 'moveCrosses' };
-  if (conflicts(d, touched, [...rigidEdges, ...stretched])) return { ok: false, error: 'moveCrosses' };
+  if (conflicts(d, touched, [...rigidEdges, ...stretched, ...folds], moving)) return { ok: false, error: 'moveCrosses' };
   const topology = d.commit();
   return { ok: true, topology, faceIds: faceIds.filter((f) => topology.faces.has(f)), edgeIds: edgeIds.filter((e) => topology.edges.has(e)) };
 }
@@ -120,7 +142,7 @@ function moveIsland(
   map: RigidMap,
 ): MoveResult {
   applyRigid(d, target, faceIds, edgeIds, map);
-  if (![...target.keys()].some((v) => landsOnOther(d, v)) && !conflicts(d, new Set(faceIds), edgeIds)) {
+  if (![...target.keys()].some((v) => landsOnOther(d, v)) && !conflicts(d, new Set(faceIds), edgeIds, target.keys())) {
     return { ok: true, topology: d.commit(), faceIds, edgeIds };
   }
   const x = extract(t, faceIds, edgeIds);
@@ -135,8 +157,12 @@ function landsOnOther(d: Draft, v: VertexId): boolean {
   return false;
 }
 
-/** Whether the planes of the given faces, or any plane holding one of the given edges, break the planar invariants. */
-function conflicts(d: Draft, faces: ReadonlySet<FaceId>, edges: readonly EdgeId[]): boolean {
+/**
+ * Whether the planes of the given faces, or any face plane (or the ground)
+ * holding one of the given edges or moved vertices, break the planar
+ * invariants. A moved point can land inside an edge that stayed put.
+ */
+function conflicts(d: Draft, faces: ReadonlySet<FaceId>, edges: readonly EdgeId[], vertices: Iterable<VertexId>): boolean {
   const planes: Plane[] = [];
   const addPlane = (pl: Plane) => {
     if (!planes.some((x) => samePlane(x, pl))) planes.push(pl);
@@ -147,6 +173,10 @@ function conflicts(d: Draft, faces: ReadonlySet<FaceId>, edges: readonly EdgeId[
     if (!d.edges.has(e)) continue;
     const [a, b] = d.edge(e).v.map((v) => d.point(v));
     for (const pl of candidates) if (onPlane(pl, a!) && onPlane(pl, b!)) addPlane(pl);
+  }
+  for (const v of vertices) {
+    const p = d.point(v);
+    for (const pl of candidates) if (onPlane(pl, p)) addPlane(pl);
   }
   return planes.some((pl) => planeProblems(d, pl).length > 0);
 }

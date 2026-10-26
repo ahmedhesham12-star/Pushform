@@ -7,11 +7,13 @@ import { rng } from './randomRun';
 
 /**
  * Boxes on a 50 mm grid; then random faces and edges moved by random grid
- * vectors or turned about a vertical axis in steps of 45 degrees. A move is either refused or leaves a valid model, checked after
- * every step; a failure names the seed and step. Returns how many moves were
+ * vectors or turned about a vertical axis in steps of 45 degrees. With
+ * `corners`, a third of the moves take single vertices instead, so faces
+ * fold. A move is either refused or leaves a valid model, checked after every
+ * step; a failure names the seed and step. Returns how many moves were
  * accepted.
  */
-export function randomMoveRun(seed: number, steps: number): number {
+export function randomMoveRun(seed: number, steps: number, corners = false): number {
   const r = rng(seed);
   const grid = (n: number) => Math.floor(r() * n) * 50;
   let t: Topology = emptyTopology();
@@ -22,8 +24,10 @@ export function randomMoveRun(seed: number, steps: number): number {
   }
   let accepted = 0;
   for (let step = 0; step < steps; step++) {
-    const faces = [...t.faces.keys()].filter(() => r() < 0.3);
-    const edges = [...t.edges.keys()].filter(() => r() < 0.05);
+    const single = corners && r() < 0.35;
+    const faces = single ? [] : [...t.faces.keys()].filter(() => r() < 0.3);
+    const edges = single ? [] : [...t.edges.keys()].filter(() => r() < 0.05);
+    const vertices = single ? [...t.vertices.keys()].filter(() => r() < 0.08) : [];
     const vector = [grid(6) - 150, r() < 0.5 ? 0 : grid(6) - 150, grid(6) - 150] as const;
     let m;
     if (r() < 0.3) {
@@ -32,9 +36,9 @@ export function randomMoveRun(seed: number, steps: number): number {
       const [c, sn] = [Math.cos(angle), Math.sin(angle)];
       // A turn about the vertical line through (cx, cz): x and z rotate, y stays.
       const turn = (p: readonly number[]): [number, number, number] => [cx + (p[0]! - cx) * c + (p[2]! - cz) * sn, p[1]!, cz - (p[0]! - cx) * sn + (p[2]! - cz) * c];
-      m = transformSelection(t, faces, edges, { mapPoint: turn, mapVector: (v) => [v[0] * c + v[2] * sn, v[1], -v[0] * sn + v[2] * c] });
+      m = transformSelection(t, faces, edges, { mapPoint: turn, mapVector: (v) => [v[0] * c + v[2] * sn, v[1], -v[0] * sn + v[2] * c] }, vertices);
     } else {
-      m = moveGeometry(t, faces, edges, vector);
+      m = moveGeometry(t, faces, edges, vector, vertices);
     }
     if (!m.ok) continue;
     const problems = validate(m.topology);

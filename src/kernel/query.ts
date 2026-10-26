@@ -26,6 +26,8 @@ export type SnapKind = 'end' | 'mid';
 export interface SnapPoint {
   readonly point: Point3;
   readonly kind: SnapKind;
+  /** The vertex at an endpoint (Move takes it on its own). */
+  readonly vertex?: VertexId;
 }
 
 export interface Bounds {
@@ -185,7 +187,7 @@ export function snapPoints(t: Topology): SnapPoint[] {
     for (const v of e.v) ends.add(v);
     out.push({ point: midpoint(t.vertices.get(e.v[0])!.p, t.vertices.get(e.v[1])!.p), kind: 'mid' });
   }
-  for (const v of ends) out.push({ point: t.vertices.get(v)!.p, kind: 'end' });
+  for (const v of ends) out.push({ point: t.vertices.get(v)!.p, kind: 'end', vertex: v });
   return out;
 }
 

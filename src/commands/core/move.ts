@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { t } from '../../i18n';
-import { extractGeometry, hasEdge, hasFace, mergeGeometry, transformGeometry, transformSelection, type Model, type Vec3 } from '../../kernel';
+import { extractGeometry, hasEdge, hasFace, hasVertex, mergeGeometry, transformGeometry, transformSelection, type Model, type Vec3 } from '../../kernel';
 import {
   applyPoint,
   applyVector,
@@ -36,6 +36,8 @@ const array = {
   /** False: copies at the distance (angle), twice it, and so on (x5). True: it divided into equal steps (/4). */
   divide: z.boolean(),
 };
+/** Single vertices, moved or turned on their own (a corner, for one); not copied. */
+const vertexIds = z.array(z.string().min(1)).optional();
 const moveFields = {
   ...selection,
   /** Direction of the move in the context's coordinates; any non-zero length, it is normalized. */
@@ -52,15 +54,15 @@ const rotateFields = {
   /** Angle in degrees, counter-clockwise looking against the axis, so typing a new angle amends it. */
   angle: z.number(),
 };
-const anything = (v: { faceIds?: string[] | undefined; edgeIds?: string[] | undefined; instanceIds?: string[] | undefined }) =>
-  (v.faceIds?.length ?? 0) + (v.edgeIds?.length ?? 0) + (v.instanceIds?.length ?? 0) > 0;
+const anything = (v: { faceIds?: string[] | undefined; edgeIds?: string[] | undefined; instanceIds?: string[] | undefined; vertexIds?: string[] | undefined }) =>
+  (v.faceIds?.length ?? 0) + (v.edgeIds?.length ?? 0) + (v.instanceIds?.length ?? 0) + (v.vertexIds?.length ?? 0) > 0;
 const nothingSelected = { message: 'nothing selected' };
 
-export const moveInput = z.strictObject(moveFields).refine(anything, nothingSelected);
+export const moveInput = z.strictObject({ ...moveFields, vertexIds }).refine(anything, nothingSelected);
 export type MoveInput = z.infer<typeof moveInput>;
 export const moveCopiesInput = z.strictObject({ ...moveFields, ...array }).refine(anything, nothingSelected);
 export type MoveCopiesInput = z.infer<typeof moveCopiesInput>;
-export const rotateInput = z.strictObject(rotateFields).refine(anything, nothingSelected);
+export const rotateInput = z.strictObject({ ...rotateFields, vertexIds }).refine(anything, nothingSelected);
 export type RotateInput = z.infer<typeof rotateInput>;
 export const rotateCopiesInput = z.strictObject({ ...rotateFields, ...array }).refine(anything, nothingSelected);
 export type RotateCopiesInput = z.infer<typeof rotateCopiesInput>;
@@ -72,8 +74,8 @@ export interface MoveOutput {
   instanceIds: InstanceId[];
 }
 
-type Selection = z.infer<z.ZodObject<typeof selection>>;
-type Prepared = { ok: true; model: Model; faces: string[]; edges: string[]; instances: InstanceId[] };
+type Selection = z.infer<z.ZodObject<typeof selection>> & { vertexIds?: string[] | undefined };
+type Prepared = { ok: true; model: Model; faces: string[]; edges: string[]; vertices: string[]; instances: InstanceId[] };
 
 /** The existing selection of a context that exists, or an error. */
 function prepare(doc: PushformDocument, input: Selection): Prepared | { ok: false; error: CommandError } {
@@ -82,11 +84,12 @@ function prepare(doc: PushformDocument, input: Selection): Prepared | { ok: fals
   const placed = getDefinition(doc.scene, input.definitionId ?? doc.scene.rootId)!.instances;
   const faces = (input.faceIds ?? []).filter((f) => hasFace(target.model, f));
   const edges = (input.edgeIds ?? []).filter((e) => hasEdge(target.model, e));
+  const vertices = (input.vertexIds ?? []).filter((v) => hasVertex(target.model, v));
   const instances = [...new Set(input.instanceIds ?? [])].filter((i) => placed.has(i));
-  if (!faces.length && !edges.length && !instances.length) {
+  if (!faces.length && !edges.length && !vertices.length && !instances.length) {
     return { ok: false, error: { code: 'nothingSelected', detail: JSON.stringify(input) } };
   }
-  return { ok: true, model: target.model, faces, edges, instances };
+  return { ok: true, model: target.model, faces, edges, vertices, instances };
 }
 
 /** A non-zero vector made unit length, or null. */
@@ -99,14 +102,14 @@ const zeroDirection = { ok: false as const, error: { code: 'invalidInput', detai
 /**
  * Apply a rigid transform to a selection: instances change their transform;
  * loose geometry moves, stretching what it is connected to, or the whole
- * command is refused when that would bend or cross a face.
+ * command is refused when that would turn a face over or cross other geometry.
  */
 function transformAll(doc: PushformDocument, input: Selection, p: Prepared, tr: Transform): RunResult<MoveOutput> {
   let next = doc;
   let faceIds = p.faces;
   let edgeIds = p.edges;
-  if (faceIds.length || edgeIds.length) {
-    const r = transformSelection(p.model, faceIds, edgeIds, (q) => applyPoint(tr, q), (n) => applyVector(tr, n));
+  if (faceIds.length || edgeIds.length || p.vertices.length) {
+    const r = transformSelection(p.model, faceIds, edgeIds, (q) => applyPoint(tr, q), (n) => applyVector(tr, n), p.vertices);
     if (!r.ok) return { ok: false, error: { code: r.error } };
     next = withDefinitionModel(doc, input.definitionId, r.model);
     ({ faceIds, edgeIds } = r);
@@ -160,7 +163,7 @@ const radians = (degrees: number) => (degrees * Math.PI) / 180;
 /**
  * Move a selection of the editing context: groups and components change their
  * transform; loose geometry moves, stretching what it is connected to. A move
- * that would bend or cross a stretched face is refused. Typing a distance
+ * that would turn a stretched face over or cross other geometry is refused. Typing a distance
  * afterwards amends it.
  */
 export const move: CommandDef<MoveInput, MoveOutput> = {
@@ -203,7 +206,7 @@ export const moveCopies: CommandDef<MoveCopiesInput, MoveOutput> = {
 /**
  * Rotate a selection of the editing context about an axis through a center:
  * groups and components change their transform; loose geometry turns,
- * stretching what it is connected to unless that would bend or cross a face.
+ * stretching (and folding) what it is connected to, unless that would turn a face over or cross other geometry.
  * Typing an angle afterwards amends it.
  */
 export const rotate: CommandDef<RotateInput, MoveOutput> = {

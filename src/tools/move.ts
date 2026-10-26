@@ -20,9 +20,10 @@ interface MoveState extends Taken {
 
 /**
  * Move (M): click a start point, then the destination, or type a distance.
- * It moves the selection; with nothing selected, the face, edge, group or
- * component under the pointer. Groups and components move whole; loose
- * geometry stretches what it is connected to. Ctrl (Option on a Mac) toggles
+ * It moves the selection; with nothing selected, the corner (on its own),
+ * face, edge, group or component under the pointer. Groups and components
+ * move whole; loose geometry stretches what it is connected to, and faces
+ * bent out of their plane fold. Ctrl (Option on a Mac) toggles
  * copying; after a copy, typing x5 or /4 makes an array. Arrow keys lock an
  * axis, as in the Line tool.
  */
@@ -49,18 +50,21 @@ export function createMoveTool(ctx: ToolContext): Tool {
     faceIds: s.faceIds,
     edgeIds: s.edgeIds,
     instanceIds: s.instanceIds,
+    ...(s.vertexIds ? { vertexIds: s.vertexIds } : {}),
     ...m,
   });
+  /** A corner moved on its own is never copied. */
+  const copying = (s: MoveState) => copy && !s.vertexIds;
 
   const preview = (s: MoveState) => {
     const m = local(s);
     if (s.end) ctx.viewport.showLinePreview(s.start, s.end, s.axis);
     ctx.setMeasurement(label(), fmt(m?.distance ?? 0));
     if (!m) return ctx.viewport.hidePreview();
-    const r = copy
+    const r = copying(s)
       ? ctx.session.preview('core.moveCopies', { ...input(s, m), copies: 1, divide: false })
       : ctx.session.preview('core.move', input(s, m));
-    // A refused move (one that would bend or cross a face) shows the original instead.
+    // A refused move (one that would turn a face over or cross other geometry) shows the original instead.
     if (r.ok) ctx.showPreview(r.doc);
     else ctx.viewport.hidePreview();
   };
@@ -71,7 +75,7 @@ export function createMoveTool(ctx: ToolContext): Tool {
     const m = local(s);
     if (!m) return ctx.cancel();
     if (distance !== undefined) m.distance = distance;
-    const wasCopy = copy;
+    const wasCopy = copying(s);
     ctx.cancel(true);
     const r = wasCopy
       ? ctx.session.execute('core.moveCopies', { ...input(s, m), copies: 1, divide: false })
@@ -99,7 +103,7 @@ export function createMoveTool(ctx: ToolContext): Tool {
     down(e) {
       if (state) return commit();
       const first = inferPoint(ctx, null, null);
-      const taken = first && takeSelection(ctx);
+      const taken = first && takeSelection(ctx, true);
       if (!first || !taken) return;
       if (isMac() ? e.altKey : e.ctrlKey) copy = true;
       state = { ...taken, start: first.point, end: null, axis: null };
@@ -109,7 +113,7 @@ export function createMoveTool(ctx: ToolContext): Tool {
 
     move() {
       if (!state) {
-        hoverTakeable(ctx);
+        hoverTakeable(ctx, true);
         const hit = inferPoint(ctx, null, null);
         if (hit) ctx.viewport.showMarker(hit.point, hit.kind);
         else ctx.viewport.hideMarker();

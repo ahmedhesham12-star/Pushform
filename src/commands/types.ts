@@ -12,7 +12,6 @@ export type CommandErrorCode =
   | 'tooSmall'
   | 'notOnPlane'
   | 'nothingToErase'
-  | 'moveBends'
   | 'moveCrosses'
   | 'offsetTooLarge'
   | 'offsetNotChain'

@@ -82,11 +82,11 @@ describe('stretching connected geometry', () => {
     expect(bounds(m)).toEqual({ min: [0, 0, 0], max: [1300, 500, 1000] });
   });
 
-  test('sliding one top edge along itself would bend the side walls: blocked', () => {
+  test('sliding one top edge along itself folds the side walls (milestone 4; was refused)', () => {
     const t = box(emptyTopology(), 0, 0, 1000, 1000, 500);
     const P = (v: string) => t.vertices.get(v)!.p;
     const edge = [...t.edges].find(([, e]) => e.v.every((v) => P(v)[1] === 500 && P(v)[2] === 0))![0];
-    expect(moveGeometry(t, [], [edge], [300, 0, 0])).toEqual({ ok: false, error: 'moveBends' });
+    expect(moved(moveGeometry(t, [], [edge], [300, 0, 0])).faces.size).toBe(8);
   });
 
   test('moving a box top below its bottom folds the walls: blocked', () => {
@@ -129,6 +129,15 @@ describe('randomized moves', () => {
   // Found by stress sweep 5: a stretched corner landing exactly on another vertex.
   test('seed 3116: a point landing on a point is caught', () => {
     randomMoveRun(3116, 20);
+  });
+
+  test.each([1, 2, 3, 4, 5, 6, 7, 8, 9, 10])('seed %i with single corners: folds leave a valid model', (seed) => {
+    randomMoveRun(seed, 12, true);
+  });
+
+  // Found by stress sweep 5 with corners: a moved point landing inside an edge that stayed put.
+  test('seed 5441 with corners: a point landing inside a still edge is caught', () => {
+    randomMoveRun(5441, 20, true);
   });
 
   test('enough random moves are accepted to mean something', () => {

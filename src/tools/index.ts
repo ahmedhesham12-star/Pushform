@@ -13,6 +13,7 @@ import { createSelectTool } from './select';
 import type { Tool, ToolContext, ToolId } from './tool';
 
 export type { Selection, Tool, ToolContext, ToolId } from './tool';
+export { arrayBeforeCopy } from './transformSelection';
 export {
   ACTION_SHORTCUTS,
   isMac,

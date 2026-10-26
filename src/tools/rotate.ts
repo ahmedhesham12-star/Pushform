@@ -5,7 +5,7 @@ import type { Axis } from '../viewport';
 import { AXIS_KEYS, inferPoint, type Inferred } from './inference';
 import { isMac } from './shortcuts';
 import type { Tool, ToolContext } from './tool';
-import { hasSelection, hoverTakeable, selectResult, takeSelection, type Taken } from './transformSelection';
+import { arrayBeforeCopy, hasSelection, hoverTakeable, selectResult, takeSelection, type Taken } from './transformSelection';
 
 /** Angles snap to multiples of this (degrees) when the pointer is within SNAP_WITHIN of one. */
 const SNAP_STEP = 15;
@@ -184,6 +184,8 @@ export function createRotateTool(ctx: ToolContext): Tool {
 
     submit(text) {
       if (!state?.start) return ctx.flash(t('error.nothingToSize'), true);
+      const early = arrayBeforeCopy(text, ctx.units().unit);
+      if (early) return ctx.flash(early, true);
       const a = parseAngle(text);
       if (a === null || a === 0) return ctx.flash(t('error.typeAngle'), true);
       // A typed angle turns the way the pointer does, as typed lengths keep their direction.

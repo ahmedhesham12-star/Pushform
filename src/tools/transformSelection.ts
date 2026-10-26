@@ -1,5 +1,7 @@
 import { definitionModel } from '../commands';
+import { t } from '../i18n';
 import { edgeGroup, faceEdges } from '../kernel';
+import { formatNumber, parseTypedValues, type LengthUnit } from '../units';
 import { entityOf, type ToolContext } from './tool';
 
 /** The selection a Move or Rotate works on, as command input. */
@@ -7,6 +9,17 @@ export interface Taken {
   faceIds: string[];
   edgeIds: string[];
   instanceIds: string[];
+}
+
+/**
+ * For an array (x3, /4) typed before the first copy is placed: the message
+ * asking for that copy first. Null when the text is not an array.
+ */
+export function arrayBeforeCopy(text: string, unit: LengthUnit): string | null {
+  const r = parseTypedValues(text, unit);
+  const a = r.ok ? r.arrays[0] : undefined;
+  if (!a) return null;
+  return t('error.arrayNeedsCopy', { array: t(a.divide ? 'measure.divide' : 'measure.multiply', { count: formatNumber(a.count) }) });
 }
 
 export const hasSelection = (ctx: ToolContext) => ctx.selection.faces.size + ctx.selection.edges.size + ctx.selection.instances.size > 0;

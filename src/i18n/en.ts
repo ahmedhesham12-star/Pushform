@@ -125,6 +125,7 @@ export const en = {
   'error.moveDirectionFirst': 'Move the pointer in the direction to move, then type the distance.',
   'error.typeAngle': 'Type one angle in degrees, like 45 or -22.5.',
   'error.typeAngleOrArray': 'Type an angle like 45, x5 for 5 copies, or /4 to divide the angle into 4.',
+  'error.arrayNeedsCopy': 'Place the first copy, then type {array}.',
   'error.typeDistanceOrArray': 'Type a distance, x5 for 5 copies, or /4 to divide the distance into 4.',
   'error.noSuchInstance': 'That group or component no longer exists.',
   'error.generic': 'That did not work ({code}).',

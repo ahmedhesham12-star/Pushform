@@ -44,6 +44,7 @@ import { baseName, openFile, saveFile, type FileHandle, type FileType } from './
 import { saveAutosave, saveFileState, type FileState } from './storage';
 import {
   ACTION_SHORTCUTS,
+  arrayBeforeCopy,
   createTools,
   isMac,
   selectionMode,
@@ -785,6 +786,9 @@ export class App {
     if (r && !['amendValueCount', 'amendValueInvalid', 'invalidInput'].includes(r.error.code)) {
       return this.flashError(r.error);
     }
+    // An array after a plain move or rotation: it needs a copy to repeat.
+    const early = ['core.move', 'core.rotate'].includes(target.commandId) ? arrayBeforeCopy(text, this.session.doc.units.unit) : null;
+    if (early) return this.status.flash(early, true);
     this.status.flash(def?.amendHint?.() ?? t('error.typeValues', { count: target.fields.length }), true);
   }
 

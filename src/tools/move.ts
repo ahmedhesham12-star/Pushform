@@ -5,7 +5,7 @@ import type { Axis } from '../viewport';
 import { AXIS_KEYS, inferPoint } from './inference';
 import { isMac } from './shortcuts';
 import type { Tool, ToolContext } from './tool';
-import { hasSelection, hoverTakeable, selectResult, takeSelection, type Taken } from './transformSelection';
+import { arrayBeforeCopy, hasSelection, hoverTakeable, selectResult, takeSelection, type Taken } from './transformSelection';
 
 /** Moves shorter than this (mm) are no move at all. */
 const MIN_DISTANCE = 0.01;
@@ -125,6 +125,8 @@ export function createMoveTool(ctx: ToolContext): Tool {
 
     submit(text) {
       if (!state) return ctx.flash(t('error.nothingToSize'), true);
+      const early = arrayBeforeCopy(text, ctx.units().unit);
+      if (early) return ctx.flash(early, true);
       const r = parseLengthList(text, ctx.units().unit);
       if (!r.ok || r.mm.length !== 1 || r.mm[0] === 0) return ctx.flash(t('error.typeOneDistance'), true);
       if (!local(state)) return ctx.flash(t('error.moveDirectionFirst'), true);

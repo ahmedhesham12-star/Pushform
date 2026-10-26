@@ -367,6 +367,23 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - **Copying a group** gives the copy its own definition right away (sharing the geometry in memory), instead of SketchUp's shared definition that is made unique on the first edit. The user sees the same behavior.
 - **The Outliner** sorts by name and shows the copy count of each component.
 
+## Verified in SketchUp
+Checked on 2026-10-26 in SketchUp 2023 (Windows), by scripts run through the Ruby API (`transform_entities`, which applies SketchUp's own geometry rules) in an untitled model, with every change undone afterwards.
+- **Folding keeps the surface convex outward.** A moved point folds a face along diagonals chosen so each fold is a ridge seen from the face's front, never a valley:
+  - a box-top corner moved up 200 mm: one fold, along the diagonal through the moved corner;
+  - a vertex of a flat 12-sided top moved up: fold edges from the moved vertex to all nine non-adjacent vertices (ten triangles);
+  - a box's top front edge moved sideways: the side it bulges out of folds through the moved vertex; the side it moves into folds between the moved vertex's two neighbors.
+- **A box's top edge moved straight up** gives a sloped top with no fold.
+- **Fold edges are plain** (not soft, smooth or hidden), except in a smooth surface: when a cylinder's side walls (between soft edges) fold, the new edges are soft and smooth.
+- Moving one vertex of a circle through the API moves the whole circle; folds inside curves appear once the curve is exploded.
+
+**Not verified** (interactive tool behavior the Ruby API cannot drive); these follow our best knowledge of SketchUp and are for the product owner to check:
+- Tape Measure details: what a point-to-point measure creates, and how guide points are made.
+- The scope of Delete Guides (the open context or the whole model).
+- Leader text defaults (coordinates on a point, length on an edge, area on a face, name on a group or component).
+- Arc tangency colors.
+- What a length typed on a Scale corner grip scales.
+
 ## Differences from the prototype
 - **Bug fix:** pulling a lone face downward built its side walls facing inward. Walls of a lone face now always face outward.
 - New units menu (unit and precision) in the top bar.

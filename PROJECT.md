@@ -112,12 +112,18 @@ An edge may bound zero faces (a loose line), one, two, or more (a partition insi
    - Edges that do not separate regions (loose or dangling lines) stay as edges.
 
 **Push/pull**, generalized from the prototype rules:
-- **Stretch:** a vertex moves (stretching the faces around it) when every other face at it contains the push direction and the face's edges at it can stretch.
-- **Walls:** every other edge gets a wall. A wall that ends up coplanar with the face beside it merges into it.
+- **Stretch:** a vertex moves (stretching the faces around it) only when every other edge at it is parallel to the push direction and the face's edges at it can stretch. A face that covers only part of a neighbor's edge therefore never drags that neighbor's corners.
+- **Walls:** every other edge gets a wall, built through the planar engine in the wall's plane:
+  - where the wall overlaps an existing face and the push carves into the solid, that part of the face is cut away (a slot or notch, such as a slot open at the front);
+  - where the push adds to the solid beside an existing face, that face stays as the single shared face (a box built against another box);
+  - elsewhere the wall is a new face, and it merges into a coplanar neighbor with the same orientation (a tab on a wall).
+- **Landing:** the moved face lands in its target plane the same way. On a back-to-back face of the same solid, both are cut away (push through, also when the face touches the opposite face's edge). On a face with the same orientation, they merge.
 - **Bottom:** only a lone face (sharing no edge) leaves a bottom behind.
 - **Inner faces** stay in place when the outer face is pushed, as in SketchUp; the hole gets walls.
-- **Clamping:** stretched faces never collapse, and the face stops at a parallel face of the same solid ahead of it, so a pocket cannot pass through the bottom.
-- **Push through:** reaching that face exactly, with the pushed face inside its boundary, removes both and leaves a through-hole.
+- **Clamping:** stretched faces never collapse, and the face stops at the first parallel face of the same solid ahead of it, so a pocket cannot pass through the bottom.
+  - When only stretching keeps a face from reaching a face it partly covers, as when re-pushing a slot to the bottom, the push is redone with walls, so it cuts through instead of stopping short.
+  - A face that would cover the opposite face completely (a box top pushed onto its own bottom) stops 1 mm short, so a solid never vanishes by overshooting.
+- **Preview:** the live preview runs the same command as the commit, so they always agree.
 - **Curves:** walls between consecutive circle or arc segments are joined by soft edges, so a pushed circle shades like a cylinder. Polygons stay faceted. The moved loop gets its own copy of the curve.
 
 **Erase** (SketchUp rules):
@@ -210,7 +216,10 @@ Both levels are validated on load.
 | 2026-10-26 | New faces on the ground face up (approved) | A deliberate improvement over SketchUp, which makes them face down. |
 | 2026-10-26 | New faces in a plane with no faces: the largest normal component points the positive way; in a plane with faces they follow those faces | Deterministic and independent of the camera. |
 | 2026-10-26 | Automatic faces: a region becomes a face when a drawn edge lies on its outer boundary | Closing a loop creates a face, including when a rectangle closes off an area together with existing edges. A region bounded only by old edges stays empty. |
-| 2026-10-26 | Push through only when the face lands fully inside the opposite face; otherwise the push stops 1 mm short | A clean hole needs the pushed face inside the opposite face; partial cases need intersection logic (next steps). |
+| 2026-10-26 | Push through only when the face lands fully inside the opposite face; otherwise the push stops 1 mm short | Superseded the same day by the next three rows. |
+| 2026-10-26 | Stretch only when every other edge at a moved vertex is parallel to the push direction; otherwise build walls | Testing found slots reaching a box edge dragged the wall's corners (diagonal edges) and the push applied 0 mm. |
+| 2026-10-26 | Walls and the landed face go through the planar engine: carving cuts covered faces away, adding beside a face keeps it as the shared face, same-orientation neighbors merge | One rule covers slots, notches, tabs, push-through (including faces touching the opposite face's edge) and boxes built against boxes. |
+| 2026-10-26 | A face that would cover its opposite face completely stops 1 mm short | Pushing a box top onto its bottom would otherwise delete the whole solid. |
 | 2026-10-26 | One undo step per line segment (approved) | Matches SketchUp; amend changes the last segment. |
 | 2026-10-26 | Curves group circle and polygon edges; only circle and arc walls get soft edges | Requested: select and erase a curve as one, and shade a pushed circle as a cylinder. A pushed polygon should stay a faceted prism. |
 | 2026-10-26 | Circle and polygon radius goes to the corners; the first corner points toward the radius click | Matches SketchUp's default. |
@@ -220,8 +229,9 @@ Both levels are validated on load.
 ## Differences from SketchUp
 - **Ground faces face up**, deliberately. SketchUp makes them face down.
 - **New faces in a free plane** use a fixed rule (largest normal component positive), not the camera or neighboring solids. There is no "reverse face" command yet.
-- **Push through** only happens when the face lands fully inside the opposite face. If it would only partly overlap it, or touch its edge, the push stops 1 mm short.
-- **Pushing a face level with a neighbor** does not merge the two coplanar faces, and walls of different solids do not intersect each other (there is no "intersect faces").
+- **Pushing a whole face onto its opposite face** (a box top onto its bottom) stops 1 mm short. SketchUp deletes the solid.
+- **A box built against another box** keeps one shared face between them. SketchUp's result here was not verified against SketchUp itself.
+- **Walls of different solids** that cross each other do not intersect (there is no "intersect faces"). Faces pushed level with a neighbor merge only when they end up adjacent.
 - **Inference is simpler.** There are endpoints, midpoints, points on edges, points on faces, the three axes and arrow-key axis locks. Parallel, perpendicular and "from point" inference are not built yet.
 - **Erase has no modifiers** (no hide or soften while erasing).
 - **Push/pull has no "new face" modifier** (SketchUp's Ctrl).
@@ -249,13 +259,13 @@ Both levels are validated on load.
 - **Selection:** faces and edges, curves as one, Shift to add or remove, and Delete with the erase rules.
 - **Amend:** for line length, circle radius and segments, polygon radius and sides, as well as rectangle and push/pull.
 - **Documents:** version 2 format, with version 1 conversion that keeps face ids.
-- **Testing feedback fixed:** overlapping rectangles split faces instead of failing, and the measurements box is read-only when there is nothing to type.
+- **Testing feedback fixed:** overlapping rectangles split faces instead of failing; the measurements box is read-only when there is nothing to type; push/pull on a face covering part of a neighbor's edge (a slot reaching the box edge) builds straight walls and notches the neighbor instead of dragging its corners.
 - **Verification:**
-  - 277 unit tests pass and the production build succeeds. They include randomized overlapping rectangles (grid-aligned and arbitrary) with invariant checks after every step.
+  - 296 unit tests pass and the production build succeeds. They include randomized overlapping rectangles (grid-aligned and arbitrary), and randomized slots, notches and tabs on a box, with invariant checks after every step and preview-equals-commit checks.
   - Scripted browser checks (not in the repo) covered: overlaps, pockets and push-through, edge selection and erase, the line tool, circles and polygons, amend, autosave, and loading a milestone 1 autosave.
 
 ### Known limitations
-- Push-through and partial overlaps, as listed under differences from SketchUp.
+- The differences from SketchUp listed above.
 - Each operation recomputes its whole plane and an adjacency index. That is fine for typical models; very large models may slow down.
 - Undo history is not kept across reloads.
 - There is no file open, save or export yet; the only storage is the browser autosave.
@@ -264,7 +274,7 @@ Both levels are validated on load.
 ## Next steps (proposed, not yet approved)
 1. File open and save (`.pushform` JSON download and upload) and the first export (glTF or STL, from `faceMeshes`).
 2. Move, copy, rotate and offset tools, then components (also needed for imports).
-3. Kernel: push-through and push/pull for partial overlaps, merging coplanar faces when a push makes them level, and intersecting faces.
+3. Kernel: intersecting faces of different solids, and confirming the box-against-box result against SketchUp.
 4. Inference: parallel, perpendicular and "from point", and a reverse-face command.
 5. Arabic locale: catalog, an Arabic-capable font, and an RTL layout pass.
 6. Tooling: ESLint and Prettier, browser end-to-end tests in CI, and code-splitting three.js.

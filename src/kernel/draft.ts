@@ -284,6 +284,16 @@ export class Draft {
 
   /* ---------- curves ---------- */
 
+  /** Make an edge a segment of curve c (moving it out of any curve it was in). */
+  assignCurve(e: EdgeId, c: CurveId): void {
+    const old = this.edge(e).curve;
+    if (old === c) return;
+    if (old) this.dropFromCurve(old, [e]);
+    this.edges.set(e, { ...this.edge(e), curve: c });
+    const curve = this.curves.get(c);
+    if (curve) this.curves.set(c, { ...curve, edges: [...curve.edges, e] });
+  }
+
   addCurve(curve: Omit<Curve, 'edges'>): CurveId {
     const id = this.newId('c');
     this.curves.set(id, { ...curve, edges: [] });

@@ -94,6 +94,16 @@ export function insertSegment(
 
   hits.sort((x, y) => x.t - y.t);
   const chain = hits.map((h) => h.v).filter((v, i, all) => i === 0 || v !== all[i - 1]);
+  // An existing edge along the segment must be split at vertices that now lie inside it
+  // (a crossing found on this pass can land inside an edge an earlier pass laid down).
+  for (const v of chain) {
+    const p2 = to2(b, d.point(v));
+    for (const [id, e] of inPlaneEdges(d, pl)) {
+      if (e.v.includes(v)) continue;
+      const r = pointSegment(p2, to2(b, d.point(e.v[0])), to2(b, d.point(e.v[1])));
+      if (r.distance <= VERTEX_TOLERANCE && r.t > 0 && r.t < 1) d.splitEdge(id, v);
+    }
+  }
   const out: EdgeId[] = [];
   for (let i = 0; i + 1 < chain.length; i++) out.push(d.addEdge(chain[i]!, chain[i + 1]!, opts));
   return out;
@@ -224,6 +234,7 @@ export function rebuildPlane(
   drawn: ReadonlySet<EdgeId>,
   merge: { into: FaceId; from: FaceId[] } | null = null,
   ignore: ReadonlySet<EdgeId> = new Set(),
+  decide?: RegionRule,
 ): RebuildResult {
   const basis: Basis = planeBasis(pl.n);
   const P = (v: VertexId) => to2(basis, d.point(v));
@@ -283,13 +294,22 @@ export function rebuildPlane(
 
   // Decide which regions are faces, and who owns them.
   const edgeOf = (a: VertexId, b: VertexId) => d.edgeBetween(a, b)!;
-  const faces: { region: Region; owner: FaceId | null; normal: Vec3 }[] = [];
+  // `key` is the id the region claims: its owner's, or one the caller asked for.
+  const faces: { region: Region; owner: FaceId | null; key: FaceId | null; normal: Vec3 }[] = [];
   for (const r of regions) {
     const sample = interiorPoint(r, P);
-    const owner = old.find((f) => pointInPolygon(sample, f.outer) && !f.holes.some((h) => pointInPolygon(sample, h)));
+    const covers = old.filter((f) => pointInPolygon(sample, f.outer) && !f.holes.some((h) => pointInPolygon(sample, h)));
+    const rule = decide?.(sample, covers.map((f) => f.id));
+    if (rule) {
+      if ('drop' in rule) continue;
+      const key = rule.id ?? (rule.owner ? ownerId(rule.owner) : null);
+      faces.push({ region: r, owner: rule.owner ? ownerId(rule.owner) : null, key, normal: rule.normal });
+      continue;
+    }
+    const owner = covers[0];
     const isDrawn = r.outer.some((v, i) => drawn.has(edgeOf(v, r.outer[(i + 1) % r.outer.length]!)));
-    if (owner) faces.push({ region: r, owner: ownerId(owner.id), normal: owner.normal });
-    else if (isDrawn) faces.push({ region: r, owner: null, normal: newNormal });
+    if (owner) faces.push({ region: r, owner: ownerId(owner.id), key: ownerId(owner.id), normal: owner.normal });
+    else if (isDrawn) faces.push({ region: r, owner: null, key: null, normal: newNormal });
   }
   // A merge keeps the orientation of the face it merges into.
   if (merge) {
@@ -297,20 +317,34 @@ export function rebuildPlane(
     if (into) for (const f of faces) if (f.owner === merge.into) f.normal = into.normal;
   }
 
+  // The largest region claiming an id keeps it; the others get new ids.
   const keeps = new Map<FaceId, (typeof faces)[number]>();
   for (const f of faces) {
-    if (!f.owner) continue;
-    const cur = keeps.get(f.owner);
-    if (!cur || f.region.area > cur.region.area) keeps.set(f.owner, f);
+    if (!f.key) continue;
+    const cur = keeps.get(f.key);
+    if (!cur || f.region.area > cur.region.area) keeps.set(f.key, f);
   }
 
   for (const f of old) d.removeFace(f.id);
+  const oldIds = new Set(old.map((f) => f.id));
   const created: FaceId[] = [];
   for (const f of faces) {
-    const keepId = f.owner && keeps.get(f.owner) === f ? f.owner : undefined;
+    const keepId = f.key && keeps.get(f.key) === f ? f.key : undefined;
     const id = d.addFace(f.normal, f.region.outer, f.region.holes, keepId);
-    if (!keepId) created.push(id);
+    if (!keepId || !oldIds.has(keepId)) created.push(id);
   }
   const kept = new Set(keeps.keys());
   return { created, removed: old.map((f) => f.id).filter((id) => !kept.has(id)) };
 }
+
+/**
+ * Lets a caller decide a region of a rebuilt plane instead of the default
+ * rule. `sample` is a point inside the region in the plane's basis
+ * (planeBasis of the plane normal); `covers` lists the old faces covering it.
+ * Return { drop: true } to leave the region empty, a face description to make
+ * it a face (`id` asks for a specific id), or undefined for the default rule.
+ */
+export type RegionRule = (
+  sample: Vec2,
+  covers: FaceId[],
+) => { drop: true } | { owner: FaceId | null; normal: Vec3; id?: FaceId } | undefined;

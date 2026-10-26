@@ -23,7 +23,7 @@ function defaultNormal(n: Vec3): Vec3 {
 }
 
 /** The vertex at p in 3D: an existing one, or a new one that splits an edge it lands on. */
-function vertexAt3d(d: Draft, p: Point3): VertexId {
+export function vertexAt3d(d: Draft, p: Point3): VertexId {
   const near = d.findVertex(p);
   if (near) return near;
   for (const [id, e] of d.edges) {

@@ -200,13 +200,18 @@ describe('pockets and inner faces', () => {
     expect(faceArea(r.topology, r.topology.faces.has(bottom) ? bottom : r.createdFaceIds[0]!)).toBeCloseTo(6e6 - 1e6, 4);
   });
 
-  test('a face that lands only partly on the opposite face stops short', () => {
+  test('a pocket reaching the edge, pushed on to the bottom, cuts through as a slot', () => {
     const { t, top } = box();
-    // A rectangle on the top that reaches the edge pushed down cannot hole the bottom cleanly.
     const r0 = rect(t, top, [0, 1000, 500], 1000, 1000);
     const once = push(r0.t, r0.id, -300).topology;
     const r = push(once, r0.id, -5000);
-    expect(Math.abs(r.distance)).toBeLessThan(700);
+    expect(r.distance).toBeCloseTo(-700, 9);
+    expect(r.topology.faces.has(r0.id)).toBe(false);
+  });
+
+  test('a box top pushed onto its own bottom still stops 1 mm short', () => {
+    const { t, top } = box();
+    expect(push(t, top, -5000).distance).toBeCloseTo(-999, 9);
   });
 });
 

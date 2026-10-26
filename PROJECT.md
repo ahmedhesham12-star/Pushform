@@ -396,7 +396,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
   - 329 unit tests pass in about 6 s and the production build succeeds. The randomized rectangle and push/pull runs on horizontal faces (`tests/crossings.test.ts`, about 5.5 s) cover seed 11 for 80 steps, 8 seeds for 40 steps, and the 7 seeds that found bugs. Two longer sweeps of 120 seeds at 60 steps each run with `npm run test:stress` (about 85 s, the two sweeps in parallel); they pass and must pass before a milestone is merged into `main`. Boxes built against boxes follow the behavior the product owner specified (repros A and B in `tests/slots.test.ts`): one shared wall, split where the heights differ. The tests confirm that specification, not SketchUp's behavior, which is still unverified. They include randomized overlapping rectangles (grid-aligned and arbitrary), and randomized slots, notches and tabs on a box, with invariant checks after every step and preview-equals-commit checks.
   - Scripted browser checks (not in the repo) covered: overlaps, pockets and push-through, edge selection and erase, the line tool, circles and polygons, amend, autosave, and loading a milestone 1 autosave.
 
-**Milestone 3** (2026-10-26), on branch `milestone-3`, complete; checkpoints (a), (b) and (c) passed. Not yet merged into `main`:
+**Milestone 3** (2026-10-26), on branch `milestone-3`, complete; checkpoints (a), (b) and (c) passed. Merged into `main` and pushed:
 - **Scene layer and document version 3**, with version 2 conversion.
 - **Kernel:** extract, rigid transform and merge (explode, copies), solid volume.
 - **Commands:** make group, make component, explode, make unique, rename definition and instance, copy instances, erase instances; nesting.
@@ -418,6 +418,45 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
   - Sweeps 5 and 6 found four kernel bugs, all fixed with the failing seeds pinned in `npm test`: a corner landing on a vertex during a stretch, a hole moved out of its face in one jump, and loose lines crossing in a plane that later got a face.
   - Scripted browser checks (not in the repo) cover instances and contexts, snapping to other instances and faded geometry, the menu and panels, selection, Move, Rotate, Offset, push to surface, rectangle alignment, files and export.
 
+**Milestone 4** (in progress, started 2026-10-26), on branch `milestone-4`: precise furniture and architectural work. The product owner could rebuild the cabinet carcass and dividers but had no way to mark exact positions for dividers and shelves, and no proper rounded tops. Scope, as specified by the product owner:
+1. **Folding** (first)
+   - A Move or Rotate of loose geometry that would bend a face out of its plane folds that face into planar pieces along a diagonal, as SketchUp does, instead of being refused. Moving a box's top edge up makes a sloped top; moving a corner makes folded faces.
+   - Fold edges are soft (hidden, smooth shading) only where SketchUp makes them so; otherwise visible.
+   - Moves that would cross or overlap other geometry stay refused for now, with the existing message.
+2. **Tape Measure** (T)
+   - Click two points to measure the distance; the measurements box shows it.
+   - Click and drag from an edge to create a guide line parallel to it; type a distance for an exact offset. Click and drag from a point to create a guide point. Amend works.
+   - Click a point and then a second point with nothing under the first click to create a guide line between them (SketchUp behavior where applicable).
+   - Guides are snap targets for every tool, including intersections between guides and between guides and edges.
+   - Guides live in the current editing context, can be selected and erased, hidden and shown (View menu or a toggle), and are saved in the file. "Delete all guides" in the menu.
+   - Guide lines draw as dashed, infinite lines; guide points as small crosses.
+3. **Protractor**
+   - Pick a center and a base direction, then an angle, to create an angled guide line; typed angles and 15 degree snapping; amend works.
+4. **Dimensions and Text**
+   - Linear dimensions between two points or along an edge, offset to a side by a drag, showing the length in the file's units and precision.
+   - Dimensions attached to geometry follow it when it moves or is edited, and update their value.
+   - Text labels: a leader line from a point to a text box, editable. Screen text with no leader.
+   - Dimensions and text are saved in the file, selectable, erasable, and live in the current editing context.
+5. **Scale** (S) **and Flip**
+   - Scale: select geometry or instances, drag a grip on the bounding box (corner grips scale uniformly, edge and face grips along one or two axes), or type a factor (2, 0.5) or a target length with units (600mm). Ctrl scales about the center. Amend works.
+   - Scaling a group or component instance from outside uses the instance's scale field. Scaling geometry inside a definition changes the definition.
+   - Flip: right-click Flip Along red, green or blue. On instances it flips the scale sign (a mirrored instance of the same definition); on loose geometry it mirrors the geometry and keeps faces facing outward.
+   - Mirrored and scaled instances render, pick, snap, export and report volume correctly.
+   - Entity Info shows a warning when an instance is scaled non-uniformly, since its parts no longer match their real size (this matters for future cut lists).
+6. **Arcs**
+   - 2-Point Arc (A): two endpoints, then the bulge; typed bulge or radius; segment count with the "s" suffix. Tangent inference to connected edges (the arc turns cyan when tangent, as in SketchUp).
+   - Arc (center, start, end) and 3-Point Arc, and Pie (closed pie-shaped face).
+   - Arcs are curves like circles: one selection, soft edges between walls when pushed.
+   - Rounded corner workflow: draw a rectangle, draw tangent arcs at its corners, erase the corner edges, and get one face that push/pulls into a rounded panel.
+
+Checkpoints for the product owner's manual testing: (a) after folding, Tape Measure and Protractor; (b) after Dimensions and Text; (c) after Scale, Flip and arcs.
+
+Decisions approved for milestone 4 (2026-10-26, product owner):
+- **Tape Measure follows SketchUp:** guides are created by default (the cursor shows a +) and Ctrl toggles measure-only. From an edge: a guide line parallel to it, at the pointer's offset or a typed one. From a point to another point: a guide line through both. From a point to anywhere else: a guide point there. The measurements box always shows the distance.
+- **Instances keep rotation, translation and scale** (scale may be negative or non-uniform). An operation that would skew one instance is refused with a message: non-uniform scale along axes that are not the instance's own, or exploding a non-uniformly scaled group with turned groups inside. Uniform scale and Flip always work.
+- **SketchUp behavior is checked in SketchUp itself** (through the SketchUp connection, in a new empty model) where it is uncertain; results are listed under "Verified in SketchUp".
+- **The tool bar has two columns** of grouped buttons; labels are tooltips and shortcut keys stay on the buttons.
+
 ### Known limitations
 - The differences from SketchUp listed above.
 - Each operation recomputes its whole plane and an adjacency index. That is fine for typical models; very large models may slow down.
@@ -428,17 +467,13 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - While moving loose geometry, its own endpoints and midpoints at the original position are still inference targets (its faces and edges are not).
 
 ## Next steps (proposed, not yet approved)
-1. **Milestone 4**, in this order unless the product owner decides otherwise:
-   1. **Folding** (first): a move or rotation of loose geometry that would bend a face splits it into planar triangles instead of being refused, as SketchUp does; moving edges and corners is how users make sloped and angled parts.
-   2. **Tape Measure** (T): measure the distance between two points, and place guide lines (parallel to an edge, at a typed offset) and guide points that drawing snaps to, as in SketchUp.
-   3. **Dimensions**: linear dimensions between two points, shown in the file's units, that follow the geometry when it moves or is edited.
-   4. **Scale and Flip**: the document format already carries a scale per instance (fixed at [1, 1, 1] for now); mirrored components, such as left and right doors, need it.
-   5. **Arcs** (the 2-point Arc, A), as curves like circles.
-   6. **Tags** (layers) for showing and hiding parts.
-   7. **Materials** (the Paint Bucket, B), carried into GLB export.
-   8. **Solid tools**: union, subtract and intersect for groups and components that are solids, and solid volume for groups holding other groups.
-   9. **Hardware import**: manufacturer models (STEP or glTF) placed as components.
-   10. **OBJ and DXF export.**
+1. **After milestone 4** (out of its scope):
+   1. **Tags** (layers) for showing and hiding parts.
+   2. **Materials** (the Paint Bucket, B), carried into GLB export.
+   3. **Solid tools**: union, subtract and intersect for groups and components that are solids, and solid volume for groups holding other groups.
+   4. **Hardware import**: manufacturer models (STEP or glTF) placed as components.
+   5. **OBJ and DXF export.**
+   6. **Intersecting moved geometry** with what it lands on.
 2. A stretch that lands a point on another point merges the two instead of being refused.
 3. Kernel: intersecting faces of different solids, and confirming the box-against-box result in SketchUp (product owner).
 4. Inference: parallel, perpendicular and "from point", and a reverse-face command.

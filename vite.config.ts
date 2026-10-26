@@ -10,6 +10,8 @@ export default defineConfig({
   },
   test: {
     include: ['tests/**/*.test.ts'],
+    // Slow sweeps run separately: npm run test:stress (vitest.stress.config.ts).
+    exclude: ['tests/stress/**', 'node_modules/**'],
     environment: 'node',
   },
 });

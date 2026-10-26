@@ -7,11 +7,13 @@ Browser-based push/pull 3D modeler. TypeScript (strict), Vite, three.js, Vitest,
 - `npm run dev`: dev server (http://localhost:5173)
 - `npm test`: unit and architecture tests (Vitest, run once)
 - `npm run test:watch`: tests in watch mode
+- `npm run test:stress`: slow randomized sweeps in `tests/stress` (about 1.5 minutes; not part of `npm test`)
 - `npm run build`: type-check (`tsc --noEmit`), then production build into `dist/`
 - `npm run preview`: serve the production build
 - `npm run typecheck`: type-check only
 
 Run `npm test` and `npm run build` before every commit. Both must pass.
+`npm run test:stress` must also pass before a milestone is merged into `main`.
 
 ## Layers (enforced by tests/architecture.test.ts)
 - `src/kernel`: pure geometry in millimeters: a shared topology of vertices, edges, faces and curves. No three.js, no DOM, no imports from other layers; the only package allowed is `earcut`. Import it only through `src/kernel/index.ts`. The `Model` type is opaque. Kernel tests check `validate()` (via `checkModel`) after every operation.
@@ -28,7 +30,7 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 - Commands that create faces return the ids of every face they create.
 - Lengths are stored in mm. Convert only at the edges, with `parseLength`/`parseLengthList`/`parseTypedValues` and `formatLength`/`formatArea` from `src/units`.
 - Kernel operations work on a `Draft` and return a new topology; never edit a `Topology` in place. Drawing goes through the planar engine (`insertSegment`, `rebuildPlane`), not hand-built faces.
-- Kernel tests run the invariant checker after every operation. Planar changes get randomized cases too (see `tests/planar.test.ts`).
+- Kernel tests run the invariant checker after every operation. Planar changes get randomized cases too (see `tests/planar.test.ts` and `tests/helpers/randomRun.ts`). A seed that finds a bug is pinned as a regression test in `npm test`; long sweeps go in `tests/stress`.
 - DOM component tests opt into happy-dom with `// @vitest-environment happy-dom` at the top of the file.
 - All user-visible text goes through `t()` with keys in `src/i18n/en.ts`. Never put text in HTML, icons or code literals.
 - Numbers shown to users go through Intl (via `src/units`).

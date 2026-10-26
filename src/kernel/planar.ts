@@ -6,9 +6,10 @@
  */
 import earcut from 'earcut';
 import { VERTEX_TOLERANCE } from './precision';
-import { add, scale, sub, type Vec3 } from './vec';
+import { add, length, scale, sub, type Vec3 } from './vec';
 import type { Draft } from './draft';
 import {
+  distanceToPlane,
   onPlane,
   planeBasis,
   planeThrough,
@@ -28,8 +29,27 @@ const inPlaneEdges = (d: Draft, pl: Plane) =>
   [...d.edges].filter(([, e]) => onPlane(pl, d.point(e.v[0])) && onPlane(pl, d.point(e.v[1])));
 
 /**
+ * Edges outside the plane that pass through it at a point strictly inside the
+ * edge, with that point. (An edge that only touches the plane does so at a
+ * vertex, which the vertex checks already find.)
+ */
+function piercingEdges(d: Draft, pl: Plane): { e: EdgeId; point: Point3 }[] {
+  const out: { e: EdgeId; point: Point3 }[] = [];
+  for (const [id, e] of d.edges) {
+    const p = d.point(e.v[0]);
+    const q = d.point(e.v[1]);
+    const dp = distanceToPlane(pl, p);
+    const dq = distanceToPlane(pl, q);
+    if (Math.abs(dp) <= VERTEX_TOLERANCE || Math.abs(dq) <= VERTEX_TOLERANCE || dp * dq > 0) continue;
+    out.push({ e: id, point: add(p, scale(sub(q, p), dp / (dp - dq))) });
+  }
+  return out;
+}
+
+/**
  * The vertex at p: an existing one within the tolerance, or a new one. A new
- * vertex that lands on an edge in the plane splits that edge.
+ * vertex that lands on an edge in the plane, or on an edge passing through
+ * the plane, splits that edge.
  */
 export function vertexInPlane(d: Draft, pl: Plane, p: Point3): VertexId {
   const near = d.findVertex(p);
@@ -41,6 +61,13 @@ export function vertexInPlane(d: Draft, pl: Plane, p: Point3): VertexId {
     if (r.distance <= VERTEX_TOLERANCE && r.t > 0 && r.t < 1) {
       const v = d.addVertex(p);
       d.splitEdge(id, v);
+      return v;
+    }
+  }
+  for (const { e, point } of piercingEdges(d, pl)) {
+    if (length(sub(point, p)) <= VERTEX_TOLERANCE) {
+      const v = d.addVertex(p);
+      d.splitEdge(e, v);
       return v;
     }
   }
@@ -90,6 +117,14 @@ export function insertSegment(
     const v = d.findVertex(X) ?? d.addVertex(X);
     d.splitEdge(c.e, v);
     hits.push({ t: c.t, v });
+  }
+  // Edges from other planes that pass through the segment: both are split at the crossing.
+  for (const { e, point } of piercingEdges(d, pl)) {
+    const r = pointSegment(to2(b, point), a2, b2);
+    if (r.distance > VERTEX_TOLERANCE || r.t <= 0 || r.t >= 1) continue;
+    const v = d.findVertex(point) ?? d.addVertex(point);
+    if (!d.edge(e).v.includes(v)) d.splitEdge(e, v);
+    hits.push({ t: r.t, v });
   }
 
   hits.sort((x, y) => x.t - y.t);

@@ -118,25 +118,39 @@ export function validate(t: Topology): string[] {
 
   /* planes: edges never cross, vertices never sit inside edges, faces never overlap */
   if (!planes.some((g) => samePlane(g.plane, GROUND))) planes.push({ plane: GROUND, faces: [] });
-  for (const { plane, faces } of planes) {
-    const b = planeBasis(plane.n);
-    const inPlane = [...t.edges].filter(([, e]) => e.v.every((v) => t.vertices.has(v) && onPlane(plane, P(v))));
-    const vs = [...t.vertices].filter(([, v]) => onPlane(plane, v.p));
-    const seg = inPlane.map(([id, e]) => ({ id, e, a: to2(b, P(e.v[0])), b: to2(b, P(e.v[1])) }));
-    for (let i = 0; i < seg.length; i++) {
-      for (let j = i + 1; j < seg.length; j++) {
-        if (segmentCrossing(seg[i]!.a, seg[i]!.b, seg[j]!.a, seg[j]!.b)) bad(`edges ${seg[i]!.id} and ${seg[j]!.id} cross`);
-      }
-      for (const [vid, v] of vs) {
-        if (seg[i]!.e.v.includes(vid)) continue;
-        const r = pointSegment(to2(b, v.p), seg[i]!.a, seg[i]!.b);
-        if (r.distance <= VERTEX_TOLERANCE && r.t > 0 && r.t < 1) bad(`vertex ${vid} lies inside edge ${seg[i]!.id}`);
-      }
+  for (const { plane } of planes) problems.push(...planeProblems(t, plane));
+  return problems;
+}
+
+/**
+ * The planar invariants for one plane: no two edges in it cross, no vertex in
+ * it sits inside one of its edges, and no two of its faces overlap. Cheap
+ * enough to run on the few planes an operation touched.
+ */
+export function planeProblems(t: Topology, plane: Plane): string[] {
+  const problems: string[] = [];
+  const bad = (msg: string) => problems.push(msg);
+  const P = (v: VertexId) => t.vertices.get(v)!.p;
+  const b = planeBasis(plane.n);
+  const faces = [...t.faces]
+    .filter(([, f]) => samePlane(planeThrough(f.normal, P(f.outer[0]!)), plane))
+    .map(([id]) => id);
+  const inPlane = [...t.edges].filter(([, e]) => e.v.every((v) => t.vertices.has(v) && onPlane(plane, P(v))));
+  const vs = [...t.vertices].filter(([, v]) => onPlane(plane, v.p));
+  const seg = inPlane.map(([id, e]) => ({ id, e, a: to2(b, P(e.v[0])), b: to2(b, P(e.v[1])) }));
+  for (let i = 0; i < seg.length; i++) {
+    for (let j = i + 1; j < seg.length; j++) {
+      if (segmentCrossing(seg[i]!.a, seg[i]!.b, seg[j]!.a, seg[j]!.b)) bad(`edges ${seg[i]!.id} and ${seg[j]!.id} cross`);
     }
-    for (let i = 0; i < faces.length; i++) {
-      for (let j = 0; j < faces.length; j++) {
-        if (i !== j && overlaps(t, faces[i]!, faces[j]!)) bad(`faces ${faces[i]} and ${faces[j]} overlap`);
-      }
+    for (const [vid, v] of vs) {
+      if (seg[i]!.e.v.includes(vid)) continue;
+      const r = pointSegment(to2(b, v.p), seg[i]!.a, seg[i]!.b);
+      if (r.distance <= VERTEX_TOLERANCE && r.t > 0 && r.t < 1) bad(`vertex ${vid} lies inside edge ${seg[i]!.id}`);
+    }
+  }
+  for (let i = 0; i < faces.length; i++) {
+    for (let j = 0; j < faces.length; j++) {
+      if (i !== j && overlaps(t, faces[i]!, faces[j]!)) bad(`faces ${faces[i]} and ${faces[j]} overlap`);
     }
   }
   return problems;

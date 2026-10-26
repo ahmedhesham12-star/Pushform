@@ -1,7 +1,7 @@
 import { VERTEX_TOLERANCE } from './precision';
 import { cross, dot, length, normalize, sub, type Vec3 } from './vec';
 import { Draft } from './draft';
-import { onPlane, planeThrough, samePlane, type Plane } from './geometry';
+import { onPlane, planeThrough, samePlane, segmentsClosest, type Plane } from './geometry';
 import { insertSegment, rebuildPlane } from './planar';
 import { GROUND, GROUND_NORMAL } from './shapes';
 import type { EdgeId, FaceId, Point3, Topology, VertexId } from './types';
@@ -41,6 +41,50 @@ export function vertexAt3d(d: Draft, p: Point3): VertexId {
     }
   }
   return d.addVertex(p);
+}
+
+/**
+ * Make an existing edge meet the rest of the model properly after its ends
+ * moved (a stretched edge): split it at vertices lying inside it, and split it
+ * and any edge it crosses at the crossing point.
+ */
+export function resolveEdgeCrossings(d: Draft, e: EdgeId): void {
+  if (!d.edges.has(e)) return;
+  const [va, vb] = d.edge(e).v;
+  const A = d.point(va);
+  const B = d.point(vb);
+  const len = length(sub(B, A));
+  const cuts: { t: number; v: VertexId }[] = [];
+  for (const [id, vx] of d.vertices) {
+    if (id === va || id === vb) continue;
+    const t = dot(sub(vx.p, A), sub(B, A)) / (len * len);
+    if (t <= 0 || t >= 1) continue;
+    const off = length(sub(vx.p, [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, A[2] + (B[2] - A[2]) * t]));
+    if (off <= VERTEX_TOLERANCE) cuts.push({ t, v: id });
+  }
+  for (const [id, f] of [...d.edges]) {
+    if (id === e || f.v.includes(va) || f.v.includes(vb)) continue;
+    const C = d.point(f.v[0]);
+    const D = d.point(f.v[1]);
+    const c = segmentsClosest(A, B, C, D);
+    const flen = length(sub(D, C));
+    const inside = (x: number, l: number) => x * l > VERTEX_TOLERANCE && (1 - x) * l > VERTEX_TOLERANCE;
+    if (c.distance > VERTEX_TOLERANCE || !inside(c.s, len) || !inside(c.t, flen)) continue;
+    const X: Point3 = [C[0] + (D[0] - C[0]) * c.t, C[1] + (D[1] - C[1]) * c.t, C[2] + (D[2] - C[2]) * c.t];
+    const v = d.findVertex(X) ?? d.addVertex(X);
+    if (!d.edge(id).v.includes(v)) d.splitEdge(id, v);
+    cuts.push({ t: c.s, v });
+  }
+  // Split e at the cut points, nearest to A first, each time splitting the piece that remains.
+  cuts.sort((x, y) => x.t - y.t);
+  let rest = e;
+  let from = va;
+  for (const { v } of cuts) {
+    if (v === from || !d.edges.has(rest)) continue;
+    const [first, second] = d.splitEdge(rest, v);
+    rest = d.edge(first).v.includes(from) ? second : first;
+    from = v;
+  }
 }
 
 /** Insert a segment that lies in no plane with geometry: through existing vertices on it, no crossings. */

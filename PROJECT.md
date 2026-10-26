@@ -106,7 +106,7 @@ An edge may bound zero faces (a loose line), one, two, or more (a partition insi
 - Curve and edge references agree.
 
 **Planar engine.** All drawing goes through two steps:
-1. **Inserting segments into a plane.** Points snap to existing vertices or split an edge they land on. Segments split the edges they cross, and parts that run along existing edges reuse them.
+1. **Inserting segments into a plane.** Points snap to existing vertices or split an edge they land on. Segments split the edges they cross, and parts that run along existing edges reuse them. Edges from other planes that pass through a segment (a box's vertical edge crossing a ground line) are split with it at the crossing, sharing the new vertex, and drawn edges also split the faces of other planes they lie in.
 2. **Rebuilding the plane's faces from its edges.** A region becomes a face when an old face covered it, or when a drawn edge lies on its outer boundary (automatic faces).
    - A region covered by an old face keeps that face's orientation. When an old face splits, its largest piece keeps its id.
    - Edges that do not separate regions (loose or dangling lines) stay as edges.
@@ -123,6 +123,7 @@ An edge may bound zero faces (a loose line), one, two, or more (a partition insi
 - **Clamping:** stretched faces never collapse, and the face stops at the first parallel face of the same solid ahead of it, so a pocket cannot pass through the bottom.
   - When only stretching keeps a face from reaching a face it partly covers, as when re-pushing a slot to the bottom, the push is redone with walls, so it cuts through instead of stopping short.
   - A face that would cover the opposite face completely (a box top pushed onto its own bottom) stops 1 mm short, so a solid never vanishes by overshooting.
+- **Stretch safety:** stretched edges are split where they now cross or touch other geometry. If a stretched vertex would land on an existing vertex, or a stretched face would overlap or run into other geometry in its plane, the push is redone with walls, which the planar engine resolves.
 - **Preview:** the live preview runs the same command as the commit, so they always agree.
 - **Curves:** walls between consecutive circle or arc segments are joined by soft edges, so a pushed circle shades like a cylinder. Polygons stay faceted. The moved loop gets its own copy of the curve.
 
@@ -220,6 +221,7 @@ Both levels are validated on load.
 | 2026-10-26 | Stretch only when every other edge at a moved vertex is parallel to the push direction; otherwise build walls | Testing found slots reaching a box edge dragged the wall's corners (diagonal edges) and the push applied 0 mm. |
 | 2026-10-26 | Walls and the landed face go through the planar engine: carving cuts covered faces away, adding beside a face keeps it as the shared face, same-orientation neighbors merge | One rule covers slots, notches, tabs, push-through (including faces touching the opposite face's edge) and boxes built against boxes. |
 | 2026-10-26 | A face that would cover its opposite face completely stops 1 mm short | Pushing a box top onto its bottom would otherwise delete the whole solid. |
+| 2026-10-26 | Segment insertion splits edges from other planes that pass through the segment; a push that stretches into conflicts is redone with walls | Review finding (crossing edges) and randomized push/pull runs. Stretching stays the first choice because it keeps meaning, such as a pocket shrinking as its floor rises; walls are the safe fallback. |
 | 2026-10-26 | One undo step per line segment (approved) | Matches SketchUp; amend changes the last segment. |
 | 2026-10-26 | Curves group circle and polygon edges; only circle and arc walls get soft edges | Requested: select and erase a curve as one, and shade a pushed circle as a cylinder. A pushed polygon should stay a faceted prism. |
 | 2026-10-26 | Circle and polygon radius goes to the corners; the first corner points toward the radius click | Matches SketchUp's default. |
@@ -260,7 +262,7 @@ Both levels are validated on load.
 - **Documents:** version 2 format, with version 1 conversion that keeps face ids.
 - **Testing feedback fixed:** overlapping rectangles split faces instead of failing; the measurements box is read-only when there is nothing to type; push/pull on a face covering part of a neighbor's edge (a slot reaching the box edge) builds straight walls and notches the neighbor instead of dragging its corners.
 - **Verification:**
-  - 301 unit tests pass and the production build succeeds. Boxes built against boxes follow the product owner's expected results (repros A and B in `tests/slots.test.ts`): one shared wall, split where the heights differ. They include randomized overlapping rectangles (grid-aligned and arbitrary), and randomized slots, notches and tabs on a box, with invariant checks after every step and preview-equals-commit checks.
+  - 320 unit tests pass in about 6 s and the production build succeeds. The randomized rectangle and push/pull runs on horizontal faces (`tests/crossings.test.ts`, about 5.5 s) cover seed 11 for 80 steps, 8 seeds for 40 steps, and the 7 seeds that found bugs. Longer sweeps of 240 more seeds at 60 steps each (about 85 s per 120 seeds) passed and are not part of CI. Boxes built against boxes follow the product owner's expected results (repros A and B in `tests/slots.test.ts`): one shared wall, split where the heights differ. They include randomized overlapping rectangles (grid-aligned and arbitrary), and randomized slots, notches and tabs on a box, with invariant checks after every step and preview-equals-commit checks.
   - Scripted browser checks (not in the repo) covered: overlaps, pockets and push-through, edge selection and erase, the line tool, circles and polygons, amend, autosave, and loading a milestone 1 autosave.
 
 ### Known limitations

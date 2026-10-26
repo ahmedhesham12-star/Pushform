@@ -2,9 +2,10 @@ import { CLAMP_MARGIN, EPSILON } from './precision';
 import { add, cross, dot, negate, normalize, scale, sub, type Vec3 } from './vec';
 import { Draft } from './draft';
 import { parallel, planeBasis, planeThrough, pointInPolygon, samePlane, to2, type Plane, type Vec2 } from './geometry';
-import { vertexAt3d } from './lines';
+import { resolveEdgeCrossings, vertexAt3d } from './lines';
 import { insertSegment, rebuildPlane, type RegionRule } from './planar';
 import { faceTriangles } from './triangulate';
+import { planeProblems } from './validate';
 import type { CurveId, EdgeId, FaceId, Point3, Topology, VertexId } from './types';
 
 export interface PushPullResult {
@@ -134,6 +135,8 @@ function push(t: Topology, faceId: FaceId, requested: number, stretch: boolean):
   if (Math.abs(distance) < EPSILON) return none;
 
   const off = scale(n, distance);
+  // A stretched vertex landing on an existing vertex would need the two merged: build walls instead.
+  if ([...movable].some((v) => (d.findVertex(add(P(v), off)) ?? v) !== v)) return push(t, faceId, distance, false);
   const inward = !free && distance < 0;
   const newN = free && distance < 0 ? negate(n) : n;
   const created = new Set<FaceId>();
@@ -160,6 +163,9 @@ function push(t: Topology, faceId: FaceId, requested: number, stretch: boolean):
   // Move what stretches; give every other vertex a moved copy (splitting any edge it lands on).
   const targets = new Map([...fvs].map((v) => [v, add(P(v), off)] as const));
   for (const v of movable) d.moveVertex(v, targets.get(v)!);
+  // Stretched edges may now reach through other geometry: split where they cross or touch it.
+  const stretched = new Set([...movable].flatMap((v) => d.edgesOf(v).filter((e) => !faceEdges.has(e))));
+  for (const e of stretched) resolveEdgeCrossings(d, e);
   const moved = new Map<VertexId, VertexId>();
   for (const v of fvs) moved.set(v, movable.has(v) ? v : vertexAt3d(d, targets.get(v)!));
   const newLoops = loops.map((l) => l.map((v) => moved.get(v)!));
@@ -274,6 +280,20 @@ function push(t: Topology, faceId: FaceId, requested: number, stretch: boolean):
     d.removeEdge(e);
   }
   for (const v of [...ends, ...fvs]) if (d.vertices.has(v)) d.healVertex(v);
+
+  // Stretching moves faces without the planar engine. If a stretched face now overlaps or
+  // runs into other geometry in its plane, build walls instead, which resolves it.
+  if (movable.size) {
+    const planes: Plane[] = [];
+    for (const v of movable) {
+      if (!d.vertices.has(v)) continue;
+      for (const f of d.facesOfVertex(v)) {
+        const pl = planeOf(d, f);
+        if (!planes.some((x) => samePlane(x, pl))) planes.push(pl);
+      }
+    }
+    if (planes.some((pl) => planeProblems(d, pl).length)) return push(t, faceId, distance, false);
+  }
 
   const faceIds = new Set(d.faces.keys());
   created.delete(faceId);

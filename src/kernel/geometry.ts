@@ -53,6 +53,34 @@ export function planeBasis(n: Vec3): Basis {
 
 export const to2 = (b: Basis, p: Point3): Vec2 => [dot(p, b.u), dot(p, b.v)];
 
+/**
+ * Closest points of segments p1-q1 and p2-q2 in 3D: parameters s on the first
+ * and t on the second (0..1), and the distance between the points.
+ */
+export function segmentsClosest(p1: Point3, q1: Point3, p2: Point3, q2: Point3): { s: number; t: number; distance: number } {
+  const d1 = sub(q1, p1);
+  const d2 = sub(q2, p2);
+  const r = sub(p1, p2);
+  const a = dot(d1, d1);
+  const e = dot(d2, d2);
+  const f = dot(d2, r);
+  const c = dot(d1, r);
+  const b = dot(d1, d2);
+  const denom = a * e - b * b;
+  const clamp = (x: number) => Math.max(0, Math.min(1, x));
+  let s = denom > 1e-12 * a * e ? clamp((b * f - c * e) / denom) : 0;
+  let t = (b * s + f) / e;
+  if (t < 0) {
+    t = 0;
+    s = clamp(-c / a);
+  } else if (t > 1) {
+    t = 1;
+    s = clamp((b - c) / a);
+  }
+  const x = [p1[0] + d1[0] * s - p2[0] - d2[0] * t, p1[1] + d1[1] * s - p2[1] - d2[1] * t, p1[2] + d1[2] * s - p2[2] - d2[2] * t] as const;
+  return { s, t, distance: length(x) };
+}
+
 /* ---------- 2D ---------- */
 
 export function signedArea(pts: readonly Vec2[]): number {

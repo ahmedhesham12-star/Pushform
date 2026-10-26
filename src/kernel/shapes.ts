@@ -1,7 +1,7 @@
 import { MIN_RECT_SIDE, snapPoint } from './precision';
 import { add, cross, dot, length, normalize, planeAxes, scale, sub, type Vec3 } from './vec';
 import { Draft } from './draft';
-import { onPlane, planeBasis, planeThrough, type Plane } from './geometry';
+import { onPlane, planeBasis, planeThrough, samePlane, type Plane } from './geometry';
 import { insertSegment, rebuildPlane } from './planar';
 import type { Curve, EdgeId, FaceId, Point3, Topology } from './types';
 
@@ -40,7 +40,22 @@ export function drawLoop(
     for (const e of insertSegment(d, plane, p, points[(i + 1) % points.length]!, { curve: curveId })) drawn.add(e);
   });
   const r = rebuildPlane(d, plane, normal, drawn);
-  return { topology: d.commit(), faceIds: r.created, edgeIds: [...drawn] };
+  const created = new Set(r.created);
+  // Drawn edges can also lie in the plane of another face (along a wall that crosses the
+  // drawing plane): rebuild those planes too, so the edge splits the face as a line would.
+  const others: { plane: Plane; normal: Vec3 }[] = [];
+  for (const [, f] of d.faces) {
+    const pl = planeThrough(f.normal, d.point(f.outer[0]!));
+    if (samePlane(pl, plane) || others.some((o) => samePlane(o.plane, pl))) continue;
+    const lies = [...drawn].some((e) => d.edges.has(e) && d.edge(e).v.every((v) => onPlane(pl, d.point(v))));
+    if (lies) others.push({ plane: pl, normal: f.normal });
+  }
+  for (const o of others) {
+    const ro = rebuildPlane(d, o.plane, o.normal, drawn);
+    for (const f of ro.created) created.add(f);
+    for (const f of ro.removed) created.delete(f);
+  }
+  return { topology: d.commit(), faceIds: [...created].filter((f) => d.faces.has(f)), edgeIds: [...drawn] };
 }
 
 /** The four corners of a rectangle with signed sizes along the plane axes of n. */

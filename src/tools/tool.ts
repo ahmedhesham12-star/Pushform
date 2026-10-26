@@ -41,6 +41,8 @@ export interface ToolContext {
   showCommitted(): void;
   /** Show a document a command preview produced, in the same editing context. */
   showPreview(doc: PushformDocument): void;
+  /** Open a group or component placed in the current context for editing. */
+  openContext(instanceId: InstanceId): void;
   /** Close editing contexts until `path` is the open one ([] is the root). */
   closeContext(path: readonly InstanceId[]): void;
   /** The open editing context, as an instance path ([] is the root). */
@@ -83,6 +85,12 @@ export interface Tool {
   move?(e: PointerEvent): void;
   /** Pointer released after dragging: click-drag-release finishes like a second click. */
   dragEnd?(): void;
+  /**
+   * Left button released, after a drag (moved past the drag threshold) or not.
+   * `clicks` counts quick presses at one spot (2 for a double-click), using
+   * the system's double-click time.
+   */
+  up?(e: PointerEvent, dragged: boolean, clicks: number): void;
   /** Value typed into the measurements box. */
   submit?(text: string): void;
   /** Drop any operation in progress. Returns true when something was cancelled. */

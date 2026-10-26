@@ -17,8 +17,16 @@ export type EntityInfoData =
       /** Formatted volume, "not a solid", or null when it does not apply (nested groups). */
       volume: string | null;
     }
-  | { kind: 'geometry'; title: string; area: string | null; length: string | null }
-  | { kind: 'mixed'; title: string };
+  | {
+      kind: 'selection';
+      /** How many items are selected. */
+      total: string;
+      /** How many of each type (groups, components, faces, edges), the ones present only. */
+      counts: readonly { label: string; count: string }[];
+      /** Total area of the selected faces and length of the selected edges, when there are any. */
+      area: string | null;
+      length: string | null;
+    };
 
 export interface EntityInfoHost {
   renameDefinition(id: DefinitionId, name: string): void;
@@ -59,13 +67,11 @@ export class EntityInfo {
         this.input(t('info.instance'), data.instanceName, (name) => this.host.renameInstance(data.instanceId, name), true);
         if (data.volume) this.row(t('info.volume'), data.volume);
         break;
-      case 'geometry':
-        this.row(t('info.selection'), data.title);
+      case 'selection':
+        this.row(t('info.selected'), data.total);
+        for (const c of data.counts) this.row(c.label, c.count);
         if (data.area) this.row(t('info.area'), data.area);
         if (data.length) this.row(t('info.length'), data.length);
-        break;
-      case 'mixed':
-        this.row(t('info.selection'), data.title);
         break;
     }
   }

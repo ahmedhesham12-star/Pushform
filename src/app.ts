@@ -18,6 +18,8 @@ import {
   getFace,
   hasEdge,
   hasFace,
+  listEdges,
+  listFaces,
   solidVolume,
   type Bounds,
   type Model,
@@ -99,6 +101,8 @@ export class App {
    */
   private nav: { mode: 'orbit' | 'pan'; x: number; y: number; startX: number; startY: number; menu: boolean; dragging: boolean } | null = null;
   private down: { x: number; y: number } | null = null;
+  /** Click count of the last press, from the browser (it follows the system's double-click time). */
+  private clicks = 1;
 
   constructor(root: HTMLElement, doc: PushformDocument) {
     this.session = createSession(doc);
@@ -282,22 +286,37 @@ export class App {
           volume: def.instances.size ? null : volume === null ? t('info.notSolid') : formatVolume(volume, doc.units),
         };
       }
-      return { kind: 'mixed', title: t('info.items', { count: count(faces.size + edges.size + instances.size) }) };
     }
+    // Several items: how many of each type, with total area and length of the faces and edges.
+    const placed = pathDefinition(doc.scene, this.context)?.instances;
+    const kinds = [...instances].map((id) => doc.scene.definitions.get(placed?.get(id)?.definitionId ?? '')?.kind);
+    const groups = kinds.filter((k) => k === 'group').length;
+    const components = kinds.filter((k) => k === 'component').length;
+    const counts = [
+      { label: t('info.groups'), count: groups },
+      { label: t('info.components'), count: components },
+      { label: t('info.faces'), count: faces.size },
+      { label: t('info.edges'), count: edges.size },
+    ]
+      .filter((c) => c.count > 0)
+      .map((c) => ({ label: c.label, count: count(c.count) }));
     const m = this.contextModel();
-    const title =
-      faces.size && edges.size
-        ? t('info.facesAndEdges', { faces: count(faces.size), edges: count(edges.size) })
-        : faces.size
-          ? faces.size === 1
-            ? t('info.face')
-            : t('info.faces', { count: count(faces.size) })
-          : edges.size === 1
-            ? t('info.edge')
-            : t('info.edges', { count: count(edges.size) });
     const area = faces.size ? formatArea([...faces].reduce((s, f) => s + faceArea(m, f), 0), doc.units) : null;
     const length = edges.size ? formatLength([...edges].reduce((s, e) => s + edgeLength(m, e), 0), doc.units) : null;
-    return { kind: 'geometry', title, area, length };
+    return { kind: 'selection', total: count(faces.size + edges.size + instances.size), counts, area, length };
+  }
+
+  /** Ctrl+A: everything in the open context (switching to the Select tool). */
+  private selectAll(): void {
+    if (this.tool.id !== 'select') this.setTool('select');
+    const m = this.contextModel();
+    this.clearSelection();
+    for (const f of listFaces(m)) this.selection.faces.add(f.id);
+    for (const e of listEdges(m)) this.selection.edges.add(e.id);
+    for (const i of pathDefinition(this.session.doc.scene, this.context)!.instances.keys()) this.selection.instances.add(i);
+    this.applyHighlights();
+    this.measure.set(this.tool.measurementLabel(), '');
+    this.status.hint();
   }
 
   /**
@@ -355,6 +374,7 @@ export class App {
       applyHighlights: (kind) => this.applyHighlights(kind),
       showCommitted: () => this.refresh(),
       showPreview: (doc) => this.viewport.showScene(doc.scene, this.context),
+      openContext: (id) => this.openContext(id),
       closeContext: (path) => this.setContext(path),
       contextPath: () => this.context,
       setMeasurement: (label, value) => this.measure.set(label, value),
@@ -670,6 +690,7 @@ export class App {
         return;
       }
       if (e.button !== 0) return;
+      this.clicks = 1;
       // A click in the viewport starts a new action, so typed values no longer amend the last one.
       // Navigation (middle or right drag, wheel, orbit and pan tools) keeps amending available.
       this.session.clearAmend();
@@ -677,6 +698,11 @@ export class App {
       this.viewport.setPointer(e);
       this.tool.down?.(e);
       this.syncMeasureEditable();
+    });
+
+    // Mouse events after pointerdown carry the click count; pointer events do not.
+    canvas.addEventListener('mousedown', (e) => {
+      if (e.button === 0) this.clicks = Math.max(1, e.detail);
     });
 
     canvas.addEventListener('pointermove', (e) => {
@@ -710,20 +736,11 @@ export class App {
       if (this.down) {
         const moved = Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > DRAG_THRESHOLD;
         this.down = null;
-        if (moved) {
-          this.viewport.setPointer(e);
-          this.tool.dragEnd?.();
-        }
+        this.viewport.setPointer(e);
+        if (moved) this.tool.dragEnd?.();
+        this.tool.up?.(e, moved, this.clicks);
       }
       this.syncMeasureEditable();
-    });
-
-    // Double-clicking a group or component with the Select tool opens it for editing.
-    canvas.addEventListener('dblclick', (e) => {
-      if (this.tool.id !== 'select') return;
-      this.viewport.setPointer(e);
-      const hit = this.viewport.pick();
-      if (hit?.kind === 'instance') this.openContext(hit.id);
     });
 
     canvas.addEventListener('pointerleave', () => {
@@ -769,6 +786,11 @@ export class App {
       if (mod && k === 'y') {
         e.preventDefault();
         this.redo();
+        return;
+      }
+      if (mod && k === 'a' && !e.shiftKey) {
+        e.preventDefault();
+        this.selectAll();
         return;
       }
       if (mod || e.altKey) return;

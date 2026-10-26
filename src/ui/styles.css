@@ -1,8 +1,8 @@
 /*
  * Layout uses logical properties (inline/block, start/end) so a right-to-left
  * locale mirrors the interface without separate rules. The only physical
- * coordinates are those of the snap marker and the right-click menu, which
- * follow pointer pixels.
+ * coordinates are those of the snap marker, the selection rectangle and the
+ * right-click menu, which follow pointer pixels.
  */
 :root {
   --ui: #eef0ed;
@@ -278,6 +278,19 @@ input {
   background: var(--ui);
   border: 1px solid var(--line);
   color: var(--ink);
+}
+
+/* Physical position and size on purpose: the selection rectangle follows canvas pixels. */
+.selection-box {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: none;
+  pointer-events: none;
+  border: 1px solid var(--ink);
+}
+.selection-box.crossing {
+  border-style: dashed;
 }
 
 /* ---------- side panel: Entity Info and Outliner ---------- */

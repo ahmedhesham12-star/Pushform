@@ -256,6 +256,10 @@ Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] unti
 | 2026-10-26 | Explode merges through the kernel's planar engine: coplanar regions join, crossing edges split | One engine for drawing and exploding; randomized extract, move and merge runs check the invariants. |
 | 2026-10-26 | Inference uses every visible placement in world coordinates, including faded geometry outside the editing context (product owner) | Parts are assembled by snapping to other parts, such as a drawer corner to the carcass's inner edge. |
 | 2026-10-26 | Drawing on another group's face draws in its plane, in the open context | Faces of other groups are inference targets; Rectangle, Circle and Polygon take an optional plane normal for this. |
+| 2026-10-26 | Selection methods from SketchUp in the Select tool: double- and triple-click, window and crossing, Ctrl+A (product owner, checkpoint (a) feedback) | Selecting whole objects one face at a time missed hidden faces such as a box's bottom. |
+| 2026-10-26 | Windows and crossings select hidden items too; a group or component is inside a window when its bounding box is, and a crossing takes it when it touches one of its edges | Matches SketchUp, which selects through the model; the bounding-box rule is the product owner's. |
+| 2026-10-26 | Double- and triple-clicks use the browser's click count, which follows the system's double-click time | Separate quick clicks at one spot behave the same as in the rest of the system. |
+| 2026-10-26 | Clicks select on release; a press that moves 6 px becomes a window | A drag that starts on a face must not select that face first. |
 | 2026-10-26 | Solid volume in Entity Info for a group or component whose own geometry is closed and consistently oriented; none when it holds other groups or components | Cheap to compute exactly; nested solids are a later step. |
 
 ## SketchUp parity: shortcuts and modifiers
@@ -280,10 +284,15 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 | Polygon | No default shortcut, as in SketchUp |
 | G | Make Component (milestone 3) |
 | Double-click a group or component | Edit it (Select tool) |
+| Double-click a face / an edge | The face and its edges / the edge and its faces |
+| Triple-click a face or edge | Everything connected to it |
+| Drag left to right / right to left | Window (fully inside, solid outline) / crossing (touched, dashed outline) |
+| Ctrl+A | Select everything in the open context |
 | Esc with nothing selected | Close the group or component being edited |
 | Short right click | Context menu (milestone 3) |
 
-- **Select modifiers:** Shift toggles items in and out of the selection, Ctrl adds only, Ctrl+Shift removes only.
+- **Select modifiers:** Shift toggles items in and out of the selection, Ctrl adds only, Ctrl+Shift removes only. They apply the same way to faces, edges, groups and components, to clicks and to windows.
+- **Selection follows the editing context:** inside a group or component only its own geometry and the groups and components placed in it can be selected; Ctrl+A, windows and triple-clicks stay inside it.
 - **Right button:** a short right click without dragging opens the context menu, as in SketchUp; right-clicking something unselected selects it first. A right drag still orbits (and Shift + right drag pans), carried over from the prototype. Ctrl-click on a Mac is a right click.
 - **Context menu items:** Make Component (G), Make Group, Edit Group/Component, Close Group/Component (Esc), Explode, Make Unique, Delete, Zoom to selection.
 - **Clicking outside** the group or component being edited (on faded geometry or empty space) closes it.
@@ -349,8 +358,9 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - **Commands:** make group, make component, explode, make unique, rename definition and instance, copy instances, erase instances; nesting.
 - **Viewport:** instances drawn from shared geometry with their transforms; editing contexts (double-click to open, Esc or a click outside to close, everything outside faded); picking returns context faces and edges, instances in the context, or geometry outside it; inference across all instances and contexts in world coordinates.
 - **Right-click menu** and G for Make Component.
-- **Panels:** Entity Info (type, editable definition and instance names, copy count, volume, area, length) and Outliner (tree, copy counts, click to select, double-click or F2 to rename, right-click menu).
-- **Verification:** 416 unit tests pass and the build succeeds; the new stress sweeps 3 (extract and merge) and 4 (scene commands) pass. Scripted browser checks (not in the repo) cover instances, contexts, snapping to another copy, the menu and the panels.
+- **Panels:** Entity Info (one group or component: type, editable definition and instance names, copy count, volume; several items: how many of each type, with total area and length) and Outliner (tree, copy counts, click to select, double-click or F2 to rename, right-click menu).
+- **Checkpoint (a) feedback:** double-click, triple-click, window and crossing selection, Ctrl+A; modifiers on groups and components; Make Group and Make Component on mixed selections.
+- **Verification:** 427 unit tests pass and the build succeeds; the new stress sweeps 3 (extract and merge) and 4 (scene commands) pass. Scripted browser checks (not in the repo) cover instances, contexts, snapping to another copy, the menu and the panels.
 
 ### Known limitations
 - The differences from SketchUp listed above.

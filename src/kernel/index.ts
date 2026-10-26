@@ -142,6 +142,13 @@ export const edgeCount = (m: Model) => data(m).edges.size;
 export const edgeLength = (m: Model, id: string) => q.edgeLength(data(m), id);
 /** An edge's whole curve, or just the edge: what selecting or erasing it affects. */
 export const edgeGroup = (m: Model, id: string) => q.edgeGroup(data(m), id);
+/** The edges bounding a face (outer loop and holes). */
+export const faceEdges = (m: Model, id: string) => q.faceEdges(data(m), id);
+/** The faces an edge bounds. */
+export const edgeFaces = (m: Model, id: string) => q.edgeFaces(data(m), id);
+/** Everything connected to the given faces and edges through shared vertices (triple-click). */
+export const connectedGeometry = (m: Model, faceIds: readonly string[], edgeIds: readonly string[]) =>
+  q.connectedGeometry(data(m), faceIds, edgeIds);
 export const snapPoints = (m: Model) => q.snapPoints(data(m));
 export const bounds = (m: Model) => q.bounds(data(m));
 /** Volume in mm³ when the model is a closed, consistently oriented solid; null otherwise. */

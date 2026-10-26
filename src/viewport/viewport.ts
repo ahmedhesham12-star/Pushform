@@ -117,6 +117,7 @@ export class Viewport {
   readonly camera: OrbitCamera;
   readonly picker: Picker;
   readonly marker = new SnapMarker();
+  private readonly selectionBox = document.createElement('div');
   private readonly renderer: WebGLRenderer;
   private readonly scene = new Scene();
   private readonly modelView = new ModelView();
@@ -141,6 +142,8 @@ export class Viewport {
     this.canvas = this.renderer.domElement;
     container.prepend(this.canvas);
     container.append(this.marker.element);
+    this.selectionBox.className = 'selection-box';
+    container.append(this.selectionBox);
 
     this.camera = new OrbitCamera(() => this.requestRender());
     this.picker = new Picker(this.canvas, this.camera.camera);
@@ -396,6 +399,23 @@ export class Viewport {
   showMarker(p: Vector3, kind: MarkerKind): void {
     const s = this.picker.toScreen(p);
     this.marker.show(s.x, s.y, kind);
+  }
+
+  /**
+   * The selection rectangle between two points in canvas pixels: a solid
+   * outline for a window, dashed for a crossing, as in SketchUp.
+   */
+  showSelectionBox(a: { x: number; y: number }, b: { x: number; y: number }, crossing: boolean): void {
+    const s = this.selectionBox.style;
+    s.display = 'block';
+    s.transform = `translate(${Math.min(a.x, b.x)}px, ${Math.min(a.y, b.y)}px)`;
+    s.width = `${Math.abs(a.x - b.x)}px`;
+    s.height = `${Math.abs(a.y - b.y)}px`;
+    this.selectionBox.classList.toggle('crossing', crossing);
+  }
+
+  hideSelectionBox(): void {
+    this.selectionBox.style.display = 'none';
   }
 
   hideMarker(): void {

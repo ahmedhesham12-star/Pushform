@@ -1,4 +1,4 @@
-import { createSession, matchTypedValues, type CommandError, type CommandSession, type PushformDocument } from './commands';
+import { createSession, matchTypedValues, rootModel, type CommandError, type CommandSession, type PushformDocument } from './commands';
 import { t, type MessageKey } from './i18n';
 import { bounds, edgeCount, edgeGroup, faceCount, hasEdge, hasFace, snapPoints } from './kernel';
 import { saveAutosave } from './storage';
@@ -122,13 +122,13 @@ export class App {
   private refresh(): void {
     const doc = this.session.doc;
     this.viewport.setUnits(doc.units);
-    this.viewport.showModel(doc.model);
-    this.viewport.setSnapPoints(snapPoints(doc.model));
+    this.viewport.showModel(rootModel(doc));
+    this.viewport.setSnapPoints(snapPoints(rootModel(doc)));
     const s = this.selection;
-    for (const f of s.faces) if (!hasFace(doc.model, f)) s.faces.delete(f);
-    for (const e of s.edges) if (!hasEdge(doc.model, e)) s.edges.delete(e);
+    for (const f of s.faces) if (!hasFace(rootModel(doc), f)) s.faces.delete(f);
+    for (const e of s.edges) if (!hasEdge(rootModel(doc), e)) s.edges.delete(e);
     const h = s.hovered;
-    if (h && !(h.kind === 'face' ? hasFace(doc.model, h.id) : hasEdge(doc.model, h.id))) s.hovered = null;
+    if (h && !(h.kind === 'face' ? hasFace(rootModel(doc), h.id) : hasEdge(rootModel(doc), h.id))) s.hovered = null;
     this.applyHighlights();
     this.intro.setVisible(this.isEmpty());
     this.actions.setHistory(this.session.canUndo, this.session.canRedo);
@@ -146,7 +146,7 @@ export class App {
     if (hovered?.kind === 'edge') {
       // Hovering one segment of a curve highlights the whole curve.
       const edgeKind: EdgeHighlight = kind === 'erase' ? 'erase' : 'hover';
-      for (const e of edgeGroup(this.session.doc.model, hovered.id)) if (!edges.has(e)) lines.set(e, edgeKind);
+      for (const e of edgeGroup(rootModel(this.session.doc), hovered.id)) if (!edges.has(e)) lines.set(e, edgeKind);
     }
     this.viewport.highlightEdges(lines);
   }
@@ -237,7 +237,7 @@ export class App {
   }
 
   private zoomToFit(): void {
-    this.viewport.zoomToFit(bounds(this.session.doc.model));
+    this.viewport.zoomToFit(bounds(rootModel(this.session.doc)));
   }
 
   private clear(): void {
@@ -259,7 +259,7 @@ export class App {
   }
 
   private isEmpty(): boolean {
-    const m = this.session.doc.model;
+    const m = rootModel(this.session.doc);
     return faceCount(m) === 0 && edgeCount(m) === 0;
   }
 

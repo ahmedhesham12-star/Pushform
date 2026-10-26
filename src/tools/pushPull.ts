@@ -1,4 +1,5 @@
 import type { Vector3 } from 'three';
+import { rootModel } from '../commands';
 import { t } from '../i18n';
 import { dragStep, formatLength, parseLengthList } from '../units';
 import { sameEntity, type Tool, type ToolContext } from './tool';
@@ -51,7 +52,7 @@ export function createPushPullTool(ctx: ToolContext): Tool {
     const r = ctx.session.preview('core.pushPull', { faceId: s.faceId, distance });
     if (!r.ok) return;
     s.distance = r.output.distance;
-    ctx.viewport.showModel(r.doc.model);
+    ctx.viewport.showModel(rootModel(r.doc));
     ctx.viewport.paint(s.faceId, 'selected');
     ctx.setMeasurement(t('measure.distance'), formatLength(s.distance, ctx.units()));
     ctx.viewport.showMarker(s.origin.clone().addScaledVector(s.normal, s.distance), snapped ? 'plane' : 'face');

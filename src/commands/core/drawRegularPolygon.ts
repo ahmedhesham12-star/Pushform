@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { t } from '../../i18n';
 import { drawRegularPolygon, MAX_SEGMENTS } from '../../kernel';
+import { withDefinitionModel } from '../document';
 import type { CommandDef } from '../types';
-import { faceId, length, point3 } from './schemas';
+import { definitionId, faceId, length, point3, targetModel } from './schemas';
 
 const shape = {
-  /** Face to draw on, or null for the ground. */
+  definitionId,
+  /** Face to draw on, or null for the ground plane of the definition. */
   faceId: faceId.nullable(),
   /** Center, on the target plane. */
   center: point3,
@@ -37,9 +39,12 @@ export const drawCircle: CommandDef<DrawCircleInput, DrawShapeOutput> = {
   ],
   amendHint: () => t('error.typeRadiusOrSegments'),
   run(doc, input) {
-    const r = drawRegularPolygon(doc.model, { kind: 'circle', ...input });
+    const { definitionId: defId, ...spec } = input;
+    const target = targetModel(doc, defId);
+    if (!target.ok) return target;
+    const r = drawRegularPolygon(target.model, { kind: 'circle', ...spec });
     if (!r.ok) return { ok: false, error: { code: r.error } };
-    return { ok: true, doc: { ...doc, model: r.model }, output: { faceIds: r.faceIds } };
+    return { ok: true, doc: withDefinitionModel(doc, defId, r.model), output: { faceIds: r.faceIds } };
   },
 };
 
@@ -54,9 +59,11 @@ export const drawPolygon: CommandDef<DrawPolygonInput, DrawShapeOutput> = {
   ],
   amendHint: () => t('error.typeRadiusOrSides'),
   run(doc, input) {
-    const { sides, ...rest } = input;
-    const r = drawRegularPolygon(doc.model, { kind: 'polygon', ...rest, segments: sides });
+    const { sides, definitionId: defId, ...rest } = input;
+    const target = targetModel(doc, defId);
+    if (!target.ok) return target;
+    const r = drawRegularPolygon(target.model, { kind: 'polygon', ...rest, segments: sides });
     if (!r.ok) return { ok: false, error: { code: r.error } };
-    return { ok: true, doc: { ...doc, model: r.model }, output: { faceIds: r.faceIds } };
+    return { ok: true, doc: withDefinitionModel(doc, defId, r.model), output: { faceIds: r.faceIds } };
   },
 };

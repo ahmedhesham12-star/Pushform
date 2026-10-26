@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import { t } from '../../i18n';
 import { drawLine as kernelDrawLine, EPSILON } from '../../kernel';
+import { withDefinitionModel } from '../document';
 import type { CommandDef } from '../types';
-import { length, point3 } from './schemas';
+import { definitionId, length, point3, targetModel } from './schemas';
 
 export const drawLineInput = z.strictObject({
+  definitionId,
   start: point3,
   /** Direction of the line; any non-zero length, it is normalized. */
   direction: z.tuple([z.number(), z.number(), z.number()]),
@@ -33,8 +35,10 @@ export const drawLine: CommandDef<DrawLineInput, DrawLineOutput> = {
     if (Math.abs(input.length) < EPSILON) return { ok: false, error: { code: 'tooSmall' } };
     const s = input.length / len;
     const end: [number, number, number] = [input.start[0] + x * s, input.start[1] + y * s, input.start[2] + z * s];
-    const r = kernelDrawLine(doc.model, input.start, end);
-    if (r.model === doc.model) return { ok: false, error: { code: 'tooSmall' } };
-    return { ok: true, doc: { ...doc, model: r.model }, output: { edgeIds: r.edgeIds, faceIds: r.faceIds } };
+    const target = targetModel(doc, input.definitionId);
+    if (!target.ok) return target;
+    const r = kernelDrawLine(target.model, input.start, end);
+    if (r.model === target.model) return { ok: false, error: { code: 'tooSmall' } };
+    return { ok: true, doc: withDefinitionModel(doc, input.definitionId, r.model), output: { edgeIds: r.edgeIds, faceIds: r.faceIds } };
   },
 };

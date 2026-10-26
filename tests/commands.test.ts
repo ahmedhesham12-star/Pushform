@@ -9,6 +9,8 @@ import {
   matchTypedValues,
   newDocument,
   serializeDocument,
+  rootModel,
+  withDefinitionModel,
   type CommandDef,
   type CommandSession,
 } from '../src/commands';
@@ -39,21 +41,21 @@ const snapshot = (s: CommandSession) => JSON.stringify(serializeDocument(s.doc))
 describe('undo and redo through commands', () => {
   test('each command is one undo step', () => {
     const { s, top } = boxSession();
-    expect(faceCount(s.doc.model)).toBe(6);
+    expect(faceCount(rootModel(s.doc))).toBe(6);
     expect(s.history().map((h) => h.commandId)).toEqual(['core.drawRectangle', 'core.pushPull']);
 
     expect(s.undo()).toBe(true);
-    expect(faceCount(s.doc.model)).toBe(1);
+    expect(faceCount(rootModel(s.doc))).toBe(1);
     expect(s.undo()).toBe(true);
-    expect(faceCount(s.doc.model)).toBe(0);
+    expect(faceCount(rootModel(s.doc))).toBe(0);
     expect(s.undo()).toBe(false);
     expect(s.canUndo).toBe(false);
 
     expect(s.redo()).toBe(true);
     expect(s.redo()).toBe(true);
     expect(s.redo()).toBe(false);
-    expect(faceCount(s.doc.model)).toBe(6);
-    expect(getFace(s.doc.model, top)!.outer[0]![1]).toBe(1000);
+    expect(faceCount(rootModel(s.doc))).toBe(6);
+    expect(getFace(rootModel(s.doc), top)!.outer[0]![1]).toBe(1000);
   });
 
   test('undo then redo restores the exact document', () => {
@@ -128,7 +130,7 @@ describe('preview', () => {
     const before = snapshot(s);
     const p = s.preview('core.pushPull', { faceId: top, distance: 400 });
     expect(p.ok && p.output.distance).toBe(400);
-    expect(p.ok && getFace(p.doc.model, top)!.outer[0]![1]).toBe(1400);
+    expect(p.ok && getFace(rootModel(p.doc), top)!.outer[0]![1]).toBe(1400);
     expect(snapshot(s)).toBe(before);
     expect(s.history()).toHaveLength(2);
   });
@@ -140,7 +142,7 @@ describe('face ids in command output', () => {
     s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 2000, depth: 2000 });
     const r = s.execute('core.drawRectangle', { faceId: null, corner: [1000, 0, 1000], width: 2000, depth: 2000 });
     expect(r.ok && r.output.faceIds).toHaveLength(2);
-    expect(faceCount(s.doc.model)).toBe(3);
+    expect(faceCount(rootModel(s.doc))).toBe(3);
   });
 
   test('pushPull returns its walls and the bottom a lone face leaves behind', () => {
@@ -149,19 +151,19 @@ describe('face ids in command output', () => {
     const id = d.ok ? d.output.faceIds[0]! : '';
     const r = s.execute('core.pushPull', { faceId: id, distance: 500 });
     expect(r.ok && r.output.createdFaceIds).toHaveLength(5);
-    if (r.ok) for (const f of r.output.createdFaceIds) expect(hasFace(s.doc.model, f)).toBe(true);
+    if (r.ok) for (const f of r.output.createdFaceIds) expect(hasFace(rootModel(s.doc), f)).toBe(true);
   });
 
   test('erase merges coplanar faces and reports the faces that are gone', () => {
     const s = createSession();
     s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 2000, depth: 2000 });
     s.execute('core.drawRectangle', { faceId: null, corner: [2000, 0, 0], width: 1000, depth: 2000 });
-    const shared = listEdges(s.doc.model).find((e) => e.a[0] === 2000 && e.b[0] === 2000)!;
+    const shared = listEdges(rootModel(s.doc)).find((e) => e.a[0] === 2000 && e.b[0] === 2000)!;
     const r = s.execute('core.erase', { faceIds: [], edgeIds: [shared.id] });
     expect(r.ok && r.output.removedFaceIds).toHaveLength(1);
-    expect(faceCount(s.doc.model)).toBe(1);
+    expect(faceCount(rootModel(s.doc))).toBe(1);
     s.undo();
-    expect(faceCount(s.doc.model)).toBe(2);
+    expect(faceCount(rootModel(s.doc))).toBe(2);
   });
 });
 
@@ -178,8 +180,8 @@ describe('core.drawLine', () => {
     expect(last.ok && last.output.faceIds).toHaveLength(1);
     expect(s.history().map((h) => h.commandId)).toEqual(Array(4).fill('core.drawLine'));
     s.undo();
-    expect(faceCount(s.doc.model)).toBe(0);
-    expect(listEdges(s.doc.model)).toHaveLength(3);
+    expect(faceCount(rootModel(s.doc))).toBe(0);
+    expect(listEdges(rootModel(s.doc))).toHaveLength(3);
   });
 
   test('typing a length amends the segment just drawn, along the same direction', () => {
@@ -188,7 +190,7 @@ describe('core.drawLine', () => {
     const typed = parseTypedValues('2\' 0"', s.doc.units.unit);
     const m = typed.ok ? matchTypedValues(s.amendTarget()!.fields, typed) : null;
     expect(m?.ok && s.amend(m.value)).toMatchObject({ ok: true });
-    const [e] = listEdges(s.doc.model);
+    const [e] = listEdges(rootModel(s.doc));
     const len = Math.hypot(e!.b[0] - e!.a[0], e!.b[1] - e!.a[1], e!.b[2] - e!.a[2]);
     expect(len).toBeCloseTo(609.6, 6);
     expect(s.history()).toHaveLength(1);
@@ -208,7 +210,7 @@ describe('core.drawCircle and core.drawPolygon', () => {
     const m = matchTypedValues(s.amendTarget()!.fields, typed);
     return m.ok ? s.amend(m.value) : m;
   };
-  const curveOf = (s: CommandSession) => serialize(s.doc.model).curves;
+  const curveOf = (s: CommandSession) => serialize(rootModel(s.doc)).curves;
 
   test('a circle can be amended by radius, by segment count, or both, as one undo step', () => {
     const s = createSession();
@@ -220,17 +222,17 @@ describe('core.drawCircle and core.drawPolygon', () => {
     expect(Object.values(curveOf(s))[0]).toMatchObject({ segments: 48, radius: 750 });
     expect(typedAmend(s, '12s, 1m')).toMatchObject({ ok: true });
     expect(Object.values(curveOf(s))[0]).toMatchObject({ segments: 12, radius: 1000 });
-    expect(listEdges(s.doc.model)).toHaveLength(12);
+    expect(listEdges(rootModel(s.doc))).toHaveLength(12);
     expect(s.history()).toHaveLength(1);
     s.undo();
-    expect(faceCount(s.doc.model)).toBe(0);
+    expect(faceCount(rootModel(s.doc))).toBe(0);
   });
 
   test('a polygon can be amended by side count', () => {
     const s = createSession();
     s.execute('core.drawPolygon', { faceId: null, center: [0, 0, 0], radius: 500, sides: 6, direction: [1, 0, 0] });
     expect(typedAmend(s, '8s')).toMatchObject({ ok: true });
-    expect(listEdges(s.doc.model)).toHaveLength(8);
+    expect(listEdges(rootModel(s.doc))).toHaveLength(8);
     expect(Object.values(curveOf(s))[0]).toMatchObject({ kind: 'polygon', segments: 8 });
   });
 
@@ -251,32 +253,32 @@ describe('core.drawCircle and core.drawPolygon', () => {
     const disc = r.ok ? r.output.faceIds[0]! : '';
     const p = s.execute('core.pushPull', { faceId: disc, distance: 800 });
     expect(p.ok && p.output.createdFaceIds).toHaveLength(25);
-    expect(listEdges(s.doc.model).filter((e) => e.soft)).toHaveLength(24);
-    expect(checkModel(s.doc.model)).toEqual([]);
+    expect(listEdges(rootModel(s.doc)).filter((e) => e.soft)).toHaveLength(24);
+    expect(checkModel(rootModel(s.doc))).toEqual([]);
   });
 });
 
 describe('loading milestone 1 documents', () => {
-  test('a version 1 autosave loads as a version 2 document with the same faces and units', () => {
+  test('a version 1 autosave loads as a version 3 document with the same faces and units', () => {
     const v1 = JSON.parse(readFileSync(join(__dirname, 'fixtures/milestone1-autosave.json'), 'utf8'));
     expect(v1.version).toBe(1);
     const doc = deserializeDocument(v1)!;
     expect(doc).not.toBeNull();
     expect(doc.units).toEqual({ unit: 'ft-in', precision: 16 });
-    expect(checkModel(doc.model)).toEqual([]);
-    expect(listFaces(doc.model).map((f) => f.id).sort()).toEqual(Object.keys(v1.model.faces).sort());
+    expect(checkModel(rootModel(doc))).toEqual([]);
+    expect(listFaces(rootModel(doc)).map((f) => f.id).sort()).toEqual(Object.keys(v1.model.faces).sort());
     const saved = serializeDocument(doc);
-    expect(saved.version).toBe(2);
-    expect(saved.model.kind).toBe('topology');
+    expect(saved.version).toBe(3);
+    expect(saved.scene.definitions[saved.scene.root]!.model.kind).toBe('topology');
     expect(serializeDocument(deserializeDocument(JSON.parse(JSON.stringify(saved)))!)).toEqual(saved);
   });
 
   test('a converted document keeps working with commands', () => {
     const v1 = JSON.parse(readFileSync(join(__dirname, 'fixtures/milestone1-autosave.json'), 'utf8'));
     const s = createSession(deserializeDocument(v1)!);
-    const top = listFaces(s.doc.model).find((f) => f.normal[1] === 1 && f.holes.length === 1)!;
+    const top = listFaces(rootModel(s.doc)).find((f) => f.normal[1] === 1 && f.holes.length === 1)!;
     expect(s.execute('core.pushPull', { faceId: top.id, distance: 100 })).toMatchObject({ ok: true, changed: true });
-    expect(checkModel(s.doc.model)).toEqual([]);
+    expect(checkModel(rootModel(s.doc))).toEqual([]);
   });
 });
 
@@ -333,7 +335,7 @@ describe('validation and errors', () => {
 });
 
 describe('amend last operation', () => {
-  const area = (s: CommandSession, id: string) => faceArea(s.doc.model, id);
+  const area = (s: CommandSession, id: string) => faceArea(rootModel(s.doc), id);
 
   test('typed values replace the size of the rectangle just drawn', () => {
     const s = createSession();
@@ -343,7 +345,7 @@ describe('amend last operation', () => {
 
     const a = s.amend([600, 400]);
     expect(a).toMatchObject({ ok: true, changed: true, output: { faceIds: [id] } });
-    expect(faceCount(s.doc.model)).toBe(1);
+    expect(faceCount(rootModel(s.doc))).toBe(1);
     expect(area(s, id)).toBeCloseTo(600 * 400, 6);
     expect(s.history()).toHaveLength(1);
     expect(s.history()[0]!.input).toMatchObject({ width: 600, depth: 400 });
@@ -368,23 +370,23 @@ describe('amend last operation', () => {
     const { s, top } = boxSession();
     expect(s.amendTarget()).toMatchObject({ commandId: 'core.pushPull', values: [1000] });
     expect(s.amend([500])).toMatchObject({ ok: true, output: { distance: 500 } });
-    expect(faceCount(s.doc.model)).toBe(6);
-    expect(getFace(s.doc.model, top)!.outer[0]![1]).toBe(500);
+    expect(faceCount(rootModel(s.doc))).toBe(6);
+    expect(getFace(rootModel(s.doc), top)!.outer[0]![1]).toBe(500);
     expect(s.history()).toHaveLength(2);
   });
 
   test('a negative typed distance reverses the push/pull', () => {
     const { s, top } = boxSession();
     s.amend([-300]);
-    expect(getFace(s.doc.model, top)!.outer[0]![1]).toBe(-300);
-    expect(faceCount(s.doc.model)).toBe(6);
+    expect(getFace(rootModel(s.doc), top)!.outer[0]![1]).toBe(-300);
+    expect(faceCount(rootModel(s.doc))).toBe(6);
   });
 
   test('amending again keeps replacing the same step', () => {
     const { s, top } = boxSession();
     s.amend([500]);
     s.amend([750]);
-    expect(getFace(s.doc.model, top)!.outer[0]![1]).toBe(750);
+    expect(getFace(rootModel(s.doc), top)!.outer[0]![1]).toBe(750);
     expect(s.history()).toHaveLength(2);
   });
 
@@ -392,12 +394,12 @@ describe('amend last operation', () => {
     const { s, top } = boxSession();
     s.amend([500]);
     expect(s.undo()).toBe(true);
-    expect(faceCount(s.doc.model)).toBe(1);
+    expect(faceCount(rootModel(s.doc))).toBe(1);
     expect(s.redo()).toBe(true);
-    expect(getFace(s.doc.model, top)!.outer[0]![1]).toBe(500);
+    expect(getFace(rootModel(s.doc), top)!.outer[0]![1]).toBe(500);
     expect(s.undo()).toBe(true);
     expect(s.undo()).toBe(true);
-    expect(faceCount(s.doc.model)).toBe(0);
+    expect(faceCount(rootModel(s.doc))).toBe(0);
   });
 
   test('is cleared by running another command', () => {
@@ -405,7 +407,7 @@ describe('amend last operation', () => {
     s.execute('core.setDisplayUnits', { unit: 'mm', precision: 0 });
     expect(s.canAmend).toBe(false);
     expect(s.amend([500])).toMatchObject({ ok: false, error: { code: 'nothingToAmend' } });
-    expect(getFace(s.doc.model, top)!.outer[0]![1]).toBe(1000);
+    expect(getFace(rootModel(s.doc), top)!.outer[0]![1]).toBe(1000);
   });
 
   test('is cleared by a failed command, undo, and clearAmend', () => {
@@ -434,7 +436,7 @@ describe('amend last operation', () => {
     const { s, top } = boxSession();
     expect(s.amend([500, 200])).toMatchObject({ ok: false, error: { code: 'amendValueCount' } });
     expect(s.amend([0])).toMatchObject({ ok: false, error: { code: 'amendValueInvalid' } });
-    expect(getFace(s.doc.model, top)!.outer[0]![1]).toBe(1000);
+    expect(getFace(rootModel(s.doc), top)!.outer[0]![1]).toBe(1000);
     expect(s.canAmend).toBe(true);
 
     const r = createSession();
@@ -460,14 +462,14 @@ describe('amend last operation', () => {
       input: z.strictObject({ size: z.number().positive() }),
       amendable: [{ key: 'size', mode: 'positive' }],
       run(doc, input) {
-        const r = drawRectangle(doc.model, { faceId: null, corner: [0, 0, 0], width: input.size, depth: input.size });
-        return r.ok ? { ok: true, doc: { ...doc, model: r.model }, output: { faceId: r.faceIds[0]! } } : { ok: false, error: { code: r.error } };
+        const r = drawRectangle(rootModel(doc), { faceId: null, corner: [0, 0, 0], width: input.size, depth: input.size });
+        return r.ok ? { ok: true, doc: withDefinitionModel(doc, undefined, r.model), output: { faceId: r.faceIds[0]! } } : { ok: false, error: { code: r.error } };
       },
     };
     s.registry.register(def);
     const r = s.executeUnchecked('example.square', { size: 500 }) as { ok: true; output: { faceId: string } };
     s.amend([800]);
-    expect(faceArea(s.doc.model, r.output.faceId)).toBeCloseTo(640000, 6);
+    expect(faceArea(rootModel(s.doc), r.output.faceId)).toBeCloseTo(640000, 6);
     expect(s.history()).toHaveLength(1);
   });
 });
@@ -486,13 +488,13 @@ describe('amending counts', () => {
       ],
       amendHint: () => 'Type a size, or a count like 3s.',
       run(doc, input) {
-        let model = doc.model;
+        let model = rootModel(doc);
         for (let i = 0; i < input.copies; i++) {
           const r = drawRectangle(model, { faceId: null, corner: [i * input.size * 2, 0, 0], width: input.size, depth: input.size });
           if (!r.ok) return { ok: false, error: { code: r.error } };
           model = r.model;
         }
-        return { ok: true, doc: { ...doc, model }, output: {} };
+        return { ok: true, doc: withDefinitionModel(doc, undefined, model), output: {} };
       },
     };
     s.registry.register(def);
@@ -509,7 +511,7 @@ describe('amending counts', () => {
   test('a typed count changes only the count field', () => {
     const s = rowSession();
     expect(amendTyped(s, '3s')).toMatchObject({ ok: true });
-    expect(faceCount(s.doc.model)).toBe(3);
+    expect(faceCount(rootModel(s.doc))).toBe(3);
     expect(s.history()[0]!.input).toEqual({ size: 500, copies: 3 });
     expect(s.history()).toHaveLength(1);
   });
@@ -524,9 +526,9 @@ describe('amending counts', () => {
     const s = rowSession();
     amendTyped(s, '4s, 300mm');
     expect(s.history()[0]!.input).toEqual({ size: 300, copies: 4 });
-    expect(faceCount(s.doc.model)).toBe(4);
+    expect(faceCount(rootModel(s.doc))).toBe(4);
     s.undo();
-    expect(faceCount(s.doc.model)).toBe(0);
+    expect(faceCount(rootModel(s.doc))).toBe(0);
   });
 
   test('the amend target shows counts as counts', () => {
@@ -566,9 +568,9 @@ describe('plugins', () => {
     };
     s.registry.register(def);
     expect(s.executeUnchecked('example.square', { size: 500 })).toMatchObject({ ok: true, changed: true });
-    expect(faceCount(s.doc.model)).toBe(1);
+    expect(faceCount(rootModel(s.doc))).toBe(1);
     s.undo();
-    expect(faceCount(s.doc.model)).toBe(0);
+    expect(faceCount(rootModel(s.doc))).toBe(0);
   });
 
   test('rejects duplicate and unnamespaced ids', () => {
@@ -586,14 +588,14 @@ describe('document serialization', () => {
     const json = JSON.parse(JSON.stringify(serializeDocument(s.doc)));
     const back = deserializeDocument(json)!;
     expect(back.units).toEqual({ unit: 'in-frac', precision: 32 });
-    expect(serialize(back.model)).toEqual(serialize(s.doc.model));
+    expect(serialize(rootModel(back))).toEqual(serialize(rootModel(s.doc)));
   });
 
   test('rejects other formats and bad settings', () => {
     const good = serializeDocument(newDocument());
     expect(deserializeDocument(good)).not.toBeNull();
     expect(deserializeDocument({ ...good, format: 'other' })).toBeNull();
-    expect(deserializeDocument({ ...good, version: 3 })).toBeNull();
+    expect(deserializeDocument({ ...good, version: 4 })).toBeNull();
     expect(deserializeDocument({ ...good, units: { unit: 'km', precision: 2 } })).toBeNull();
     expect(deserializeDocument({ ...good, units: { unit: 'mm', precision: 16 } })).toBeNull();
     expect(deserializeDocument({ faces: {}, next: 1 })).toBeNull();

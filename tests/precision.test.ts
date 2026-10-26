@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { createSession, serializeDocument, type CommandSession } from '../src/commands';
-import { getFace, listFaces, snapLength } from '../src/kernel';
+import { createSession, rootModel, type CommandSession } from '../src/commands';
+import { getFace, listFaces, serialize, snapLength } from '../src/kernel';
 import { parseLength, parseLengthList } from '../src/units';
 
 /* Imperial input converted to mm is rarely exact in floating point. These tests
@@ -15,7 +15,7 @@ const inches = (text: string) => {
 
 /** Every stored coordinate, as written to the file. */
 const allCoordinates = (s: CommandSession) =>
-  Object.values(serializeDocument(s.doc).model.vertices).flat();
+  Object.values(serialize(rootModel(s.doc)).vertices).flat();
 
 describe('snapLength', () => {
   test('rounds to the closest double of the 1e-6 mm decimal', () => {
@@ -52,7 +52,7 @@ describe('imperial input is stored exactly', () => {
 
   test('rectangle corners match the decimal values exactly', () => {
     const { s, id } = rectangle('12"', '24", 24"');
-    const outer = getFace(s.doc.model, id)!.outer;
+    const outer = getFace(rootModel(s.doc), id)!.outer;
     const xs = new Set(outer.map((p) => p[0]));
     const zs = new Set(outer.map((p) => p[2]));
     // 304.8 + 609.6 is 914.4000000000001 in plain floating point.
@@ -63,20 +63,20 @@ describe('imperial input is stored exactly', () => {
   test('pushed faces land exactly on the typed height, also after a re-push', () => {
     const { s, id } = rectangle('0"', '24", 24"');
     s.execute('core.pushPull', { faceId: id, distance: inches('2\' 6 1/2"') });
-    expect(new Set(getFace(s.doc.model, id)!.outer.map((p) => p[1]))).toEqual(new Set([774.7]));
+    expect(new Set(getFace(rootModel(s.doc), id)!.outer.map((p) => p[1]))).toEqual(new Set([774.7]));
     s.undo();
     s.execute('core.pushPull', { faceId: id, distance: inches('24"') });
     s.execute('core.pushPull', { faceId: id, distance: inches('12"') });
     // 609.6 + 304.8 is 914.4000000000001 in plain floating point.
-    expect(new Set(getFace(s.doc.model, id)!.outer.map((p) => p[1]))).toEqual(new Set([914.4]));
+    expect(new Set(getFace(rootModel(s.doc), id)!.outer.map((p) => p[1]))).toEqual(new Set([914.4]));
   });
 
   test('shared corners are identical numbers on every face that uses them', () => {
     const { s, id } = rectangle('12"', '24", 2\' 6 1/2"');
     s.execute('core.pushPull', { faceId: id, distance: inches('3/4"') });
-    const top = getFace(s.doc.model, id)!.outer;
+    const top = getFace(rootModel(s.doc), id)!.outer;
     for (const corner of top) {
-      const users = listFaces(s.doc.model).filter((f) => f.outer.some((p) => p.every((v, i) => v === corner[i])));
+      const users = listFaces(rootModel(s.doc)).filter((f) => f.outer.some((p) => p.every((v, i) => v === corner[i])));
       expect(users, JSON.stringify(corner)).toHaveLength(3);
     }
   });

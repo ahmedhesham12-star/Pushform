@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { createSession, serializeDocument, type CommandSession } from '../src/commands';
+import { createSession, serializeDocument, type CommandSession , rootModel } from '../src/commands';
 import { checkModel, listEdges, listFaces, serialize, type FaceView, type Point3 } from '../src/kernel';
 
 /*
@@ -20,7 +20,7 @@ function box(): { s: CommandSession; top: string } {
 function rectOnTop(s: CommandSession, top: string, corner: [number, number, number], width: number, depth: number, cx: number, cz: number) {
   const r = s.execute('core.drawRectangle', { faceId: top, corner, width, depth });
   if (!r.ok) throw new Error(r.error.code);
-  const face = listFaces(s.doc.model).find((f) => f.normal[1] === 1 && near(centroid(f), [cx, 300, cz]));
+  const face = listFaces(rootModel(s.doc)).find((f) => f.normal[1] === 1 && near(centroid(f), [cx, 300, cz]));
   if (!face) throw new Error('rectangle face not found');
   return face.id;
 }
@@ -29,7 +29,7 @@ function push(s: CommandSession, faceId: string, distance: number) {
   const preview = s.preview('core.pushPull', { faceId, distance });
   const r = s.execute('core.pushPull', { faceId, distance });
   if (!r.ok) throw new Error(r.error.code);
-  expect(checkModel(s.doc.model)).toEqual([]);
+  expect(checkModel(rootModel(s.doc))).toEqual([]);
   // The live preview is the same computation as the committed push.
   expect(preview.ok && serializeDocument(preview.doc)).toEqual(serializeDocument(s.doc));
   return r.output;
@@ -44,7 +44,7 @@ function centroid(f: FaceView): Point3 {
 /** Faces whose plane contains p and whose region contains p (by even-odd test in the plane). */
 function facesAt(s: CommandSession, p: Point3): FaceView[] {
   const dotp = (a: Point3, b: Point3) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
-  return listFaces(s.doc.model).filter((f) => {
+  return listFaces(rootModel(s.doc)).filter((f) => {
     if (Math.abs(dotp(f.normal, p) - dotp(f.normal, f.outer[0]!)) > 1e-3) return false;
     // Drop the dominant axis of the normal to get 2D coordinates.
     const abs = f.normal.map(Math.abs);
@@ -68,7 +68,7 @@ function facesAt(s: CommandSession, p: Point3): FaceView[] {
 }
 
 /** Edges lying in the plane z = 600 (the front wall). */
-const frontEdges = (s: CommandSession) => listEdges(s.doc.model).filter((e) => e.a[2] === 600 && e.b[2] === 600);
+const frontEdges = (s: CommandSession) => listEdges(rootModel(s.doc)).filter((e) => e.a[2] === 600 && e.b[2] === 600);
 const axisAligned = (e: { a: Point3; b: Point3 }) => [0, 1, 2].filter((i) => Math.abs(e.a[i]! - e.b[i]!) > 1e-9).length === 1;
 
 describe('a slot reaching the front edge (testing repro)', () => {
@@ -186,8 +186,8 @@ describe('randomized slots, notches and tabs', () => {
       const dd = 100 + Math.floor(r() * 4) * 100;
       const drawn = s.execute('core.drawRectangle', { faceId: top, corner: [x0, 300, z0], width: w, depth: dd });
       if (!drawn.ok) continue;
-      expect(checkModel(s.doc.model)).toEqual([]);
-      const faces = drawn.output.faceIds.filter((f) => listFaces(s.doc.model).some((x) => x.id === f));
+      expect(checkModel(rootModel(s.doc))).toEqual([]);
+      const faces = drawn.output.faceIds.filter((f) => listFaces(rootModel(s.doc)).some((x) => x.id === f));
       const target = faces[Math.floor(r() * faces.length)];
       if (!target) continue;
       const dist = (r() < 0.5 ? -1 : 1) * (50 + Math.floor(r() * 4) * 100);
@@ -198,7 +198,7 @@ describe('randomized slots, notches and tabs', () => {
 
 /** Faces whose loops use the edge between points a and b. */
 function facesOnEdge(s: CommandSession, a: Point3, b: Point3): string[] {
-  const m = serialize(s.doc.model);
+  const m = serialize(rootModel(s.doc));
   const id = (p: Point3) => Object.entries(m.vertices).find(([, q]) => near(q, p))?.[0];
   const va = id(a);
   const vb = id(b);
@@ -280,7 +280,7 @@ describe('adjacent boxes sharing a full edge (testing repros A and B)', () => {
     push(s, a.output.faceIds[0]!, 500);
     const b = s.execute('core.drawRectangle', { faceId: null, corner: [1000, 0, 0], width: 1000, depth: 500 });
     if (!b.ok) throw new Error();
-    expect(checkModel(s.doc.model)).toEqual([]);
+    expect(checkModel(rootModel(s.doc))).toEqual([]);
     const second = facesAt(s, [1500, 0, 250]).find((f) => f.normal[1] === 1)!.id;
     expect(push(s, second, 300).distance).toBe(300);
     const lower = shared(s, 150);

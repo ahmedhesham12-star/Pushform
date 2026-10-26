@@ -17,7 +17,8 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 
 ## Layers (enforced by tests/architecture.test.ts)
 - `src/kernel`: pure geometry in millimeters: a shared topology of vertices, edges, faces and curves. No three.js, no DOM, no imports from other layers; the only package allowed is `earcut`. Import it only through `src/kernel/index.ts`. The `Model` type is opaque. Kernel tests check `validate()` (via `checkModel`) after every operation.
-- `src/commands`: the only code that may call kernel mutations (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawLine`, `pushPull`, `erase`, `deserialize`). No three.js or DOM.
+- `src/scene`: definitions (each with its own kernel Model), instances and rigid transforms (quaternion, translation in mm, scale fixed at [1, 1, 1] until milestone 4). Pure: imports only the kernel, no three.js or DOM. Scenes are immutable.
+- `src/commands`: the only code that may call kernel mutations (besides `src/scene` loading models) (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawLine`, `pushPull`, `erase`, `deserialize`). No three.js or DOM.
 - `src/units`, `src/i18n`: shared foundations.
 - `src/viewport`: three.js rendering, camera, picking and snapping.
 - `src/tools`: one file per tool. Tools change the model only through `session.execute` or `session.preview`.
@@ -28,6 +29,7 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 - Every model change is a command: namespaced id (`core.x`), zod input schema with `z.strictObject`, JSON-serializable input and output, and a pure `run()` that returns the same document instance when nothing changed.
 - Commands whose numeric inputs can be retyped after they finish declare `amendable` fields (`positive` for sizes, `signed` for distances; `kind: 'count'` for counts typed as `48s`). `CommandSession.amend` handles the rest. Do not build amend logic into tools.
 - Commands that create faces return the ids of every face they create.
+- Geometry commands take an optional `definitionId` (the root when omitted) and work in that definition's local coordinates. Read and write geometry with `definitionModel`/`withDefinitionModel`, never by reaching into the scene.
 - Lengths are stored in mm. Convert only at the edges, with `parseLength`/`parseLengthList`/`parseTypedValues` and `formatLength`/`formatArea` from `src/units`.
 - Kernel operations work on a `Draft` and return a new topology; never edit a `Topology` in place. Drawing goes through the planar engine (`insertSegment`, `rebuildPlane`), not hand-built faces.
 - Kernel tests run the invariant checker after every operation. Planar changes get randomized cases too (see `tests/planar.test.ts` and `tests/helpers/randomRun.ts`). A seed that finds a bug is pinned as a regression test in `npm test`; long sweeps go in `tests/stress`.

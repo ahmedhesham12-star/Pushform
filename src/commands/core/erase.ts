@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { t } from '../../i18n';
 import { erase as kernelErase, hasEdge, hasFace } from '../../kernel';
+import { withDefinitionModel } from '../document';
 import type { CommandDef } from '../types';
-import { faceId } from './schemas';
+import { definitionId, faceId, targetModel } from './schemas';
 
 export const eraseInput = z
   .strictObject({
+    definitionId,
     faceIds: z.array(faceId),
     edgeIds: z.array(z.string().min(1)),
   })
@@ -26,12 +28,14 @@ export const erase: CommandDef<EraseInput, EraseOutput> = {
   title: () => t('command.erase'),
   input: eraseInput,
   run(doc, input) {
-    const faces = input.faceIds.filter((f) => hasFace(doc.model, f));
-    const edges = input.edgeIds.filter((e) => hasEdge(doc.model, e));
+    const target = targetModel(doc, input.definitionId);
+    if (!target.ok) return target;
+    const faces = input.faceIds.filter((f) => hasFace(target.model, f));
+    const edges = input.edgeIds.filter((e) => hasEdge(target.model, e));
     if (!faces.length && !edges.length) {
       return { ok: false, error: { code: 'nothingToErase', detail: JSON.stringify(input) } };
     }
-    const r = kernelErase(doc.model, faces, edges);
-    return { ok: true, doc: { ...doc, model: r.model }, output: { removedFaceIds: r.removedFaceIds } };
+    const r = kernelErase(target.model, faces, edges);
+    return { ok: true, doc: withDefinitionModel(doc, input.definitionId, r.model), output: { removedFaceIds: r.removedFaceIds } };
   },
 };

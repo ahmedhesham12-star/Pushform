@@ -1,10 +1,12 @@
 import { z } from 'zod';
 import { t } from '../../i18n';
 import { hasFace, pushPull as kernelPushPull } from '../../kernel';
+import { withDefinitionModel } from '../document';
 import type { CommandDef } from '../types';
-import { faceId, length } from './schemas';
+import { definitionId, faceId, length, targetModel } from './schemas';
 
 export const pushPullInput = z.strictObject({
+  definitionId,
   faceId,
   /** Signed distance in mm along the face normal. */
   distance: length,
@@ -26,12 +28,13 @@ export const pushPull: CommandDef<PushPullInput, PushPullOutput> = {
   amendable: [{ key: 'distance', mode: 'signed' }],
   amendHint: () => t('error.typeOneDistance'),
   run(doc, input) {
-    if (!hasFace(doc.model, input.faceId)) return { ok: false, error: { code: 'noSuchFace', detail: input.faceId } };
-    const r = kernelPushPull(doc.model, input.faceId, input.distance);
-    const next = r.model === doc.model ? doc : { ...doc, model: r.model };
+    const target = targetModel(doc, input.definitionId);
+    if (!target.ok) return target;
+    if (!hasFace(target.model, input.faceId)) return { ok: false, error: { code: 'noSuchFace', detail: input.faceId } };
+    const r = kernelPushPull(target.model, input.faceId, input.distance);
     return {
       ok: true,
-      doc: next,
+      doc: withDefinitionModel(doc, input.definitionId, r.model),
       output: { distance: r.distance, createdFaceIds: r.createdFaceIds, removedFaceIds: r.removedFaceIds },
     };
   },

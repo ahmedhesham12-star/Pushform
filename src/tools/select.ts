@@ -1,3 +1,4 @@
+import { rootModel } from '../commands';
 import { t } from '../i18n';
 import { edgeGroup, edgeLength, faceArea } from '../kernel';
 import { formatArea, formatLength } from '../units';
@@ -14,7 +15,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
 
   /** Total area of the selected faces, or total length of the selected edges. */
   const showSize = () => {
-    const m = ctx.session.doc.model;
+    const m = rootModel(ctx.session.doc);
     if (selection.faces.size && !selection.edges.size) {
       const area = [...selection.faces].reduce((s, f) => s + faceArea(m, f), 0);
       ctx.setMeasurement(t('measure.area'), formatArea(area, ctx.units()));
@@ -44,7 +45,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
       }
       if (hit) {
         // An edge of a curve stands for the whole curve.
-        const ids = hit.kind === 'edge' ? edgeGroup(ctx.session.doc.model, hit.id) : [hit.id];
+        const ids = hit.kind === 'edge' ? edgeGroup(rootModel(ctx.session.doc), hit.id) : [hit.id];
         const set = hit.kind === 'edge' ? selection.edges : selection.faces;
         const on = mode === 'remove' ? false : mode === 'toggle' ? !set.has(hit.id) : true;
         for (const id of ids) {

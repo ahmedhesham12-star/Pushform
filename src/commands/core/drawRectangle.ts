@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { t } from '../../i18n';
 import { drawRectangle as kernelDrawRectangle } from '../../kernel';
+import { withDefinitionModel } from '../document';
 import type { CommandDef } from '../types';
-import { faceId, length, point3 } from './schemas';
+import { definitionId, faceId, length, point3, targetModel } from './schemas';
 
 export const drawRectangleInput = z.strictObject({
-  /** Face to draw on, or null for the ground. */
+  definitionId,
+  /** Face to draw on, or null for the ground plane of the definition. */
   faceId: faceId.nullable(),
   /** First corner, on the target plane. */
   corner: point3,
@@ -32,8 +34,11 @@ export const drawRectangle: CommandDef<DrawRectangleInput, DrawRectangleOutput> 
   ],
   amendHint: () => t('error.typeTwoSizes'),
   run(doc, input) {
-    const r = kernelDrawRectangle(doc.model, input);
+    const target = targetModel(doc, input.definitionId);
+    if (!target.ok) return target;
+    const { faceId, corner, width, depth } = input;
+    const r = kernelDrawRectangle(target.model, { faceId, corner, width, depth });
     if (!r.ok) return { ok: false, error: { code: r.error } };
-    return { ok: true, doc: { ...doc, model: r.model }, output: { faceIds: r.faceIds } };
+    return { ok: true, doc: withDefinitionModel(doc, input.definitionId, r.model), output: { faceIds: r.faceIds } };
   },
 };

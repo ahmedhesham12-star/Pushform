@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { createSession, type CommandSession } from '../src/commands';
+import { createSession, type CommandSession , rootModel } from '../src/commands';
 import { checkModel, listEdges, listFaces, type Point3 } from '../src/kernel';
 import { randomRun } from './helpers/randomRun';
 
@@ -7,7 +7,7 @@ import { randomRun } from './helpers/randomRun';
 
 const near = (a: readonly number[], b: readonly number[]) => a.every((v, i) => Math.abs(v - b[i]!) <= 1e-6);
 function hasEdge(s: CommandSession, a: Point3, b: Point3): boolean {
-  return listEdges(s.doc.model).some((e) => (near(e.a, a) && near(e.b, b)) || (near(e.a, b) && near(e.b, a)));
+  return listEdges(rootModel(s.doc)).some((e) => (near(e.a, a) && near(e.b, b)) || (near(e.a, b) && near(e.b, a)));
 }
 
 describe('a new edge crossing edges of another plane (review repro)', () => {
@@ -17,7 +17,7 @@ describe('a new edge crossing edges of another plane (review repro)', () => {
     const g = s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 650], width: 150, depth: 50 });
     if (!g.ok) throw new Error();
     s.execute('core.pushPull', { faceId: g.output.faceIds[0]!, distance: 250 });
-    const bottom = listFaces(s.doc.model).find((f) => f.normal[1] === -1)!.id;
+    const bottom = listFaces(rootModel(s.doc)).find((f) => f.normal[1] === -1)!.id;
     const p = s.execute('core.pushPull', { faceId: bottom, distance: 250 });
     expect(p.ok && p.output.distance).toBe(250);
     const r = s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 600], width: 400, depth: 250 });
@@ -26,7 +26,7 @@ describe('a new edge crossing edges of another plane (review repro)', () => {
   }
 
   test('the checker passes', () => {
-    expect(checkModel(repro().doc.model)).toEqual([]);
+    expect(checkModel(rootModel(repro().doc))).toEqual([]);
   });
 
   test('the new edge and the vertical edges are split at the crossings and share the new vertices', () => {
@@ -43,7 +43,7 @@ describe('a new edge crossing edges of another plane (review repro)', () => {
 
   test('the box wall the edge runs across is split into two faces, as a line would split it', () => {
     const s = repro();
-    const leftWall = listFaces(s.doc.model).filter((f) => f.normal[0] === -1 && f.outer.every((p) => p[0] === 0));
+    const leftWall = listFaces(rootModel(s.doc)).filter((f) => f.normal[0] === -1 && f.outer.every((p) => p[0] === 0));
     expect(leftWall).toHaveLength(2);
   });
 });

@@ -1,4 +1,4 @@
-import { createSession, type CommandSession } from '../../src/commands';
+import { createSession, type CommandSession , rootModel } from '../../src/commands';
 import { checkModel, listFaces } from '../../src/kernel';
 
 /** Small seeded generator so failures can be reproduced. */
@@ -21,7 +21,7 @@ export function randomRun(seed: number, steps: number): CommandSession {
   const s = createSession();
   const grid = (n: number) => Math.floor(r() * n) * 50;
   for (let i = 0; i < steps; i++) {
-    const horizontal = listFaces(s.doc.model).filter((f) => Math.abs(f.normal[1]) === 1);
+    const horizontal = listFaces(rootModel(s.doc)).filter((f) => Math.abs(f.normal[1]) === 1);
     if (!horizontal.length || r() < 0.4) {
       s.execute('core.drawRectangle', { faceId: null, corner: [grid(16), 0, grid(16)], width: 50 + grid(8), depth: 50 + grid(8) });
     } else {
@@ -29,7 +29,7 @@ export function randomRun(seed: number, steps: number): CommandSession {
       const distance = (r() < 0.5 ? -1 : 1) * (50 + grid(6));
       s.execute('core.pushPull', { faceId: face.id, distance });
     }
-    const problems = checkModel(s.doc.model);
+    const problems = checkModel(rootModel(s.doc));
     if (problems.length) throw new Error(`seed ${seed}, step ${i}: ${problems.join('; ')}`);
   }
   return s;

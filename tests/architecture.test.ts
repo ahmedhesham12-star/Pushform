@@ -77,7 +77,7 @@ describe('architecture', () => {
     expect(bad.map((i) => `${i.file} -> ${i.spec}`)).toEqual([]);
   });
 
-  test.each(['kernel', 'commands', 'units'])('%s uses no DOM globals', (layer) => {
+  test.each(['kernel', 'scene', 'commands', 'units'])('%s uses no DOM globals', (layer) => {
     const bad = sourceFiles()
       .filter((f) => layerOf(f) === layer)
       .filter((f) => DOM_GLOBALS.test(codeOnly(readFileSync(f, 'utf8'))));
@@ -98,15 +98,21 @@ describe('architecture', () => {
     expect(bad.map((i) => `${i.file} -> ${i.spec}`)).toEqual([]);
   });
 
-  test('only commands call kernel mutations', () => {
+  test('only commands (and the scene layer, which loads models) call kernel mutations', () => {
     const bad = all.filter(
       (i) =>
         i.layer !== 'kernel' &&
         i.layer !== 'commands' &&
+        i.layer !== 'scene' &&
         i.target === 'kernel' &&
         i.names.some((n) => KERNEL_MUTATIONS.includes(n)),
     );
     expect(bad.map((i) => `${i.file} -> ${i.names.join(', ')}`)).toEqual([]);
+  });
+
+  test('the scene layer depends only on the kernel', () => {
+    const bad = all.filter((i) => i.layer === 'scene' && (i.target === null || !['scene', 'kernel'].includes(i.target)));
+    expect(bad.map((i) => `${i.file} -> ${i.spec}`)).toEqual([]);
   });
 
   test('nothing imports the kernel with a namespace import', () => {

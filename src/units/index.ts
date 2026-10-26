@@ -9,4 +9,4 @@ export {
   type ParseListResult,
   type TypedValuesResult,
 } from './parse';
-export { formatLength, formatArea, formatNumber, type FormatOptions } from './format';
+export { formatLength, formatArea, formatVolume, formatNumber, type FormatOptions } from './format';

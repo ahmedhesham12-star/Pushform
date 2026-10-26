@@ -144,6 +144,8 @@ export const edgeLength = (m: Model, id: string) => q.edgeLength(data(m), id);
 export const edgeGroup = (m: Model, id: string) => q.edgeGroup(data(m), id);
 export const snapPoints = (m: Model) => q.snapPoints(data(m));
 export const bounds = (m: Model) => q.bounds(data(m));
+/** Volume in mm³ when the model is a closed, consistently oriented solid; null otherwise. */
+export const solidVolume = (m: Model) => q.solidVolume(data(m));
 /** Problems with the model's topology; empty when valid. For tests and debugging. */
 export const checkModel = (m: Model) => validate(data(m));
 /** Corners of a rectangle as drawRectangle would create it; used for previews. */

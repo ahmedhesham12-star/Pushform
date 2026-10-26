@@ -83,36 +83,26 @@ export function formatLength(mm: number, settings: UnitSettings, options: Format
 
 /** Format an area stored in mm² using the file's display settings. */
 export function formatArea(mm2: number, settings: UnitSettings, options: FormatOptions = {}): string {
+  return formatPower(mm2, 2, settings, options);
+}
+
+/** Format a volume stored in mm³ using the file's display settings. */
+export function formatVolume(mm3: number, settings: UnitSettings, options: FormatOptions = {}): string {
+  return formatPower(mm3, 3, settings, options);
+}
+
+/**
+ * Areas and volumes: metric and decimal-inch files use their own unit and
+ * precision; fractional inches use square or cubic inches and feet-and-inches
+ * square or cubic feet, with two decimals.
+ */
+function formatPower(value: number, power: 2 | 3, settings: UnitSettings, options: FormatOptions): string {
   const locale = options.locale ?? localeTag();
   const { unit } = settings;
-  let value: number;
-  let symbol: string;
-  let digits: number;
-  switch (unit) {
-    case 'mm':
-    case 'cm':
-    case 'm':
-      value = mm2 / MM_PER[unit] ** 2;
-      symbol = t(`units.symbol.${unit}2`);
-      digits = settings.precision;
-      break;
-    case 'in':
-      value = mm2 / MM_PER.in ** 2;
-      symbol = t('units.symbol.in2');
-      digits = settings.precision;
-      break;
-    case 'in-frac':
-      value = mm2 / MM_PER.in ** 2;
-      symbol = t('units.symbol.in2');
-      digits = 2;
-      break;
-    case 'ft-in':
-      value = mm2 / MM_PER.ft ** 2;
-      symbol = t('units.symbol.ft2');
-      digits = 2;
-      break;
-  }
-  return `${numberFormat(locale, digits).format(value)} ${symbol}`;
+  const base = unit === 'in-frac' ? 'in' : unit === 'ft-in' ? 'ft' : unit;
+  const digits = unit === 'in-frac' || unit === 'ft-in' ? 2 : settings.precision;
+  const symbol = t(`units.symbol.${base}${power}`);
+  return `${numberFormat(locale, digits).format(value / MM_PER[base] ** power)} ${symbol}`;
 }
 
 /** Plain number in the active locale, used for counts and other non-length values. */

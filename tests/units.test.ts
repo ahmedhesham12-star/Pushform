@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import {
   formatArea,
+  formatVolume,
   formatLength,
   parseLength,
   parseLengthList,
@@ -224,6 +225,20 @@ describe('formatArea', () => {
     [144 * 645.16, { unit: 'in-frac', precision: 16 }, '144.00 in²'],
     [2 * 92903.04, { unit: 'ft-in', precision: 16 }, '2.00 ft²'],
   ])('%f mm² in %o -> %s', (value, settings, expected) => {
+    expect(f(value, settings)).toBe(expected);
+  });
+});
+
+describe('formatVolume', () => {
+  const f = (v: number, s: UnitSettings) => formatVolume(v, s, { locale: 'en' });
+  test.each<[number, UnitSettings, string]>([
+    [0.5e9, { unit: 'm', precision: 3 }, '0.500 m³'],
+    [0.5e9, { unit: 'cm', precision: 0 }, '500000 cm³'],
+    [0.5e9, { unit: 'mm', precision: 0 }, '500000000 mm³'],
+    [1728 * 16387.064, { unit: 'in', precision: 0 }, '1728 in³'],
+    [1728 * 16387.064, { unit: 'in-frac', precision: 16 }, '1728.00 in³'],
+    [2 * 28316846.592, { unit: 'ft-in', precision: 16 }, '2.00 ft³'],
+  ])('%f mm³ in %o -> %s', (value, settings, expected) => {
     expect(f(value, settings)).toBe(expected);
   });
 });

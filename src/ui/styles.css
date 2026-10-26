@@ -2,7 +2,7 @@
  * Layout uses logical properties (inline/block, start/end) so a right-to-left
  * locale mirrors the interface without separate rules. The only physical
  * coordinates are those of the snap marker and the right-click menu, which
- * follow canvas pixels.
+ * follow pointer pixels.
  */
 :root {
   --ui: #eef0ed;
@@ -85,9 +85,9 @@ body {
   font-size: 15px;
   line-height: 1.4;
   display: grid;
-  grid-template-columns: auto 1fr;
+  grid-template-columns: auto 1fr auto;
   grid-template-rows: auto 1fr auto;
-  grid-template-areas: 'top top' 'tools view' 'status status';
+  grid-template-areas: 'top top top' 'tools view panel' 'status status status';
   overflow: hidden;
 }
 button,
@@ -280,10 +280,150 @@ input {
   color: var(--ink);
 }
 
+/* ---------- side panel: Entity Info and Outliner ---------- */
+.panel {
+  grid-area: panel;
+  display: flex;
+  flex-direction: column;
+  inline-size: 260px;
+  min-block-size: 0;
+  border-inline-start: 1px solid var(--line);
+  background: var(--ui);
+  font-size: 14px;
+}
+.panel h2 {
+  margin: 0;
+  padding-block: 7px;
+  padding-inline: 12px;
+  border-block-end: 1px solid var(--line);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.panel input {
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding-block: 2px;
+  padding-inline: 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--canvas);
+}
+.entity-info dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 6px 10px;
+  margin: 0;
+  padding-block: 10px;
+  padding-inline: 12px;
+}
+.entity-info dt {
+  color: var(--ink-2);
+}
+.entity-info dd {
+  margin: 0;
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+.entity-info .entity-info-empty {
+  grid-column: 1 / -1;
+  color: var(--ink-2);
+}
+.outliner {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-block-size: 0;
+  border-block-start: 1px solid var(--line);
+}
+.outliner-tree,
+.outliner-tree ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.outliner-tree {
+  flex: 1;
+  overflow: auto;
+  padding-block: 4px;
+}
+.outliner-row {
+  display: flex;
+  align-items: center;
+  padding-inline-start: calc(var(--depth, 0) * 14px + 4px);
+  padding-inline-end: 6px;
+}
+.outliner-row.selected {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.outliner-row.open .outliner-name {
+  font-weight: 600;
+}
+.outliner-toggle {
+  display: grid;
+  place-items: center;
+  flex: none;
+  inline-size: 18px;
+  block-size: 18px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  opacity: 0.7;
+}
+.outliner-toggle:empty {
+  visibility: hidden;
+}
+li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
+  transform: rotate(90deg);
+}
+:dir(rtl) li[aria-expanded='false'] > .outliner-row .outliner-toggle svg {
+  transform: scaleX(-1);
+}
+.outliner-row button:not(.outliner-toggle) {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-inline-size: 0;
+  padding-block: 3px;
+  padding-inline: 4px;
+  border: 0;
+  background: none;
+  text-align: start;
+  cursor: default;
+}
+.outliner-row:not(.selected) button:not(.outliner-toggle):hover {
+  background: var(--ui-2);
+}
+.outliner-icon {
+  display: grid;
+  opacity: 0.75;
+}
+.outliner-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.outliner-detail,
+.outliner-count {
+  font-size: 13px;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+.outliner-count {
+  margin-inline-start: auto;
+}
+.outliner-input {
+  flex: 1;
+}
+
 /* ---------- right-click menu ---------- */
-/* Physical left/top on purpose: the menu is placed at the pointer's canvas pixel coordinates. */
+/* Physical left/top on purpose: the menu is placed at the pointer's pixel coordinates. */
 .context-menu {
-  position: absolute;
+  position: fixed;
   left: 0;
   top: 0;
   z-index: 10;
@@ -380,8 +520,15 @@ input {
 @media (max-width: 680px) {
   body {
     grid-template-columns: 1fr;
-    grid-template-rows: auto 1fr auto auto;
-    grid-template-areas: 'top' 'view' 'tools' 'status';
+    grid-template-rows: auto 1fr auto auto auto;
+    grid-template-areas: 'top' 'view' 'tools' 'panel' 'status';
+  }
+  .panel {
+    inline-size: auto;
+    max-block-size: 30vh;
+    overflow: auto;
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--line);
   }
   .brand span {
     display: none;

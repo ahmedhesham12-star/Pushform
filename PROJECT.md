@@ -63,17 +63,23 @@ A properties panel that shows a selected rectangle's width and depth and lets th
 ```
 src/
   kernel/     pure geometry (mm): shared topology, planar engine, push/pull, erase,
-              lines, shapes, triangulation; public API in index.ts, opaque Model type
+              lines, shapes, triangulation, extract and merge; public API in index.ts,
+              opaque Model type
+  scene/      definitions (each with its own kernel model) and instances with rigid
+              transforms; world-space snap points and edges; scene serialization
   commands/   named commands, CommandSession (execute, preview, amend, undo/redo,
               change events), document
   units/      length settings, parsing and formatting (metric and imperial, Intl)
   i18n/       t(), locale and text direction; English catalog in en.ts
-  viewport/   three.js renderer, orbit camera, face and edge picking, snapping and
-              axis inference, previews, snap marker
+  viewport/   three.js renderer, orbit camera, the scene with the open editing context
+              (faded outside), face, edge and instance picking, snapping and axis
+              inference across instances, previews, snap marker
   tools/      one file per tool: select, line, rectangle, circle, polygon, pushPull,
               erase, orbit, pan (circle and polygon share radial.ts)
-  ui/         tool bar, top actions, units menu, status bar, measurements box, intro
-  app.ts      wiring: input events, keyboard, selection, refresh on document change
+  ui/         tool bar, top actions, units menu, status bar, measurements box, intro,
+              right-click menu, Entity Info and Outliner
+  app.ts      wiring: input events, keyboard, selection, editing context, refresh on
+              document change
   storage.ts  autosave to local storage
 tests/        units, kernel (topology, planar, erase, push/pull, lines, shapes),
               commands, precision, measurements box and architecture tests;
@@ -85,8 +91,9 @@ Data flow: a tool reads the viewport (picking, snapping) and calls `session.prev
 
 ### Layer rules (checked by `tests/architecture.test.ts`)
 - The kernel imports nothing outside `src/kernel` except the `earcut` package, uses no DOM globals, and is imported only through `src/kernel/index.ts`.
-- Only `src/commands` may call kernel mutations (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawLine`, `pushPull`, `erase`, `deserialize`). Everything else uses the read-only queries, such as `listFaces`, `listEdges`, `edgeGroup`, `faceMeshes`, `snapPoints`, `bounds` and the preview helpers.
-- `src/commands` and `src/units` use no DOM, so commands can run headless for tests, plugins and MCP.
+- Only `src/commands` (and `src/scene`, which loads models) may call kernel mutations (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawLine`, `pushPull`, `erase`, `extractGeometry`, `transformGeometry`, `mergeGeometry`, `deserialize`). Everything else uses the read-only queries, such as `listFaces`, `listEdges`, `edgeGroup`, `faceMeshes`, `snapPoints`, `bounds`, `solidVolume` and the preview helpers.
+- `src/scene` imports only the kernel.
+- `src/kernel`, `src/scene`, `src/commands` and `src/units` use no DOM, so commands can run headless for tests, plugins and MCP.
 
 ### Kernel (milestone 2)
 **Data structure: shared topology with edge uses.**
@@ -178,16 +185,23 @@ Plugins call `registry.register(def)` and extend the typed `CommandMap` through 
 - New tools get it by declaring their fields.
 
 ### Document format
-JSON, version 2:
+JSON, version 3 (milestone 3): a scene of definitions, each holding a version 2 topology model, and the instances placed in them.
 ```
-{ format: 'pushform', version: 2, units: { unit, precision },
-  model: { kind: 'topology', version: 2, next,
-           vertices: { id: [x, y, z] },
-           edges: { id: { v: [a, b], soft?: true, curve?: id } },
-           faces: { id: { normal, outer: [vertex ids], holes: [[vertex ids]] } },
-           curves: { id: { kind, edges, segments, center, normal, radius } } } }
+{ format: 'pushform', version: 3, units: { unit, precision },
+  scene: { root: definition id, next,
+           definitions: { id: { kind: 'root' | 'group' | 'component', name,
+                                model: <version 2 model, below>,
+                                instances: { id: { definition, name,
+                                  transform: { rotation: [x, y, z, w], translation: [x, y, z],
+                                               scale: [1, 1, 1] } } } } } } }
+
+model: { kind: 'topology', version: 2, next,
+         vertices: { id: [x, y, z] },
+         edges: { id: { v: [a, b], soft?: true, curve?: id } },
+         faces: { id: { normal, outer: [vertex ids], holes: [[vertex ids]] } },
+         curves: { id: { kind, edges, segments, center, normal, radius } } }
 ```
-Both levels are validated on load.
+Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] until Flip and Scale arrive in milestone 4, instances only of existing non-root definitions, no nesting cycles. **Version 2 documents** (milestone 2) load as the root definition; the conversion is tested against a milestone 2 autosave (`tests/fixtures/milestone2-autosave.json`).
 
 **Version 1 documents** (milestone 1 autosaves, face-loop models) are converted on load:
 - Corners at the same position become one shared vertex, and every loop side becomes a shared edge.
@@ -235,6 +249,14 @@ Both levels are validated on load.
 | 2026-10-26 | Circle and polygon radius goes to the corners; the first corner points toward the radius click | Matches SketchUp's default. |
 | 2026-10-26 | The measurements box is read-only unless an operation is in progress, the last one can be amended, or the tool takes idle input (a segment count) | Testing feedback: a read-only value looked editable. |
 | 2026-10-26 | happy-dom as a dev dependency, enabled per test file | Unit tests for DOM components without a browser. |
+| 2026-10-26 | Milestone 3 scene: definitions own their geometry; instances carry a unit quaternion, a translation and a scale fixed at [1, 1, 1] (approved) | Geometry in different definitions never merges. The scale field avoids another format change when Flip and Scale arrive in milestone 4. |
+| 2026-10-26 | A new group or component's origin is the minimum corner of the selection's bounding box, axes aligned to the parent (approved) | Predictable, and matches what SketchUp does for a new group. |
+| 2026-10-26 | Edges shared between grouped geometry and geometry left behind are copied (approved) | Both sides keep their faces intact. |
+| 2026-10-26 | Copying a group shares its geometry until the first edit (approved): the copy gets its own definition that points to the same immutable model | Every group keeps exactly one instance, so editing one copy never changes another. |
+| 2026-10-26 | Explode merges through the kernel's planar engine: coplanar regions join, crossing edges split | One engine for drawing and exploding; randomized extract, move and merge runs check the invariants. |
+| 2026-10-26 | Inference uses every visible placement in world coordinates, including faded geometry outside the editing context (product owner) | Parts are assembled by snapping to other parts, such as a drawer corner to the carcass's inner edge. |
+| 2026-10-26 | Drawing on another group's face draws in its plane, in the open context | Faces of other groups are inference targets; Rectangle, Circle and Polygon take an optional plane normal for this. |
+| 2026-10-26 | Solid volume in Entity Info for a group or component whose own geometry is closed and consistently oriented; none when it holds other groups or components | Cheap to compute exactly; nested solids are a later step. |
 
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
@@ -288,7 +310,9 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - **Inference is simpler.** There are endpoints, midpoints, points on edges, points on faces, the three axes and arrow-key axis locks. Parallel, perpendicular and "from point" inference are not built yet.
 - **Erase has no modifiers** yet (Shift hide, Ctrl soften; on the parity list).
 - **Push/pull has no "new face" modifier** yet (Ctrl; on the parity list).
-- **Right drag orbits**, until a context menu takes the right button (see SketchUp parity).
+- **Right drag orbits**; a short right click opens the context menu (see SketchUp parity). SketchUp has no right-drag orbit.
+- **Copying a group** gives the copy its own definition right away (sharing the geometry in memory), instead of SketchUp's shared definition that is made unique on the first edit. The user sees the same behavior.
+- **The Outliner** sorts by name and shows the copy count of each component.
 
 ## Differences from the prototype
 - **Bug fix:** pulling a lone face downward built its side walls facing inward. Walls of a lone face now always face outward.
@@ -319,12 +343,22 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
   - 329 unit tests pass in about 6 s and the production build succeeds. The randomized rectangle and push/pull runs on horizontal faces (`tests/crossings.test.ts`, about 5.5 s) cover seed 11 for 80 steps, 8 seeds for 40 steps, and the 7 seeds that found bugs. Two longer sweeps of 120 seeds at 60 steps each run with `npm run test:stress` (about 85 s, the two sweeps in parallel); they pass and must pass before a milestone is merged into `main`. Boxes built against boxes follow the behavior the product owner specified (repros A and B in `tests/slots.test.ts`): one shared wall, split where the heights differ. The tests confirm that specification, not SketchUp's behavior, which is still unverified. They include randomized overlapping rectangles (grid-aligned and arbitrary), and randomized slots, notches and tabs on a box, with invariant checks after every step and preview-equals-commit checks.
   - Scripted browser checks (not in the repo) covered: overlaps, pockets and push-through, edge selection and erase, the line tool, circles and polygons, amend, autosave, and loading a milestone 1 autosave.
 
+**Milestone 3** (in progress), on branch `milestone-3`. Done through checkpoint (a):
+- **Scene layer and document version 3**, with version 2 conversion.
+- **Kernel:** extract, rigid transform and merge (explode, copies), solid volume.
+- **Commands:** make group, make component, explode, make unique, rename definition and instance, copy instances, erase instances; nesting.
+- **Viewport:** instances drawn from shared geometry with their transforms; editing contexts (double-click to open, Esc or a click outside to close, everything outside faded); picking returns context faces and edges, instances in the context, or geometry outside it; inference across all instances and contexts in world coordinates.
+- **Right-click menu** and G for Make Component.
+- **Panels:** Entity Info (type, editable definition and instance names, copy count, volume, area, length) and Outliner (tree, copy counts, click to select, double-click or F2 to rename, right-click menu).
+- **Verification:** 416 unit tests pass and the build succeeds; the new stress sweeps 3 (extract and merge) and 4 (scene commands) pass. Scripted browser checks (not in the repo) cover instances, contexts, snapping to another copy, the menu and the panels.
+
 ### Known limitations
 - The differences from SketchUp listed above.
 - Each operation recomputes its whole plane and an adjacency index. That is fine for typical models; very large models may slow down.
 - Undo history is not kept across reloads.
-- There is no file open, save or export yet; the only storage is the browser autosave.
-- No move, copy, rotate, offset or components yet.
+- There is no file open, save or export yet; the only storage is the browser autosave (milestone 3, steps 9 and 10).
+- No move or rotate tools yet (milestone 3, steps 7 and 8); offset comes later.
+- Axis inference uses the world axes, also inside a group or component; this matters once instances can be rotated (milestone 3, step 8).
 
 ## Next steps (proposed, not yet approved)
 1. File open and save (`.pushform` JSON download and upload) and the first export (glTF or STL, from `faceMeshes`).

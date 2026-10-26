@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { extract, merge, transformTopology } from '../src/kernel/assembly';
 import { pushPull } from '../src/kernel/pushPull';
-import { faceArea } from '../src/kernel/query';
+import { faceArea, solidVolume } from '../src/kernel/query';
+import { drawLine } from '../src/kernel/lines';
 import { drawRectangle, drawRegularPolygon } from '../src/kernel/shapes';
 import { emptyTopology, type Point3, type Topology } from '../src/kernel/types';
 import { validate } from '../src/kernel/validate';
@@ -208,5 +209,39 @@ describe('merge', () => {
 describe('randomized extract and merge', () => {
   test.each([1, 2, 3, 4, 5, 6, 7, 8])('seed %i: random extract, move or turn, merge back', (seed) => {
     randomAssemblyRun(seed, 6);
+  });
+});
+
+describe('solid volume', () => {
+  test('a box is a solid with width x depth x height', () => {
+    expect(solidVolume(box(emptyTopology(), 0, 0, 1000, 500, 300))).toBeCloseTo(1.5e8, 3);
+  });
+
+  test('a pocket takes its volume out; a box with a missing face is not a solid', () => {
+    let t = box(emptyTopology(), 0, 0, 1000, 1000, 500);
+    const top = [...t.faces].find(([, f]) => f.normal[1] === 1)![0];
+    const inset = rect(t, 250, 250, 500, 500, top, 500);
+    t = pushPull(inset.topology, inset.faceIds[0]!, -200).topology;
+    expect(solidVolume(t)).toBeCloseTo(5e8 - 0.5e8, 3);
+    const open = extract(t, [top], []).remaining;
+    expect(solidVolume(open)).toBeNull();
+  });
+
+  test('two boxes sharing an edge are not a solid; a loose edge spoils one', () => {
+    let t = box(emptyTopology(), 0, 0, 500, 500, 500);
+    t = box(t, 500, 500, 500, 500, 500);
+    expect(solidVolume(t)).toBeNull();
+    const withLine = drawLine(box(emptyTopology(), 0, 0, 500, 500, 500), [0, 500, 0], [0, 900, 0]).topology;
+    expect(solidVolume(withLine)).toBeNull();
+    expect(solidVolume(emptyTopology())).toBeNull();
+  });
+
+  test('a cylinder is a solid; its volume is the prism over the polygon', () => {
+    const c = drawRegularPolygon(emptyTopology(), { kind: 'circle', faceId: null, center: [0, 0, 0], radius: 400, segments: 24 });
+    if (!c.ok) throw new Error(c.error);
+    const cyl = pushPull(c.topology, c.faceIds[0]!, 500).topology;
+    const polygonArea = 0.5 * 24 * 400 * 400 * Math.sin((2 * Math.PI) / 24);
+    // Vertices are rounded to 1e-6 mm, so compare relatively.
+    expect(Math.abs(solidVolume(cyl)! / (polygonArea * 500) - 1)).toBeLessThan(1e-8);
   });
 });

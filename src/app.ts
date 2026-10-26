@@ -8,7 +8,21 @@ import {
   type PushformDocument,
 } from './commands';
 import { t, type MessageKey } from './i18n';
-import { edgeCount, edgeGroup, faceCount, getEdge, getFace, hasEdge, hasFace, type Bounds, type Model, type Point3 } from './kernel';
+import {
+  edgeCount,
+  edgeGroup,
+  edgeLength,
+  faceArea,
+  faceCount,
+  getEdge,
+  getFace,
+  hasEdge,
+  hasFace,
+  solidVolume,
+  type Bounds,
+  type Model,
+  type Point3,
+} from './kernel';
 import {
   applyPoint,
   compose,
@@ -22,8 +36,21 @@ import {
   type InstanceId,
 } from './scene';
 import { saveAutosave } from './storage';
-import { ACTION_SHORTCUTS, createTools, isMac, shortcutFor, TOOL_SHORTCUTS, type Selection, type Tool, type ToolContext, type ToolId } from './tools';
+import {
+  ACTION_SHORTCUTS,
+  createTools,
+  isMac,
+  selectionMode,
+  shortcutFor,
+  TOOL_SHORTCUTS,
+  type Selection,
+  type Tool,
+  type ToolContext,
+  type ToolId,
+} from './tools';
 import { ContextMenu, type MenuEntry } from './ui/contextMenu';
+import { EntityInfo, type EntityInfoData } from './ui/entityInfo';
+import { Outliner } from './ui/outliner';
 import { el } from './ui/dom';
 import { ICONS } from './ui/icons';
 import { Intro } from './ui/intro';
@@ -31,7 +58,7 @@ import { MeasurementsBox } from './ui/measurements';
 import { StatusBar } from './ui/statusBar';
 import { ActionBar, ToolBar, type ToolButtonSpec } from './ui/toolbar';
 import { UnitsMenu } from './ui/unitsMenu';
-import { defaultPrecision, formatLength, formatNumber, parseTypedValues, type LengthUnit } from './units';
+import { defaultPrecision, formatArea, formatLength, formatNumber, formatVolume, parseTypedValues, type LengthUnit } from './units';
 import { Viewport, type EdgeHighlight, type Highlight } from './viewport';
 
 /** Characters that start typing into the measurements box while a tool is busy. */
@@ -64,6 +91,8 @@ export class App {
   private readonly unitsMenu: UnitsMenu;
   private readonly intro = new Intro();
   private readonly menu = new ContextMenu();
+  private readonly entityInfo: EntityInfo;
+  private readonly outliner: Outliner;
   /**
    * Navigation in progress. A right-button press only starts orbiting once it
    * moves past DRAG_THRESHOLD; released before that, it opens the menu.
@@ -110,7 +139,7 @@ export class App {
     this.toolbar = new ToolBar(toolSpecs, (id) => this.setTool(id));
 
     const view = el('main', 'view');
-    view.append(this.intro.element, this.menu.element);
+    view.append(this.intro.element);
 
     const footer = el('footer', 'status');
     this.status = new StatusBar(() => this.tool.hint());
@@ -127,7 +156,32 @@ export class App {
     });
     footer.append(this.status.element, this.measure.element);
 
-    root.append(top, this.toolbar.element, view, footer);
+    this.entityInfo = new EntityInfo({
+      renameDefinition: (definitionId, name) => this.run(this.session.execute('core.renameDefinition', { definitionId, name })),
+      renameInstance: (instanceId, name) => this.run(this.session.execute('core.renameInstance', { instanceId, name })),
+    });
+    this.outliner = new Outliner({
+      scene: () => this.session.doc.scene,
+      context: () => this.context,
+      selected: () => this.selection.instances,
+      select: (path, e) => this.selectFromOutliner(path, e),
+      selectModel: () => {
+        this.setContext([]);
+        this.clearSelection();
+        this.applyHighlights();
+        this.status.hint();
+      },
+      rename: (instanceId, name) => this.run(this.session.execute('core.renameInstance', { instanceId, name })),
+      menu: (path, e) => {
+        const id = path.at(-1)!;
+        if (!this.selection.instances.has(id) || path.length - 1 !== this.context.length) this.selectFromOutliner(path);
+        this.showMenu(e.clientX, e.clientY);
+      },
+    });
+    const panel = el('aside', 'panel');
+    panel.append(this.entityInfo.element, this.outliner.element);
+
+    root.append(top, this.toolbar.element, view, panel, footer, this.menu.element);
     this.viewport = new Viewport(view);
 
     this.tools = createTools(this.toolContext());
@@ -194,6 +248,74 @@ export class App {
     for (const i of instances) boxes.set(i, 'selected');
     if (hovered?.kind === 'instance' && !instances.has(hovered.id)) boxes.set(hovered.id, kind === 'erase' ? 'erase' : 'hover');
     this.viewport.highlightInstances(boxes);
+    // Every selection change ends here, so the panels follow it.
+    this.entityInfo.show(this.entityInfoData());
+    this.outliner.sync();
+  }
+
+  /** Flash a command's error; a successful command needs no message here. */
+  private run(r: { ok: true } | { ok: false; error: CommandError }): void {
+    if (!r.ok) this.flashError(r.error);
+  }
+
+  /** What Entity Info shows for the current selection. */
+  private entityInfoData(): EntityInfoData {
+    const { faces, edges, instances } = this.selection;
+    if (!faces.size && !edges.size && !instances.size) return { kind: 'none' };
+    const doc = this.session.doc;
+    const count = (n: number) => formatNumber(n);
+    if (instances.size) {
+      const id = [...instances][0]!;
+      const i = pathDefinition(doc.scene, this.context)?.instances.get(id);
+      const def = i && doc.scene.definitions.get(i.definitionId);
+      if (instances.size === 1 && !faces.size && !edges.size && i && def && def.kind !== 'root') {
+        // Volume is only shown for geometry without nested groups or components.
+        const volume = def.instances.size ? null : solidVolume(def.model);
+        return {
+          kind: 'instance',
+          type: def.kind,
+          definitionId: def.id,
+          instanceId: id,
+          definitionName: def.name,
+          instanceName: i.name,
+          copies: instanceCount(doc.scene, def.id),
+          volume: def.instances.size ? null : volume === null ? t('info.notSolid') : formatVolume(volume, doc.units),
+        };
+      }
+      return { kind: 'mixed', title: t('info.items', { count: count(faces.size + edges.size + instances.size) }) };
+    }
+    const m = this.contextModel();
+    const title =
+      faces.size && edges.size
+        ? t('info.facesAndEdges', { faces: count(faces.size), edges: count(edges.size) })
+        : faces.size
+          ? faces.size === 1
+            ? t('info.face')
+            : t('info.faces', { count: count(faces.size) })
+          : edges.size === 1
+            ? t('info.edge')
+            : t('info.edges', { count: count(edges.size) });
+    const area = faces.size ? formatArea([...faces].reduce((s, f) => s + faceArea(m, f), 0), doc.units) : null;
+    const length = edges.size ? formatLength([...edges].reduce((s, e) => s + edgeLength(m, e), 0), doc.units) : null;
+    return { kind: 'geometry', title, area, length };
+  }
+
+  /**
+   * Select the instance at the end of `path` from the Outliner: its parent
+   * becomes the open context, and the click's modifiers apply as in the
+   * viewport (without an event, it replaces the selection).
+   */
+  private selectFromOutliner(path: readonly InstanceId[], e?: MouseEvent): void {
+    if (this.tool.id !== 'select') this.setTool('select');
+    this.setContext(path.slice(0, -1));
+    const id = path.at(-1)!;
+    const mode = e ? selectionMode(e, isMac()) : 'replace';
+    if (mode === 'replace') this.clearSelection();
+    const on = mode === 'remove' ? false : mode === 'toggle' ? !this.selection.instances.has(id) : true;
+    if (on) this.selection.instances.add(id);
+    else this.selection.instances.delete(id);
+    this.applyHighlights();
+    this.status.hint();
   }
 
   /** Open or close editing contexts so that `path` is the open one. Clears the selection. */
@@ -425,8 +547,8 @@ export class App {
   }
 
   /**
-   * The right-click menu. Right-clicking something that is not selected
-   * selects it first, as in SketchUp; the items act on the selection.
+   * The right-click menu in the viewport. Right-clicking something that is
+   * not selected selects it first, as in SketchUp; the items act on the selection.
    */
   private openContextMenu(e: PointerEvent): void {
     this.viewport.setPointer(e);
@@ -440,6 +562,11 @@ export class App {
         this.status.hint();
       }
     }
+    this.showMenu(e.clientX, e.clientY);
+  }
+
+  /** The context menu for the current selection, at client coordinates. */
+  private showMenu(x: number, y: number): void {
     const scene = this.session.doc.scene;
     const placed = pathDefinition(scene, this.context)!.instances;
     const any = this.hasSelection();
@@ -475,8 +602,7 @@ export class App {
         },
       },
     ];
-    const r = this.viewport.canvas.getBoundingClientRect();
-    this.menu.open(e.clientX - r.left, e.clientY - r.top, entries);
+    this.menu.open(x, y, entries);
   }
 
   /** Typed values after a finished command replace that command's amendable inputs. */
@@ -626,6 +752,8 @@ export class App {
   private bindKeyboard(): void {
     window.addEventListener('keydown', (e) => {
       if (e.target === this.measure.input) return;
+      // Leave keys alone while typing a name in the panels.
+      if (e.target instanceof HTMLInputElement) return;
       // The open menu handles its own keys.
       if (this.menu.isOpen) return;
       // Leave keys alone in other form controls (the units menu).

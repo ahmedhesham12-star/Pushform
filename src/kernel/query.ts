@@ -1,4 +1,5 @@
-import { length, midpoint, newell, sub, type Vec3 } from './vec';
+import { cross, dot, length, midpoint, newell, sub, type Vec3 } from './vec';
+import { faceTriangles } from './triangulate';
 import type { CurveId, EdgeId, FaceId, Point3, Topology, VertexId } from './types';
 
 export interface FacePoints {
@@ -81,6 +82,38 @@ export function edgeGroup(t: Topology, id: EdgeId): EdgeId[] {
 }
 
 /** Endpoints (each shared vertex once) and midpoints of the visible edges. */
+/**
+ * The volume a model encloses when it is a solid, or null when it is not. A
+ * solid has faces, and every edge bounds exactly two faces that run along it
+ * in opposite directions (a closed, consistently oriented surface). Loose or
+ * open edges, and edges shared by more than two faces, make it not a solid.
+ */
+export function solidVolume(t: Topology): number | null {
+  if (!t.faces.size) return null;
+  const byEnds = new Map<string, EdgeId>();
+  for (const [id, e] of t.edges) byEnds.set(e.v[0] < e.v[1] ? `${e.v[0]}|${e.v[1]}` : `${e.v[1]}|${e.v[0]}`, id);
+  const uses = new Map<EdgeId, { count: number; direction: number }>();
+  for (const f of t.faces.values()) {
+    for (const loop of [f.outer, ...f.holes]) {
+      loop.forEach((a, i) => {
+        const b = loop[(i + 1) % loop.length]!;
+        const id = byEnds.get(a < b ? `${a}|${b}` : `${b}|${a}`);
+        if (!id) return;
+        const u = uses.get(id) ?? { count: 0, direction: 0 };
+        uses.set(id, { count: u.count + 1, direction: u.direction + (a < b ? 1 : -1) });
+      });
+    }
+  }
+  for (const id of t.edges.keys()) {
+    const u = uses.get(id);
+    if (!u || u.count !== 2 || u.direction !== 0) return null;
+  }
+  // Divergence theorem over triangles wound counter-clockwise around their face normals.
+  let six = 0;
+  for (const id of t.faces.keys()) for (const [a, b, c] of faceTriangles(t, id)) six += dot(a, cross(b, c));
+  return Math.abs(six) / 6;
+}
+
 export function snapPoints(t: Topology): SnapPoint[] {
   const out: SnapPoint[] = [];
   const ends = new Set<VertexId>();

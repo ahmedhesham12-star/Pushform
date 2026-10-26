@@ -13,9 +13,9 @@ export interface MenuItem {
 export type MenuEntry = MenuItem | null;
 
 /**
- * The right-click menu. It opens at the pointer inside the viewport and
- * closes on Escape, Tab, a click outside it, or after an item runs. Arrow
- * keys, Home and End move between enabled items.
+ * The right-click menu, for the viewport and the Outliner. It opens at the
+ * pointer and closes on Escape, Tab, a click outside it, or after an item
+ * runs. Arrow keys, Home and End move between enabled items.
  */
 export class ContextMenu {
   readonly element = el('div', 'context-menu');
@@ -40,7 +40,7 @@ export class ContextMenu {
     return !this.element.hidden;
   }
 
-  /** Open at (x, y) in pixels inside the menu's positioned container. */
+  /** Open at the pointer's client coordinates (the menu is fixed to the window). */
   open(x: number, y: number, entries: readonly MenuEntry[]): void {
     this.element.replaceChildren();
     this.buttons = [];
@@ -65,12 +65,11 @@ export class ContextMenu {
       this.buttons.push(b);
     }
     this.element.hidden = false;
-    // Keep the menu inside its container; in a right-to-left layout it opens toward the start side.
-    const parent = this.element.offsetParent as HTMLElement | null;
+    // Keep the menu inside the window; in a right-to-left layout it opens toward the start side.
     const w = this.element.offsetWidth;
     const h = this.element.offsetHeight;
-    const maxX = (parent?.clientWidth ?? window.innerWidth) - w - 4;
-    const maxY = (parent?.clientHeight ?? window.innerHeight) - h - 4;
+    const maxX = window.innerWidth - w - 4;
+    const maxY = window.innerHeight - h - 4;
     const rtl = getComputedStyle(this.element).direction === 'rtl';
     const left = Math.max(4, Math.min(rtl ? x - w : x, maxX));
     const top = Math.max(4, Math.min(y, maxY));

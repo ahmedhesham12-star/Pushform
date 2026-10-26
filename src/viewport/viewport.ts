@@ -143,6 +143,8 @@ export class Viewport {
   private readonly previewInstances = new InstancesView();
   private previewing = false;
   private excluded: PickExclusions | null = null;
+  /** Endpoints and midpoints of excluded edges of the context (world), which inference skips too. */
+  private excludedPoints: Vector3[] = [];
   private grid: GridHelper | null = null;
   private imperialGrid = false;
   private snapStep = 50;
@@ -242,6 +244,14 @@ export class Viewport {
   /** Skip these entities in picking and inference (the selection being moved), or nothing. */
   setExcluded(excluded: PickExclusions | null): void {
     this.excluded = excluded;
+    this.excludedPoints = [];
+    if (!excluded?.edges.size) return;
+    for (const e of this.worldEdgeList) {
+      if (contextRelation(e.path, this.context) !== 'context' || !excluded.edges.has(e.edgeId)) continue;
+      const a = toVector(e.a);
+      const b = toVector(e.b);
+      this.excludedPoints.push(a, b, a.clone().add(b).multiplyScalar(0.5));
+    }
   }
 
   /** Whether geometry at `path`, or a face or edge of the context, is excluded. */
@@ -456,6 +466,7 @@ export class Viewport {
     const near: { d: number; s: SnapCandidate }[] = [];
     for (const s of this.snaps) {
       if (!filter(s.point) || this.isExcluded(s.path)) continue;
+      if (this.excludedPoints.some((x) => x.distanceToSquared(s.point) < 1e-12)) continue;
       const p = this.picker.toScreen(s.point);
       if (p.z > 1) continue;
       const d = Math.hypot(p.x - x, p.y - y);

@@ -14,6 +14,8 @@ export type CommandErrorCode =
   | 'nothingToErase'
   | 'moveBends'
   | 'moveCrosses'
+  | 'offsetTooLarge'
+  | 'offsetNotChain'
   | 'nothingSelected'
   | 'noSuchInstance'
   | 'noSuchDefinition'

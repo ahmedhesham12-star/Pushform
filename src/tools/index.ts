@@ -3,6 +3,7 @@ import { createEraseTool } from './erase';
 import { createPolygonTool } from './polygon';
 import { createLineTool } from './line';
 import { createMoveTool } from './move';
+import { createOffsetTool } from './offset';
 import { createRotateTool } from './rotate';
 import { createOrbitTool } from './orbit';
 import { createPanTool } from './pan';
@@ -33,6 +34,7 @@ export function createTools(ctx: ToolContext): Record<ToolId, Tool> {
     circle: createCircleTool(ctx),
     polygon: createPolygonTool(ctx),
     pushPull: createPushPullTool(ctx),
+    offset: createOffsetTool(ctx),
     erase: createEraseTool(ctx),
     orbit: createOrbitTool(),
     pan: createPanTool(),

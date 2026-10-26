@@ -41,6 +41,7 @@ import {
   type RotateCopiesInput,
   type RotateInput,
 } from './move';
+import { offset, type OffsetInput, type OffsetOutput } from './offset';
 import { pushPull, type PushPullInput, type PushPullOutput } from './pushPull';
 import { setDisplayUnits, type SetDisplayUnitsInput } from './setDisplayUnits';
 
@@ -65,6 +66,7 @@ declare module '../types' {
     'core.moveCopies': { input: MoveCopiesInput; output: MoveOutput };
     'core.rotate': { input: RotateInput; output: MoveOutput };
     'core.rotateCopies': { input: RotateCopiesInput; output: MoveOutput };
+    'core.offset': { input: OffsetInput; output: OffsetOutput };
   }
 }
 
@@ -88,6 +90,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
   registry.register(moveCopies);
   registry.register(rotate);
   registry.register(rotateCopies);
+  registry.register(offset);
 }
 
 export type {
@@ -106,6 +109,8 @@ export type {
   MoveOutput,
   RotateCopiesInput,
   RotateInput,
+  OffsetInput,
+  OffsetOutput,
   RenameDefinitionInput,
   RenameInstanceInput,
   DrawCircleInput,

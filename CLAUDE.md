@@ -5,7 +5,7 @@ Browser-based push/pull 3D modeler. TypeScript (strict), Vite, three.js, Vitest,
 ## Commands
 - `npm install`: install dependencies
 - `npm run dev`: dev server (http://localhost:5173)
-- `npm test`: unit and architecture tests (Vitest, run once)
+- `npm test`: unit and architecture tests (Vitest, run once). The test scripts start Vitest through `scripts/vitest.mjs` from the canonical project path; with a lowercase drive letter (d:\) every test file failed on Windows.
 - `npm run test:watch`: tests in watch mode
 - `npm run test:stress`: slow randomized sweeps in `tests/stress` (about 1.5 minutes; not part of `npm test`)
 - `npm run build`: type-check (`tsc --noEmit`), then production build into `dist/`
@@ -18,7 +18,7 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 ## Layers (enforced by tests/architecture.test.ts)
 - `src/kernel`: pure geometry in millimeters: a shared topology of vertices, edges, faces and curves. No three.js, no DOM, no imports from other layers; the only package allowed is `earcut`. Import it only through `src/kernel/index.ts`. The `Model` type is opaque. Kernel tests check `validate()` (via `checkModel`) after every operation.
 - `src/scene`: definitions (each with its own kernel Model), instances and rigid transforms (quaternion, translation in mm, scale fixed at [1, 1, 1] until milestone 4). Pure: imports only the kernel, no three.js or DOM. Scenes are immutable.
-- `src/commands`: the only code that may call kernel mutations (besides `src/scene` loading models) (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawLine`, `pushPull`, `erase`, `extractGeometry`, `transformGeometry`, `mergeGeometry`, `moveGeometry`, `transformSelection`, `deserialize`). No three.js or DOM.
+- `src/commands`: the only code that may call kernel mutations (besides `src/scene` loading models) (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawLine`, `pushPull`, `erase`, `extractGeometry`, `transformGeometry`, `mergeGeometry`, `moveGeometry`, `transformSelection`, `offset`, `deserialize`). No three.js or DOM.
 - `src/units`, `src/i18n`: shared foundations.
 - `src/viewport`: three.js rendering, camera, picking and snapping.
 - `src/tools`: one file per tool. Tools change the model only through `session.execute` or `session.preview`.
@@ -39,7 +39,7 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 - All user-visible text goes through `t()` with keys in `src/i18n/en.ts`. Never put text in HTML, icons or code literals.
 - Numbers shown to users go through Intl (via `src/units`).
 - CSS uses logical properties (`inline`/`block`, `start`/`end`). The only physical coordinates are those of the snap marker, the selection rectangle and the right-click menu, which follow pointer pixels.
-- Shortcuts and modifiers match SketchUp defaults (PROJECT.md, "SketchUp parity"). Tool and action keys live in `src/tools/shortcuts.ts` (G is Make Component); never assign a reserved key (S, F, A, B, T) to anything else. On a Mac, Option replaces Ctrl as a modifier.
+- Shortcuts and modifiers match SketchUp defaults (PROJECT.md, "SketchUp parity"). Tool and action keys live in `src/tools/shortcuts.ts` (G is Make Component); never assign a reserved key (S, A, B, T) to anything else. On a Mac, Option replaces Ctrl as a modifier.
 - Error codes are stable strings (`tooSmall`, `noSuchFace`); the UI maps them to messages.
 - Match the surrounding code: small modules, few comments, and comments explain why.
 - Kernel and units changes need tests in `tests/`.

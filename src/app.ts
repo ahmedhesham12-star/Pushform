@@ -77,6 +77,8 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
   nothingSelected: 'error.nothingSelected',
   noSuchInstance: 'error.noSuchInstance',
   moveBends: 'error.moveBends',
+  offsetTooLarge: 'error.offsetTooLarge',
+  offsetNotChain: 'error.offsetNotChain',
   moveCrosses: 'error.moveCrosses',
 };
 
@@ -140,6 +142,7 @@ export class App {
       { id: 'circle', label: 'tool.circle', icon: 'circle', ...key('circle') },
       { id: 'polygon', label: 'tool.polygon', icon: 'polygon', ...key('polygon') },
       { id: 'pushPull', label: 'tool.pushPull', icon: 'pushPull', ...key('pushPull') },
+      { id: 'offset', label: 'tool.offset', icon: 'offset', ...key('offset') },
       { id: 'erase', label: 'tool.erase', icon: 'erase', ...key('erase') },
       { id: 'orbit', label: 'tool.orbit', icon: 'orbit', ...key('orbit'), group: true },
       { id: 'pan', label: 'tool.pan', icon: 'pan', ...key('pan') },

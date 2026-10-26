@@ -220,3 +220,37 @@ describe('core.rotate', () => {
     expect(r.ok ? '' : r.error.code).toBe('amendValueCount');
   });
 });
+
+describe('core.offset', () => {
+  test('offset a face inward, then amend the distance in one step', () => {
+    const s = createSession();
+    const r = ok(s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 600, depth: 400 }));
+    const out = ok(s.execute('core.offset', { faceId: r.faceIds[0]!, distance: 50 }));
+    expect(out.edgeIds).toHaveLength(4);
+    const steps = s.history().length;
+    expect(type(s, '100mm').ok).toBe(true);
+    const m = definitionModel(s.doc)!;
+    expect(checkModel(m)).toEqual([]);
+    const inner = listFaces(m).find((f) => f.outer.every((p) => p[0] >= 100 - 1e-9 && p[0] <= 500 + 1e-9))!;
+    expect(inner).toBeDefined();
+    expect(s.history().length).toBe(steps);
+  });
+
+  test('too large a distance is refused with offsetTooLarge and records nothing', () => {
+    const s = createSession();
+    const r = ok(s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 600, depth: 400 }));
+    const steps = s.history().length;
+    const o = s.execute('core.offset', { faceId: r.faceIds[0]!, distance: 300 });
+    expect(o.ok ? '' : o.error.code).toBe('offsetTooLarge');
+    expect(s.history().length).toBe(steps);
+  });
+
+  test('inside a group, the offset happens in its own coordinates', () => {
+    const s = createSession();
+    const g = ok(s.execute('core.makeGroup', { faceIds: box(s, 1000, 0, 600, 400, 300) }));
+    const top = listFaces(definitionModel(s.doc, g.definitionId)!).find((f) => f.normal[1] === 1)!;
+    ok(s.execute('core.offset', { definitionId: g.definitionId, faceId: top.id, distance: 50 }));
+    expect(checkModel(definitionModel(s.doc, g.definitionId)!)).toEqual([]);
+    expect(listFaces(definitionModel(s.doc, g.definitionId)!)).toHaveLength(7);
+  });
+});

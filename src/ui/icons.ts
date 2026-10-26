@@ -33,6 +33,7 @@ export const ICONS = {
     '<path d="M4 15.5 9 13h11l-5 2.5z"/><path d="M4 15.5V20h11v-4.5M20 13v4.5L15 20"/><path d="M12 10.5V3M9 6l3-3 3 3"/>',
     'stroke-linejoin="round" stroke-linecap="round"',
   ),
+  offset: svg('<rect x="3.5" y="5" width="17" height="14"/><rect x="7.5" y="9" width="9" height="6" stroke-dasharray="2 1.6"/>'),
   erase: svg(
     '<path d="M4 15.5 12.5 7l5.5 5.5-6.5 6.5H8z"/><path d="M8.5 11 14 16.5M13 19.5h7"/>',
     'stroke-linejoin="round" stroke-linecap="round"',

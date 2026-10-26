@@ -7,11 +7,12 @@
  * viewport.
  *
  * Mutations (createModel, drawRectangle, drawRegularPolygon, drawLine, pushPull, erase,
- * extractGeometry, transformGeometry, mergeGeometry, moveGeometry, transformSelection, deserialize) are for
+ * extractGeometry, transformGeometry, mergeGeometry, moveGeometry, transformSelection, offset, deserialize) are for
  * src/commands only; everything else is read-only and may be used anywhere.
  */
 import { extract as extractTopology, merge as mergeTopology, transformTopology } from './assembly';
 import { erase as eraseTopology } from './erase';
+import { offset as offsetTopology, offsetDistance as offsetDistanceTo, offsetPath as findOffsetPath, type OffsetError, type OffsetPath } from './offset';
 import { moveGeometry as moveTopology, transformSelection as transformTopologySelection, type MoveError } from './move';
 import { drawLine as drawTopologyLine } from './lines';
 import { pushPull as pushTopology } from './pushPull';
@@ -40,7 +41,7 @@ const wrap = (t: Topology) => t as unknown as Model;
 export type { Vec3 } from './vec';
 export type { Point3, FaceId, EdgeId, CurveId, CurveKind } from './types';
 export type { FaceView, EdgeView, SnapPoint, SnapKind, Bounds } from './query';
-export type { MoveError };
+export type { MoveError, OffsetError, OffsetPath };
 export type { DrawError, RectangleSpec, RegularPolygonSpec, SerializedTopology, FaceMesh, Triangle };
 export { cleanNormal, planeAxes } from './vec';
 export { GROUND_NORMAL, MAX_SEGMENTS } from './shapes';
@@ -153,6 +154,22 @@ export function mergeGeometry(target: Model, source: Model): { model: Model; fac
   return { model: wrap(r.topology), faceIds: r.faceIds, edgeIds: r.edgeIds };
 }
 
+/**
+ * Offset a face's outer boundary, or a chain of connected edges in one plane,
+ * by a signed distance: positive inward (or to the left of an open chain).
+ * Straight corners stay sharp; circle and polygon edges become a new curve
+ * with the same segment count. Refused when the distance is too large.
+ */
+export function offset(
+  m: Model,
+  faceId: string | null,
+  edgeIds: readonly string[],
+  distance: number,
+): { ok: true; model: Model; faceIds: string[]; edgeIds: string[] } | { ok: false; error: OffsetError } {
+  const r = offsetTopology(data(m), faceId, edgeIds, distance);
+  return r.ok ? { ok: true, model: wrap(r.topology), faceIds: r.faceIds, edgeIds: r.edgeIds } : r;
+}
+
 /** Load a saved model: version 2 topology, or a version 1 face-loop model (converted). */
 export function deserialize(json: unknown): Model | null {
   const t = deserializeTopology(json);
@@ -185,6 +202,10 @@ export const connectedGeometry = (m: Model, faceIds: readonly string[], edgeIds:
   q.connectedGeometry(data(m), faceIds, edgeIds);
 export const snapPoints = (m: Model) => q.snapPoints(data(m));
 export const bounds = (m: Model) => q.bounds(data(m));
+/** What an offset of a face or of edges would follow: its plane and points (for the Offset tool). */
+export const offsetPath = (m: Model, faceId: string | null, edgeIds: readonly string[]) => findOffsetPath(data(m), faceId, edgeIds);
+/** Signed offset distance that would pass through p: positive inside a loop or left of a chain. */
+export const offsetDistance = offsetDistanceTo;
 /** Volume in mm³ when the model is a closed, consistently oriented solid; null otherwise. */
 export const solidVolume = (m: Model) => q.solidVolume(data(m));
 /** Problems with the model's topology; empty when valid. For tests and debugging. */

@@ -24,6 +24,7 @@ const KERNEL_MUTATIONS = [
   'mergeGeometry',
   'moveGeometry',
   'transformSelection',
+  'offset',
   'deserialize',
 ];
 const DOM_GLOBALS = /\b(window|document|localStorage|sessionStorage|navigator|requestAnimationFrame|HTMLElement)\b/;

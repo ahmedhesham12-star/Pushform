@@ -50,7 +50,7 @@ export function createLineTool(ctx: ToolContext): Tool {
     }
     const snap = vp.nearestSnap(() => true);
     if (snap) return { point: snap.point.clone(), kind: snap.kind, axis: null };
-    const edge = vp.pickEdge();
+    const edge = vp.pickEdge('all');
     if (edge) return { point: edge.point.clone(), kind: 'edge', axis: null };
     if (start) {
       const a = vp.axisInference(start);
@@ -58,8 +58,8 @@ export function createLineTool(ctx: ToolContext): Tool {
     }
     const pl = vp.planeUnderCursor();
     if (!pl) return null;
-    const p = vp.snapOnPlane(pl.point, pl.normal, pl.point, pl.faceId ? 'face' : 'ground');
-    return { point: p, kind: pl.faceId ? 'face' : 'ground', axis: null };
+    const p = vp.snapOnPlane(pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground');
+    return { point: p, kind: pl.onFace ? 'face' : 'ground', axis: null };
   };
 
   const fmt = (mm: number) => formatLength(mm, ctx.units());
@@ -69,8 +69,9 @@ export function createLineTool(ctx: ToolContext): Tool {
     const last = ctx.session.history().at(-1);
     if (!c.drawn || c.moved || last?.commandId !== 'core.drawLine') return;
     const input = last.input as { start: [number, number, number]; direction: [number, number, number]; length: number };
-    const dir = toVector(input.direction).normalize();
-    c.start = toVector(input.start).addScaledVector(dir, input.length);
+    const frame = ctx.viewport.frame;
+    const dir = frame.dirToWorld(input.direction).normalize();
+    c.start = frame.toWorld(input.start).addScaledVector(dir, input.length);
   };
 
   const preview = (c: Chain) => {
@@ -81,10 +82,12 @@ export function createLineTool(ctx: ToolContext): Tool {
 
   /** Draw the segment from the chain start to `end`. */
   const commit = (c: Chain, end: Vector3) => {
-    const dir = end.clone().sub(c.start);
+    const frame = ctx.viewport.frame;
+    const start = frame.toLocal(c.start);
+    const dir = toVector(frame.toLocal(end)).sub(toVector(start));
     const len = dir.length();
     if (len < 0.01) return;
-    const r = ctx.session.execute('core.drawLine', { start: toPoint(c.start), direction: toPoint(dir), length: len });
+    const r = ctx.session.execute('core.drawLine', { definitionId: frame.definitionId, start, direction: toPoint(dir), length: len });
     if (!r.ok) return ctx.flashError(r.error);
     ctx.viewport.clearPreview();
     // Closing a loop (or returning to the first point) ends the chain, as in SketchUp.

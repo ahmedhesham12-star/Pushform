@@ -48,3 +48,14 @@ export function planeAxes(n: Vec3): [Vec3, Vec3] {
   if (ax >= az) return [[0, 0, 1], [0, 1, 0]];
   return [[1, 0, 0], [0, 1, 0]];
 }
+
+/**
+ * A unit normal with rounding noise removed: components within 1e-12 of 0 or
+ * of plus or minus 1 become exact, so axis-aligned normals stay exact after
+ * a rotation or a change of coordinates.
+ */
+export function cleanNormal(n: Vec3): Vec3 {
+  const u = normalize(n);
+  const r = (x: number) => (Math.abs(x) < 1e-12 ? 0 : Math.abs(Math.abs(x) - 1) < 1e-12 ? Math.sign(x) : x);
+  return [r(u[0]), r(u[1]), r(u[2])];
+}

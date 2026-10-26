@@ -5,4 +5,5 @@
  */
 export * from './scene';
 export * from './transform';
+export * from './query';
 export { deserializeScene, sceneFromModel, serializeScene, type SerializedScene, type SerializedTransform } from './serialize';

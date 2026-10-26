@@ -2,14 +2,16 @@ import type { Vector3 } from 'three';
 import { t } from '../i18n';
 import { planeAxes, previewRectangle } from '../kernel';
 import { formatLength, parseLengthList } from '../units';
-import { toPoint, toVector } from '../viewport';
+import { toVector } from '../viewport';
 import type { Tool, ToolContext } from './tool';
 
 /** Below this size (mm) the preview is not drawn. */
 const MIN_PREVIEW = 0.1;
 
+/** Points and the normal are in world coordinates; sizes are measured along the editing context's axes. */
 interface DrawState {
   faceId: string | null;
+  onFace: boolean;
   normal: Vector3;
   start: Vector3;
   current: Vector3;
@@ -23,8 +25,9 @@ export function createRectangleTool(ctx: ToolContext): Tool {
   const sizes = (a: number, b: number) => `${fmt(a)}${t('measure.listSeparator')}${fmt(b)}`;
 
   const dims = (s: DrawState): [number, number] => {
-    const [u, v] = planeAxes(toPoint(s.normal));
-    const d = s.current.clone().sub(s.start);
+    const frame = ctx.viewport.frame;
+    const [u, v] = planeAxes(frame.normalToLocal(s.normal));
+    const d = toVector(frame.toLocal(s.current)).sub(toVector(frame.toLocal(s.start)));
     return [d.dot(toVector(u)), d.dot(toVector(v))];
   };
 
@@ -33,7 +36,8 @@ export function createRectangleTool(ctx: ToolContext): Tool {
     const [du, dv] = dims(s);
     ctx.setMeasurement(t('measure.dimensions'), sizes(du, dv));
     if (Math.abs(du) < MIN_PREVIEW && Math.abs(dv) < MIN_PREVIEW) return;
-    const corners = previewRectangle(toPoint(s.normal), toPoint(s.start), du, dv).map(toVector);
+    const frame = ctx.viewport.frame;
+    const corners = previewRectangle(frame.normalToLocal(s.normal), frame.toLocal(s.start), du, dv).map((p) => frame.toWorld(p));
     ctx.viewport.showShapePreview(corners, s.normal);
   };
 
@@ -42,9 +46,12 @@ export function createRectangleTool(ctx: ToolContext): Tool {
     const s = state;
     const [du, dv] = size ?? dims(s);
     ctx.cancel(true);
+    const frame = ctx.viewport.frame;
     const r = ctx.session.execute('core.drawRectangle', {
+      definitionId: frame.definitionId,
       faceId: s.faceId,
-      corner: toPoint(s.start),
+      normal: s.faceId ? undefined : frame.normalToLocal(s.normal),
+      corner: frame.toLocal(s.start),
       width: du,
       depth: dv,
     });
@@ -63,8 +70,8 @@ export function createRectangleTool(ctx: ToolContext): Tool {
       if (state) return commit();
       const pl = ctx.viewport.planeUnderCursor();
       if (!pl) return;
-      const start = ctx.viewport.snapOnPlane(pl.point, pl.normal, pl.point, pl.faceId ? 'face' : 'ground');
-      state = { faceId: pl.faceId, normal: pl.normal, start, current: start.clone() };
+      const start = ctx.viewport.snapOnPlane(pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground');
+      state = { faceId: pl.faceId, onFace: pl.onFace, normal: pl.normal, start, current: start.clone() };
       ctx.setMeasurement(t('measure.dimensions'), sizes(0, 0));
       ctx.hint();
     },
@@ -72,13 +79,13 @@ export function createRectangleTool(ctx: ToolContext): Tool {
     move() {
       if (!state) {
         const pl = ctx.viewport.planeUnderCursor();
-        if (pl) ctx.viewport.snapOnPlane(pl.point, pl.normal, pl.point, pl.faceId ? 'face' : 'ground');
+        if (pl) ctx.viewport.snapOnPlane(pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground');
         else ctx.viewport.hideMarker();
         return;
       }
       const raw = ctx.viewport.picker.rayPlane(state.start, state.normal);
       if (!raw) return;
-      state.current = ctx.viewport.snapOnPlane(state.start, state.normal, raw, state.faceId ? 'face' : 'ground');
+      state.current = ctx.viewport.snapOnPlane(state.start, state.normal, raw, state.onFace ? 'face' : 'ground');
       preview(state);
     },
 

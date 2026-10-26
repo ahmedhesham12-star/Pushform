@@ -1,5 +1,4 @@
 import type { Vector3 } from 'three';
-import { rootModel } from '../commands';
 import { t } from '../i18n';
 import { dragStep, formatLength, parseLengthList } from '../units';
 import { sameEntity, type Tool, type ToolContext } from './tool';
@@ -49,10 +48,10 @@ export function createPushPullTool(ctx: ToolContext): Tool {
   };
 
   const preview = (s: PushState, distance: number, snapped: boolean) => {
-    const r = ctx.session.preview('core.pushPull', { faceId: s.faceId, distance });
+    const r = ctx.session.preview('core.pushPull', { definitionId: ctx.viewport.frame.definitionId, faceId: s.faceId, distance });
     if (!r.ok) return;
     s.distance = r.output.distance;
-    ctx.viewport.showModel(rootModel(r.doc));
+    ctx.showPreview(r.doc);
     ctx.viewport.paint(s.faceId, 'selected');
     ctx.setMeasurement(t('measure.distance'), formatLength(s.distance, ctx.units()));
     ctx.viewport.showMarker(s.origin.clone().addScaledVector(s.normal, s.distance), snapped ? 'plane' : 'face');
@@ -62,7 +61,7 @@ export function createPushPullTool(ctx: ToolContext): Tool {
     if (!state || Math.abs(state.distance) < MIN_DISTANCE) return ctx.cancel();
     const { faceId, distance } = state;
     ctx.cancel(true);
-    const r = ctx.session.execute('core.pushPull', { faceId, distance });
+    const r = ctx.session.execute('core.pushPull', { definitionId: ctx.viewport.frame.definitionId, faceId, distance });
     if (r.ok) ctx.flash(t('message.pushed', { distance: formatLength(Math.abs(r.output.distance), ctx.units()) }));
     else ctx.flashError(r.error);
   };

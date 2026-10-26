@@ -9,6 +9,11 @@ const shape = {
   definitionId,
   /** Face to draw on, or null for the ground plane of the definition. */
   faceId: faceId.nullable(),
+  /**
+   * With no face: the normal of the plane to draw in, through the center
+   * (the plane of a face in another group, for example). The ground when omitted.
+   */
+  normal: z.tuple([z.number(), z.number(), z.number()]).optional(),
   /** Center, on the target plane. */
   center: point3,
   /** Distance from the center to each corner, in mm. */

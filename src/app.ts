@@ -1,6 +1,15 @@
-import { createSession, matchTypedValues, rootModel, type CommandError, type CommandSession, type PushformDocument } from './commands';
+import {
+  createSession,
+  definitionModel,
+  matchTypedValues,
+  rootModel,
+  type CommandError,
+  type CommandSession,
+  type PushformDocument,
+} from './commands';
 import { t, type MessageKey } from './i18n';
-import { bounds, edgeCount, edgeGroup, faceCount, hasEdge, hasFace, snapPoints } from './kernel';
+import { edgeCount, edgeGroup, faceCount, hasEdge, hasFace, type Model } from './kernel';
+import { definitionBounds, pathDefinition, rootDefinition, type InstanceId } from './scene';
 import { saveAutosave } from './storage';
 import { createTools, shortcutFor, TOOL_SHORTCUTS, type Selection, type Tool, type ToolContext, type ToolId } from './tools';
 import { el } from './ui/dom';
@@ -31,7 +40,9 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
 export class App {
   readonly session: CommandSession;
   readonly viewport: Viewport;
-  private readonly selection: Selection = { faces: new Set(), edges: new Set(), hovered: null };
+  private readonly selection: Selection = { faces: new Set(), edges: new Set(), instances: new Set(), hovered: null };
+  /** The open editing context: instance ids from the root down ([] is the root). */
+  private context: readonly InstanceId[] = [];
   private readonly tools: Record<ToolId, Tool>;
   private tool: Tool;
   private readonly status: StatusBar;
@@ -123,22 +134,33 @@ export class App {
 
   private refresh(): void {
     const doc = this.session.doc;
+    // Undo can remove the group or component being edited: close up to what still exists.
+    while (this.context.length && !pathDefinition(doc.scene, this.context)) this.context = this.context.slice(0, -1);
     this.viewport.setUnits(doc.units);
-    this.viewport.showModel(rootModel(doc));
-    this.viewport.setSnapPoints(snapPoints(rootModel(doc)));
+    this.viewport.showScene(doc.scene, this.context);
+    this.viewport.setSnapTargets(doc.scene);
+    const m = this.contextModel();
+    const placed = pathDefinition(doc.scene, this.context)!.instances;
     const s = this.selection;
-    for (const f of s.faces) if (!hasFace(rootModel(doc), f)) s.faces.delete(f);
-    for (const e of s.edges) if (!hasEdge(rootModel(doc), e)) s.edges.delete(e);
+    for (const f of s.faces) if (!hasFace(m, f)) s.faces.delete(f);
+    for (const e of s.edges) if (!hasEdge(m, e)) s.edges.delete(e);
+    for (const i of s.instances) if (!placed.has(i)) s.instances.delete(i);
     const h = s.hovered;
-    if (h && !(h.kind === 'face' ? hasFace(rootModel(doc), h.id) : hasEdge(rootModel(doc), h.id))) s.hovered = null;
+    const exists = h && (h.kind === 'face' ? hasFace(m, h.id) : h.kind === 'edge' ? hasEdge(m, h.id) : placed.has(h.id));
+    if (h && !exists) s.hovered = null;
     this.applyHighlights();
     this.intro.setVisible(this.isEmpty());
     this.actions.setHistory(this.session.canUndo, this.session.canRedo);
     this.unitsMenu.sync(doc.units);
   }
 
+  /** Geometry of the open editing context. */
+  private contextModel(): Model {
+    return definitionModel(this.session.doc, this.viewport.frame.definitionId)!;
+  }
+
   private applyHighlights(hoverKind?: Highlight): void {
-    const { faces, edges, hovered } = this.selection;
+    const { faces, edges, instances, hovered } = this.selection;
     const kind = hoverKind ?? (this.tool.id === 'erase' ? 'erase' : 'hover');
     this.viewport.paintAll('normal');
     for (const f of faces) this.viewport.paint(f, 'selected');
@@ -148,15 +170,41 @@ export class App {
     if (hovered?.kind === 'edge') {
       // Hovering one segment of a curve highlights the whole curve.
       const edgeKind: EdgeHighlight = kind === 'erase' ? 'erase' : 'hover';
-      for (const e of edgeGroup(rootModel(this.session.doc), hovered.id)) if (!edges.has(e)) lines.set(e, edgeKind);
+      for (const e of edgeGroup(this.contextModel(), hovered.id)) if (!edges.has(e)) lines.set(e, edgeKind);
     }
     this.viewport.highlightEdges(lines);
+    const boxes = new Map<InstanceId, EdgeHighlight>();
+    for (const i of instances) boxes.set(i, 'selected');
+    if (hovered?.kind === 'instance' && !instances.has(hovered.id)) boxes.set(hovered.id, kind === 'erase' ? 'erase' : 'hover');
+    this.viewport.highlightInstances(boxes);
+  }
+
+  /** Open or close editing contexts so that `path` is the open one. Clears the selection. */
+  private setContext(path: readonly InstanceId[]): void {
+    if (path.length === this.context.length && path.every((id, i) => id === this.context[i])) return;
+    if (!pathDefinition(this.session.doc.scene, path)) return;
+    this.cancel(true);
+    this.context = [...path];
+    this.clearSelection();
+    this.refresh();
+    this.measure.set(this.tool.measurementLabel(), '');
+    this.status.hint();
+  }
+
+  /** Open a group or component placed in the current context for editing. */
+  private openContext(instanceId: InstanceId): void {
+    this.setContext([...this.context, instanceId]);
   }
 
   private clearSelection(): void {
     this.selection.faces.clear();
     this.selection.edges.clear();
+    this.selection.instances.clear();
     this.selection.hovered = null;
+  }
+
+  private hasSelection(): boolean {
+    return this.selection.faces.size + this.selection.edges.size + this.selection.instances.size > 0;
   }
 
   private toolContext(): ToolContext {
@@ -167,6 +215,9 @@ export class App {
       units: () => this.session.doc.units,
       applyHighlights: (kind) => this.applyHighlights(kind),
       showCommitted: () => this.refresh(),
+      showPreview: (doc) => this.viewport.showScene(doc.scene, this.context),
+      closeContext: (path) => this.setContext(path),
+      contextPath: () => this.context,
       setMeasurement: (label, value) => this.measure.set(label, value),
       hint: () => {
         this.status.hint();
@@ -239,7 +290,8 @@ export class App {
   }
 
   private zoomToFit(): void {
-    this.viewport.zoomToFit(bounds(rootModel(this.session.doc)));
+    const scene = this.session.doc.scene;
+    this.viewport.zoomToFit(definitionBounds(scene, scene.rootId));
   }
 
   private clear(): void {
@@ -249,20 +301,21 @@ export class App {
     if (this.session.execute('core.clearModel', {}).ok) this.status.flash(t('message.cleared'));
   }
 
-  /** Erase the selected faces and edges in one step. */
+  /** Erase the selected faces, edges and instances in one step. */
   private deleteSelected(): void {
     const faceIds = [...this.selection.faces];
     const edgeIds = [...this.selection.edges];
-    if (!faceIds.length && !edgeIds.length) return;
+    const instanceIds = [...this.selection.instances];
+    if (!faceIds.length && !edgeIds.length && !instanceIds.length) return;
     this.clearSelection();
-    const r = this.session.execute('core.erase', { faceIds, edgeIds });
+    const r = this.session.execute('core.erase', { definitionId: this.viewport.frame.definitionId, faceIds, edgeIds, instanceIds });
     if (r.ok) this.status.flash(t('message.erased'));
     else this.flashError(r.error);
   }
 
   private isEmpty(): boolean {
     const m = rootModel(this.session.doc);
-    return faceCount(m) === 0 && edgeCount(m) === 0;
+    return faceCount(m) === 0 && edgeCount(m) === 0 && rootDefinition(this.session.doc.scene).instances.size === 0;
   }
 
   /** Typed values after a finished command replace that command's amendable inputs. */
@@ -368,6 +421,14 @@ export class App {
       this.syncMeasureEditable();
     });
 
+    // Double-clicking a group or component with the Select tool opens it for editing.
+    canvas.addEventListener('dblclick', (e) => {
+      if (this.tool.id !== 'select') return;
+      this.viewport.setPointer(e);
+      const hit = this.viewport.pick();
+      if (hit?.kind === 'instance') this.openContext(hit.id);
+    });
+
     canvas.addEventListener('pointerleave', () => {
       if (this.tool.busy() || this.tool.active?.()) return;
       if (this.selection.hovered) {
@@ -383,8 +444,7 @@ export class App {
         e.preventDefault();
         this.viewport.setPointer(e);
         const dy = e.deltaY * (e.deltaMode === 1 ? 16 : 1);
-        const hit = this.viewport.pickFace();
-        const anchor = hit ? hit.point : this.viewport.groundPoint();
+        const anchor = this.viewport.pickPoint() ?? this.viewport.groundPoint();
         this.viewport.camera.zoomAt(dy, anchor);
         this.viewport.hideMarker();
       },
@@ -422,15 +482,15 @@ export class App {
       }
       if (e.key === 'Escape') {
         if (this.tool.busy() || this.tool.active?.()) this.cancel();
-        else if (this.selection.faces.size || this.selection.edges.size) {
+        else if (this.hasSelection()) {
           this.clearSelection();
           this.applyHighlights();
           this.measure.set(this.tool.measurementLabel(), '');
           this.status.hint();
-        }
+        } else if (this.context.length) this.setContext(this.context.slice(0, -1));
         return;
       }
-      if ((e.key === 'Delete' || e.key === 'Backspace') && (this.selection.faces.size || this.selection.edges.size)) {
+      if ((e.key === 'Delete' || e.key === 'Backspace') && this.hasSelection()) {
         e.preventDefault();
         this.deleteSelected();
         return;

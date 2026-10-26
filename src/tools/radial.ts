@@ -2,7 +2,6 @@ import type { Vector3 } from 'three';
 import { t, type MessageKey } from '../i18n';
 import { MAX_SEGMENTS, previewRegularPolygon } from '../kernel';
 import { formatLength, formatNumber, parseTypedValues } from '../units';
-import { toPoint, toVector } from '../viewport';
 import type { Tool, ToolContext, ToolId } from './tool';
 
 interface RadialKind {
@@ -38,8 +37,10 @@ export const POLYGON: RadialKind = {
   typeHint: 'error.typeRadiusOrSides',
 };
 
+/** Points and the normal are in world coordinates. */
 interface DrawState {
   faceId: string | null;
+  onFace: boolean;
   normal: Vector3;
   center: Vector3;
   edge: Vector3 | null;
@@ -65,17 +66,26 @@ export function createRadialTool(ctx: ToolContext, kind: RadialKind): Tool {
     show();
     const r = radiusOf(s);
     if (r < 0.1 || !s.edge) return ctx.viewport.clearPreview();
-    const dir = toPoint(s.edge.clone().sub(s.center));
-    const pts = previewRegularPolygon(toPoint(s.normal), toPoint(s.center), r, count, dir).map(toVector);
+    const frame = ctx.viewport.frame;
+    const dir = frame.dirToLocal(s.edge.clone().sub(s.center));
+    const pts = previewRegularPolygon(frame.normalToLocal(s.normal), frame.toLocal(s.center), r, count, dir).map((p) => frame.toWorld(p));
     ctx.viewport.showShapePreview(pts, s.normal);
   };
 
   const commit = (radius: number) => {
     if (!state) return;
     const s = state;
-    const direction = s.edge && s.edge.distanceTo(s.center) > 1e-6 ? toPoint(s.edge.clone().sub(s.center)) : null;
+    const frame = ctx.viewport.frame;
+    const direction = s.edge && s.edge.distanceTo(s.center) > 1e-6 ? frame.dirToLocal(s.edge.clone().sub(s.center)) : null;
     ctx.cancel(true);
-    const base = { faceId: s.faceId, center: toPoint(s.center), radius, direction };
+    const base = {
+      definitionId: frame.definitionId,
+      faceId: s.faceId,
+      normal: s.faceId ? undefined : frame.normalToLocal(s.normal),
+      center: frame.toLocal(s.center),
+      radius,
+      direction,
+    };
     const r =
       kind.command === 'core.drawCircle'
         ? ctx.session.execute('core.drawCircle', { ...base, segments: count })
@@ -97,8 +107,8 @@ export function createRadialTool(ctx: ToolContext, kind: RadialKind): Tool {
       if (state) return commit(radiusOf(state));
       const pl = ctx.viewport.planeUnderCursor();
       if (!pl) return;
-      const center = ctx.viewport.snapOnPlane(pl.point, pl.normal, pl.point, pl.faceId ? 'face' : 'ground');
-      state = { faceId: pl.faceId, normal: pl.normal, center, edge: null };
+      const center = ctx.viewport.snapOnPlane(pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground');
+      state = { faceId: pl.faceId, onFace: pl.onFace, normal: pl.normal, center, edge: null };
       show();
       ctx.hint();
     },
@@ -106,13 +116,13 @@ export function createRadialTool(ctx: ToolContext, kind: RadialKind): Tool {
     move() {
       if (!state) {
         const pl = ctx.viewport.planeUnderCursor();
-        if (pl) ctx.viewport.snapOnPlane(pl.point, pl.normal, pl.point, pl.faceId ? 'face' : 'ground');
+        if (pl) ctx.viewport.snapOnPlane(pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground');
         else ctx.viewport.hideMarker();
         return;
       }
       const raw = ctx.viewport.picker.rayPlane(state.center, state.normal);
       if (!raw) return;
-      state.edge = ctx.viewport.snapOnPlane(state.center, state.normal, raw, state.faceId ? 'face' : 'ground');
+      state.edge = ctx.viewport.snapOnPlane(state.center, state.normal, raw, state.onFace ? 'face' : 'ground');
       preview(state);
     },
 

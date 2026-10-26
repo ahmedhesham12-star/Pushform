@@ -6,6 +6,7 @@ import {
   Group,
   LineBasicMaterial,
   LineSegments,
+  Matrix4,
   Mesh,
   MeshLambertMaterial,
   Vector3,
@@ -30,7 +31,7 @@ const EDGE_MATERIAL = new LineBasicMaterial({ color: 0x262c31 });
 
 export type EdgeHighlight = 'hover' | 'selected' | 'erase';
 /** Linear RGB, as color management is off (see viewport.ts). */
-const EDGE_COLORS: Record<EdgeHighlight, [number, number, number]> = {
+export const EDGE_COLORS: Record<EdgeHighlight, [number, number, number]> = {
   selected: [0x1d / 255, 0x5c / 255, 0x86 / 255],
   hover: [0x4f / 255, 0x8f / 255, 0xc0 / 255],
   erase: [0xc0 / 255, 0x39 / 255, 0x2b / 255],
@@ -38,22 +39,26 @@ const EDGE_COLORS: Record<EdgeHighlight, [number, number, number]> = {
 const HIGHLIGHT_EDGE_MATERIAL = new LineBasicMaterial({ vertexColors: true });
 
 /**
- * three.js meshes for a model: two meshes per face (front and back color) plus
- * lines for the visible edges. Triangles and smooth normals across soft edges
- * come from the kernel; soft edges are not drawn.
+ * three.js meshes for the model of the open editing context: two meshes per
+ * face (front and back color, so faces highlight one by one) plus lines for
+ * the visible edges. Triangles and smooth normals across soft edges come from
+ * the kernel; soft edges are not drawn. Coordinates are local; the group
+ * carries the context's world transform.
  */
 export class ModelView {
   readonly group = new Group();
   /** Meshes the picker raycasts against; userData.faceId holds the face id. */
   pickables: Mesh[] = [];
-  /** Visible (non-soft) edges, for picking. */
-  edges: { id: string; a: Vector3; b: Vector3 }[] = [];
+  /** Visible (non-soft) edges in local coordinates, for highlighting. */
+  private edges: { id: string; a: Vector3; b: Vector3 }[] = [];
   private meshes = new Map<string, [Mesh, Mesh]>();
   private normals = new Map<string, Vector3>();
   private overlay: LineSegments | null = null;
 
-  build(model: Model): void {
+  build(model: Model, world: Matrix4): void {
     this.dispose();
+    this.group.matrixAutoUpdate = false;
+    this.group.matrix.copy(world);
     for (const e of listEdges(model)) if (!e.soft) this.edges.push({ id: e.id, a: new Vector3(...e.a), b: new Vector3(...e.b) });
     for (const f of listFaces(model)) this.normals.set(f.id, new Vector3(...f.normal));
     for (const m of faceMeshes(model)) {
@@ -72,9 +77,11 @@ export class ModelView {
     const eg = new BufferGeometry();
     eg.setAttribute('position', new Float32BufferAttribute(ep, 3));
     this.group.add(new LineSegments(eg, EDGE_MATERIAL));
+    // Picking can happen before the next render updates world matrices.
+    this.group.updateMatrixWorld(true);
   }
 
-  /** Normal of a face in the currently shown model. */
+  /** Normal of a face in the currently shown model, in local coordinates. */
   normalOf(faceId: string): Vector3 | undefined {
     return this.normals.get(faceId)?.clone();
   }

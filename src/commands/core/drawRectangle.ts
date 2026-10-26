@@ -9,6 +9,11 @@ export const drawRectangleInput = z.strictObject({
   definitionId,
   /** Face to draw on, or null for the ground plane of the definition. */
   faceId: faceId.nullable(),
+  /**
+   * With no face: the normal of the plane to draw in, through the corner
+   * (the plane of a face in another group, for example). The ground when omitted.
+   */
+  normal: z.tuple([z.number(), z.number(), z.number()]).optional(),
   /** First corner, on the target plane. */
   corner: point3,
   /** Signed sizes in mm along the plane axes (X and Z on the ground). */
@@ -36,8 +41,8 @@ export const drawRectangle: CommandDef<DrawRectangleInput, DrawRectangleOutput> 
   run(doc, input) {
     const target = targetModel(doc, input.definitionId);
     if (!target.ok) return target;
-    const { faceId, corner, width, depth } = input;
-    const r = kernelDrawRectangle(target.model, { faceId, corner, width, depth });
+    const { faceId, normal, corner, width, depth } = input;
+    const r = kernelDrawRectangle(target.model, { faceId, normal: normal ?? null, corner, width, depth });
     if (!r.ok) return { ok: false, error: { code: r.error } };
     return { ok: true, doc: withDefinitionModel(doc, input.definitionId, r.model), output: { faceIds: r.faceIds } };
   },

@@ -1,5 +1,5 @@
 import { MIN_RECT_SIDE, snapPoint } from './precision';
-import { add, cross, dot, length, normalize, planeAxes, scale, sub, type Vec3 } from './vec';
+import { add, cleanNormal, cross, dot, length, normalize, planeAxes, scale, sub, type Vec3 } from './vec';
 import { Draft } from './draft';
 import { onPlane, planeBasis, planeThrough, samePlane, type Plane } from './geometry';
 import { insertSegment, rebuildPlane } from './planar';
@@ -13,8 +13,15 @@ export type DrawResult =
   | { ok: true; topology: Topology; faceIds: FaceId[]; edgeIds: EdgeId[] }
   | { ok: false; error: DrawError };
 
-/** Where a shape is drawn: the ground, or the plane of an existing face. */
-export function drawingPlane(t: Topology, faceId: FaceId | null): { plane: Plane; normal: Vec3 } | null {
+/**
+ * Where a shape is drawn: the plane of an existing face, or with no face the
+ * plane through `at` with the given normal (the ground when there is none).
+ */
+export function drawingPlane(t: Topology, faceId: FaceId | null, at: Point3, normal?: Vec3 | null): { plane: Plane; normal: Vec3 } | null {
+  if (faceId === null && normal) {
+    const n = cleanNormal(normal);
+    return length(n) ? { plane: planeThrough(n, at), normal: n } : null;
+  }
   if (faceId === null) return { plane: GROUND, normal: GROUND_NORMAL };
   const f = t.faces.get(faceId);
   if (!f) return null;
@@ -66,8 +73,10 @@ export function rectangleCorners(n: Vec3, corner: Point3, width: number, depth: 
   return [corner, add(corner, U), add(add(corner, U), V), add(corner, V)].map(snapPoint);
 }
 
+/** With no face, `normal` picks the plane through the corner or center (the ground when omitted). */
 export interface RectangleSpec {
   faceId: FaceId | null;
+  normal?: Vec3 | null | undefined;
   corner: Point3;
   width: number;
   depth: number;
@@ -76,6 +85,7 @@ export interface RectangleSpec {
 export interface RegularPolygonSpec {
   kind: 'circle' | 'polygon';
   faceId: FaceId | null;
+  normal?: Vec3 | null | undefined;
   center: Point3;
   radius: number;
   /** Number of segments (circle) or sides (polygon). */
@@ -110,7 +120,7 @@ export function drawRegularPolygon(t: Topology, spec: RegularPolygonSpec): DrawR
   if (!Number.isInteger(spec.segments) || spec.segments < 3 || spec.segments > MAX_SEGMENTS) return { ok: false, error: 'tooSmall' };
   // Each side must be at least the smallest rectangle side.
   if (2 * spec.radius * Math.sin(Math.PI / spec.segments) < MIN_RECT_SIDE / 5) return { ok: false, error: 'tooSmall' };
-  const target = drawingPlane(t, spec.faceId);
+  const target = drawingPlane(t, spec.faceId, spec.center, spec.normal);
   if (!target) return { ok: false, error: 'noSuchFace' };
   if (!onPlane(target.plane, spec.center, 0.1)) return { ok: false, error: 'notOnPlane' };
   const pts = regularPolygonPoints(target.normal, spec.center, spec.radius, spec.segments, spec.direction);
@@ -120,7 +130,7 @@ export function drawRegularPolygon(t: Topology, spec: RegularPolygonSpec): DrawR
 
 export function drawRectangle(t: Topology, spec: RectangleSpec): DrawResult {
   if (Math.abs(spec.width) < MIN_RECT_SIDE || Math.abs(spec.depth) < MIN_RECT_SIDE) return { ok: false, error: 'tooSmall' };
-  const target = drawingPlane(t, spec.faceId);
+  const target = drawingPlane(t, spec.faceId, spec.corner, spec.normal);
   if (!target) return { ok: false, error: 'noSuchFace' };
   if (!onPlane(target.plane, spec.corner, 0.1)) return { ok: false, error: 'notOnPlane' };
   const pts = rectangleCorners(target.normal, spec.corner, spec.width, spec.depth);

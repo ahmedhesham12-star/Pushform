@@ -1,11 +1,11 @@
-import { Plane, Raycaster, Vector2, Vector3, type Mesh, type PerspectiveCamera } from 'three';
+import { Plane, Raycaster, Vector2, Vector3, type PerspectiveCamera } from 'three';
 
 export interface FaceHit {
   faceId: string;
   point: Vector3;
 }
 
-/** Turns pointer positions into rays, face hits and screen positions. */
+/** Turns pointer positions into rays and world points into screen positions. */
 export class Picker {
   readonly raycaster = new Raycaster();
   /** Last pointer position in canvas pixels. */
@@ -27,11 +27,6 @@ export class Picker {
 
   get ray() {
     return this.raycaster.ray;
-  }
-
-  pickFace(pickables: Mesh[]): FaceHit | null {
-    const h = this.raycaster.intersectObjects(pickables, false)[0];
-    return h ? { faceId: h.object.userData.faceId as string, point: h.point.clone() } : null;
   }
 
   rayPlane(point: Vector3, normal: Vector3): Vector3 | null {

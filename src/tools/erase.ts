@@ -1,9 +1,10 @@
 import { t } from '../i18n';
-import { sameEntity, type Tool, type ToolContext } from './tool';
+import { entityOf, sameEntity, type Tool, type ToolContext } from './tool';
 
 /**
- * Click an edge (or a whole curve) or a face to erase it. Edges take priority
- * when the pointer is close to one, as in SketchUp.
+ * Click an edge (or a whole curve), a face, or a group or component to erase
+ * it. Edges take priority when the pointer is close to one, as in SketchUp.
+ * Geometry outside the open editing context cannot be erased.
  */
 export function createEraseTool(ctx: ToolContext): Tool {
   return {
@@ -13,19 +14,23 @@ export function createEraseTool(ctx: ToolContext): Tool {
     measurementLabel: () => t('measure.dimensions'),
     busy: () => false,
     down() {
-      const hit = ctx.viewport.pick();
+      const hit = entityOf(ctx.viewport.pick());
       if (!hit) return;
       ctx.selection.hovered = null;
       ctx.selection.faces.delete(hit.id);
       ctx.selection.edges.delete(hit.id);
-      const input = hit.kind === 'edge' ? { faceIds: [], edgeIds: [hit.id] } : { faceIds: [hit.id], edgeIds: [] };
-      const r = ctx.session.execute('core.erase', input);
+      ctx.selection.instances.delete(hit.id);
+      const r = ctx.session.execute('core.erase', {
+        definitionId: ctx.viewport.frame.definitionId,
+        faceIds: hit.kind === 'face' ? [hit.id] : [],
+        edgeIds: hit.kind === 'edge' ? [hit.id] : [],
+        instanceIds: hit.kind === 'instance' ? [hit.id] : [],
+      });
       if (r.ok) ctx.flash(t('message.erased'));
       else ctx.flashError(r.error);
     },
     move() {
-      const hit = ctx.viewport.pick();
-      const hovered = hit ? { kind: hit.kind, id: hit.id } : null;
+      const hovered = entityOf(ctx.viewport.pick());
       if (!sameEntity(hovered, ctx.selection.hovered)) {
         ctx.selection.hovered = hovered;
         ctx.applyHighlights('erase');

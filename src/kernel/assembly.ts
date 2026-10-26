@@ -4,7 +4,7 @@
  * model's geometry into another (exploding, copying loose geometry).
  */
 import { snapPoint } from './precision';
-import { normalize, type Vec3 } from './vec';
+import { cleanNormal, type Vec3 } from './vec';
 import { Draft } from './draft';
 import { onPlane, planeBasis, planeThrough, pointInPolygon, samePlane, to2, type Plane, type Vec2 } from './geometry';
 import { insertSegment, rebuildPlane, type RegionRule } from './planar';
@@ -57,18 +57,13 @@ export function extract(t: Topology, faceIds: readonly FaceId[], edgeIds: readon
  */
 export function transformTopology(t: Topology, mapPoint: (p: Point3) => Point3, mapVector: (v: Vec3) => Vec3): Topology {
   const vertices = new Map<VertexId, Vertex>([...t.vertices].map(([id, v]) => [id, { p: snapPoint(mapPoint(v.p)) }]));
-  const faces = new Map<FaceId, Face>([...t.faces].map(([id, f]) => [id, { ...f, normal: clean(normalize(mapVector(f.normal))) }]));
+  const faces = new Map<FaceId, Face>([...t.faces].map(([id, f]) => [id, { ...f, normal: cleanNormal(mapVector(f.normal)) }]));
   const curves = new Map<CurveId, Curve>(
-    [...t.curves].map(([id, c]) => [id, { ...c, center: snapPoint(mapPoint(c.center)), normal: clean(normalize(mapVector(c.normal))) }]),
+    [...t.curves].map(([id, c]) => [id, { ...c, center: snapPoint(mapPoint(c.center)), normal: cleanNormal(mapVector(c.normal)) }]),
   );
   return { vertices, edges: t.edges, faces, curves, next: t.next };
 }
 
-/** Normals of axis-aligned faces stay exact after a quarter turn. */
-function clean(n: Vec3): Vec3 {
-  const r = (x: number) => (Math.abs(x) < 1e-12 ? 0 : Math.abs(Math.abs(x) - 1) < 1e-12 ? Math.sign(x) : x);
-  return [r(n[0]), r(n[1]), r(n[2])];
-}
 
 export interface MergeResult {
   topology: Topology;

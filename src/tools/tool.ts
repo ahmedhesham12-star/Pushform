@@ -1,24 +1,30 @@
-import type { CommandError, CommandSession } from '../commands';
+import type { CommandError, CommandSession, PushformDocument } from '../commands';
+import type { InstanceId } from '../scene';
 import type { UnitSettings } from '../units';
-import type { Highlight, Viewport } from '../viewport';
+import type { Highlight, Picked, Viewport } from '../viewport';
 
 export type ToolId = 'select' | 'line' | 'rectangle' | 'circle' | 'polygon' | 'pushPull' | 'erase' | 'orbit' | 'pan';
 
 export interface EntityRef {
-  kind: 'face' | 'edge';
+  kind: 'face' | 'edge' | 'instance';
   id: string;
 }
 
 /**
- * Selected faces and edges, and the entity under the pointer. Not part of the
- * document, so not undoable. Selecting one edge of a curve selects the whole
- * curve, so `edges` always holds complete curves.
+ * Selected faces, edges and instances of the editing context, and the entity
+ * under the pointer. Not part of the document, so not undoable. Selecting one
+ * edge of a curve selects the whole curve, so `edges` always holds complete
+ * curves.
  */
 export interface Selection {
   readonly faces: Set<string>;
   readonly edges: Set<string>;
+  readonly instances: Set<InstanceId>;
   hovered: EntityRef | null;
 }
+
+/** What hovering a picked entity highlights; geometry outside the editing context is not highlighted. */
+export const entityOf = (hit: Picked | null): EntityRef | null => (hit && hit.kind !== 'outside' ? { kind: hit.kind, id: hit.id } : null);
 
 export const sameEntity = (a: EntityRef | null, b: EntityRef | null) =>
   a === b || (!!a && !!b && a.kind === b.kind && a.id === b.id);
@@ -33,6 +39,12 @@ export interface ToolContext {
   applyHighlights(hoverKind?: Highlight): void;
   /** Show the committed model again (after a preview). */
   showCommitted(): void;
+  /** Show a document a command preview produced, in the same editing context. */
+  showPreview(doc: PushformDocument): void;
+  /** Close editing contexts until `path` is the open one ([] is the root). */
+  closeContext(path: readonly InstanceId[]): void;
+  /** The open editing context, as an instance path ([] is the root). */
+  contextPath(): readonly InstanceId[];
   setMeasurement(label: string, value: string): void;
   /** Re-show the active tool's status hint. */
   hint(): void;

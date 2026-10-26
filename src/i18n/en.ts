@@ -36,7 +36,7 @@ export const en = {
   'intro.start': 'Press R and click two corners on the ground to draw a rectangle. Then press P, click the rectangle and move up to make it solid.',
   'intro.navigate': 'Middle-drag to orbit, Shift + middle-drag to pan, scroll to zoom. Type a size while drawing for exact dimensions, in any unit: 600mm, 2\' 6", 1.5m.',
 
-  'status.select.idle': 'Click a face or an edge to select it. Shift toggles, {add} adds, {add}+Shift removes.',
+  'status.select.idle': 'Click to select; double-click a group or component to edit it. Shift toggles, {add} adds, {add}+Shift removes.',
   'status.select.selected': 'Delete erases the selection, Esc clears it. Shift toggles, {add} adds, {add}+Shift removes.',
   'status.line.first': 'Click to start a line on the ground, a face or a point.',
   'status.line.next': 'Click the next point, or type a length and press Enter. Arrow keys lock an axis; Esc ends the line.',
@@ -64,7 +64,7 @@ export const en = {
 
   'message.rectangleAdded': 'Rectangle {width} × {depth} added. Press P to push or pull it.',
   'message.pushed': 'Pushed/pulled {distance}.',
-  'message.erased': 'Face erased. Undo brings it back.',
+  'message.erased': 'Erased. Undo brings it back.',
   'message.cleared': 'Model cleared. Undo brings it back.',
   'message.circleAdded': 'Circle with radius {radius} and {count} segments added. Type a radius or a count like 48s to change it.',
   'message.polygonAdded': 'Polygon with radius {radius} and {count} sides added. Type a radius or a count like 8s to change it.',

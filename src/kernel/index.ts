@@ -40,7 +40,7 @@ export type { Vec3 } from './vec';
 export type { Point3, FaceId, EdgeId, CurveId, CurveKind } from './types';
 export type { FaceView, EdgeView, SnapPoint, SnapKind, Bounds } from './query';
 export type { DrawError, RectangleSpec, RegularPolygonSpec, SerializedTopology, FaceMesh, Triangle };
-export { planeAxes } from './vec';
+export { cleanNormal, planeAxes } from './vec';
 export { GROUND_NORMAL, MAX_SEGMENTS } from './shapes';
 export { COORDINATE_PRECISION, EPSILON, MIN_RECT_SIDE, snapLength, snapPoint, VERTEX_TOLERANCE } from './precision';
 

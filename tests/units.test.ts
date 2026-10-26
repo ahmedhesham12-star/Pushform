@@ -263,15 +263,39 @@ describe('formatArea', () => {
 
 describe('formatVolume', () => {
   const f = (v: number, s: UnitSettings) => formatVolume(v, s, { locale: 'en' });
+  const mm = { unit: 'mm', precision: 0 } as const;
+  const ftIn = { unit: 'ft-in', precision: 16 } as const;
   test.each<[number, UnitSettings, string]>([
-    [0.5e9, { unit: 'm', precision: 3 }, '0.500 m³'],
-    [0.5e9, { unit: 'cm', precision: 0 }, '500000 cm³'],
-    [0.5e9, { unit: 'mm', precision: 0 }, '500000000 mm³'],
-    [1728 * 16387.064, { unit: 'in', precision: 0 }, '1728 in³'],
-    [1728 * 16387.064, { unit: 'in-frac', precision: 16 }, '1728.00 in³'],
-    [2 * 28316846.592, { unit: 'ft-in', precision: 16 }, '2.00 ft³'],
+    // Metric: m³ from 0.01 m³, cm³ below; the file's precision does not matter.
+    [31716960000, mm, '31.7 m³'],
+    [31716960, mm, '0.0317 m³'],
+    [31716960, { unit: 'm', precision: 0 }, '0.0317 m³'],
+    [31716960, { unit: 'cm', precision: 2 }, '0.0317 m³'],
+    [1e7, mm, '0.0100 m³'],
+    [9999999, mm, '10,000 cm³'],
+    [1234567, mm, '1,235 cm³'],
+    [125000, mm, '125 cm³'],
+    [5000, mm, '5.00 cm³'],
+    [1234.5e9, mm, '1,235 m³'],
+    // Imperial: ft³ from 1 ft³, in³ below.
+    [2 * 28316846.592, ftIn, '2.00 ft³'],
+    [1728 * 16387.064, { unit: 'in', precision: 0 }, '1.00 ft³'],
+    [1000 * 16387.064, { unit: 'in-frac', precision: 16 }, '1,000 in³'],
+    [0.5 * 16387.064, ftIn, '0.500 in³'],
+    [1500 * 28316846.592, ftIn, '1,500 ft³'],
   ])('%f mm³ in %o -> %s', (value, settings, expected) => {
     expect(f(value, settings)).toBe(expected);
+  });
+
+  test('never a long raw number, at any size', () => {
+    for (let e = 0; e <= 15; e++) {
+      for (const unit of ['mm', 'cm', 'm', 'in', 'in-frac', 'ft-in'] as const) {
+        const text = f(3.17 * 10 ** e, { unit, precision: unit === 'in-frac' || unit === 'ft-in' ? 16 : 0 });
+        const digits = text.replace(/[^0-9]/g, '');
+        // At most 3 significant digits shown below 1,000; above, grouped whole numbers.
+        expect(text.includes(',') || digits.replace(/^0+/, '').length <= 4, text).toBe(true);
+      }
+    }
   });
 });
 

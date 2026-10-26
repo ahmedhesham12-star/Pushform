@@ -1,6 +1,6 @@
 import { localeTag, t } from '../i18n';
 import { fromMm, MM_PER } from './length';
-import type { UnitSettings } from './settings';
+import { isImperial, type UnitSettings } from './settings';
 
 /** Differences below this (in mm) are not reported as rounding. */
 const EXACT_MM = 1e-6;
@@ -86,15 +86,46 @@ export function formatArea(mm2: number, settings: UnitSettings, options: FormatO
   return formatPower(mm2, 2, settings, options);
 }
 
-/** Format a volume stored in mm³ using the file's display settings. */
+/** Volumes from this size (mm³) show in m³: 0.01 m³, ten liters. */
+const CUBIC_METER_FROM = 1e7;
+
+/**
+ * A volume stored in mm³, for reading (Entity Info), whatever the file's
+ * length precision: metric files in m³ from 0.01 m³ up and cm³ below,
+ * imperial files in ft³ from 1 ft³ up and in³ below. Three significant
+ * digits under 1,000 (0.0317 m³, 5.00 cm³), whole numbers with thousands
+ * separators from there (1,235 cm³).
+ */
 export function formatVolume(mm3: number, settings: UnitSettings, options: FormatOptions = {}): string {
-  return formatPower(mm3, 3, settings, options);
+  const locale = options.locale ?? localeTag();
+  // A hair of tolerance, so exactly 1 ft³ computed from 1,728 in³ still counts as 1 ft³.
+  const atLeast = (limit: number) => Math.abs(mm3) >= limit * (1 - 1e-9);
+  const unit = isImperial(settings.unit) ? (atLeast(MM_PER.ft ** 3) ? 'ft' : 'in') : atLeast(CUBIC_METER_FROM) ? 'm' : 'cm';
+  const value = mm3 / MM_PER[unit] ** 3;
+  return `${readable(locale, value)} ${t(`units.symbol.${unit}3`)}`;
+}
+
+const readableFormats = new Map<string, Intl.NumberFormat>();
+
+/** At least three significant digits; whole numbers with grouping from 1,000 up. */
+function readable(locale: string, value: number): string {
+  const whole = Math.abs(value) >= 1000;
+  const id = `${locale}|${whole}`;
+  let f = readableFormats.get(id);
+  if (!f) {
+    f = new Intl.NumberFormat(
+      locale,
+      whole ? { maximumFractionDigits: 0, useGrouping: true } : { minimumSignificantDigits: 3, maximumSignificantDigits: 3, useGrouping: true },
+    );
+    readableFormats.set(id, f);
+  }
+  return f.format(value + 0);
 }
 
 /**
- * Areas and volumes: metric and decimal-inch files use their own unit and
- * precision; fractional inches use square or cubic inches and feet-and-inches
- * square or cubic feet, with two decimals.
+ * Areas: metric and decimal-inch files use their own unit and precision;
+ * fractional inches use square inches and feet-and-inches square feet, with
+ * two decimals.
  */
 function formatPower(value: number, power: 2 | 3, settings: UnitSettings, options: FormatOptions): string {
   const locale = options.locale ?? localeTag();

@@ -175,6 +175,7 @@ export class App {
       { id: 'move', label: 'tool.move', icon: 'move', ...key('move') },
       { id: 'rotate', label: 'tool.rotate', icon: 'rotate', ...key('rotate') },
       { id: 'tape', label: 'tool.tape', icon: 'tape', ...key('tape'), group: true },
+      { id: 'protractor', label: 'tool.protractor', icon: 'protractor', ...key('protractor') },
       { id: 'orbit', label: 'tool.orbit', icon: 'orbit', ...key('orbit'), group: true },
       { id: 'pan', label: 'tool.pan', icon: 'pan', ...key('pan') },
     ];

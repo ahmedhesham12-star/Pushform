@@ -1,6 +1,7 @@
 import { createCircleTool } from './circle';
 import { createEraseTool } from './erase';
 import { createPolygonTool } from './polygon';
+import { createProtractorTool } from './protractor';
 import { createLineTool } from './line';
 import { createMoveTool } from './move';
 import { createOffsetTool } from './offset';
@@ -31,6 +32,7 @@ export function createTools(ctx: ToolContext): Record<ToolId, Tool> {
     select: createSelectTool(ctx),
     move: createMoveTool(ctx),
     tape: createTapeTool(ctx),
+    protractor: createProtractorTool(ctx),
     rotate: createRotateTool(ctx),
     line: createLineTool(ctx),
     rectangle: createRectangleTool(ctx),

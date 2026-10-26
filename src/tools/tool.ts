@@ -15,6 +15,7 @@ export type ToolId =
   | 'offset'
   | 'erase'
   | 'tape'
+  | 'protractor'
   | 'orbit'
   | 'pan';
 

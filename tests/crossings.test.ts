@@ -50,9 +50,10 @@ describe('a new edge crossing edges of another plane (review repro)', () => {
 
 // Longer sweeps of the same run live in tests/stress (npm run test:stress).
 describe('randomized rectangles and push/pull on horizontal faces', () => {
+  // About 2 s alone, but over Vitest's 5 s default when the whole suite runs in parallel.
   test('seed 11, 80 steps (found the crossing bug)', () => {
     randomRun(11, 80);
-  });
+  }, 20_000);
 
   test.each([1, 2, 3, 4, 5, 6, 7, 8])('seed %i, 40 steps', (seed) => {
     randomRun(seed, 40);

@@ -239,7 +239,7 @@ Both levels are validated on load.
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
 
-**In place now (milestone 2):**
+**In place now (milestones 2 and 3):**
 
 | Input | Action |
 | --- | --- |
@@ -256,11 +256,17 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 | Shift + middle drag | Pan |
 | Scroll | Zoom (to the cursor) |
 | Polygon | No default shortcut, as in SketchUp |
+| G | Make Component (milestone 3) |
+| Double-click a group or component | Edit it (Select tool) |
+| Esc with nothing selected | Close the group or component being edited |
+| Short right click | Context menu (milestone 3) |
 
 - **Select modifiers:** Shift toggles items in and out of the selection, Ctrl adds only, Ctrl+Shift removes only.
-- **Right drag** also orbits (and Shift + right drag pans), carried over from the prototype. SketchUp uses the right button for its context menu; this gives way when we add one.
+- **Right button:** a short right click without dragging opens the context menu, as in SketchUp; right-clicking something unselected selects it first. A right drag still orbits (and Shift + right drag pans), carried over from the prototype. Ctrl-click on a Mac is a right click.
+- **Context menu items:** Make Component (G), Make Group, Edit Group/Component, Close Group/Component (Esc), Explode, Make Unique, Delete, Zoom to selection.
+- **Clicking outside** the group or component being edited (on faded geometry or empty space) closes it.
 
-**Reserved for later tools** (never assign them to anything else): M Move, Q Rotate, S Scale, F Offset, A 2-point Arc, B Paint Bucket, G Make Component, T Tape Measure.
+**Reserved for later tools** (never assign them to anything else): M Move, Q Rotate, S Scale, F Offset, A 2-point Arc, B Paint Bucket, T Tape Measure.
 
 **Parity list for later milestones (not built yet):**
 - **Move and Rotate:**

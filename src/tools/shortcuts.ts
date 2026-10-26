@@ -27,8 +27,14 @@ export const RESERVED_SHORTCUTS: Readonly<Record<string, string>> = {
   f: 'Offset',
   a: '2-point Arc',
   b: 'Paint Bucket',
-  g: 'Make Component',
   t: 'Tape Measure',
+};
+
+export type ActionId = 'makeComponent';
+
+/** Single-key actions that are not tools, also as in SketchUp. */
+export const ACTION_SHORTCUTS: Readonly<Record<string, ActionId>> = {
+  g: 'makeComponent',
 };
 
 export function shortcutFor(tool: ToolId): string | null {

@@ -1,7 +1,8 @@
 /*
  * Layout uses logical properties (inline/block, start/end) so a right-to-left
  * locale mirrors the interface without separate rules. The only physical
- * coordinates are those of the snap marker, which follows canvas pixels.
+ * coordinates are those of the snap marker and the right-click menu, which
+ * follow canvas pixels.
  */
 :root {
   --ui: #eef0ed;
@@ -277,6 +278,56 @@ input {
   background: var(--ui);
   border: 1px solid var(--line);
   color: var(--ink);
+}
+
+/* ---------- right-click menu ---------- */
+/* Physical left/top on purpose: the menu is placed at the pointer's canvas pixel coordinates. */
+.context-menu {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 10;
+  min-inline-size: 210px;
+  padding-block: 4px;
+  background: var(--ui);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  font-size: 14px;
+}
+.context-menu[hidden] {
+  display: none;
+}
+.context-menu button {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  inline-size: 100%;
+  padding-block: 5px;
+  padding-inline: 12px;
+  border: 0;
+  background: none;
+  text-align: start;
+  cursor: default;
+}
+.context-menu button:not(:disabled):hover,
+.context-menu button:focus-visible {
+  background: var(--ui-2);
+  outline: none;
+}
+.context-menu button:disabled {
+  color: var(--ink-2);
+  opacity: 0.6;
+}
+.context-menu kbd {
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink-2);
+}
+.context-menu-separator {
+  block-size: 1px;
+  margin-block: 4px;
+  background: var(--line);
 }
 
 /* ---------- status bar ---------- */

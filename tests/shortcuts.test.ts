@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { isMac, RESERVED_SHORTCUTS, selectionMode, shortcutFor, TOOL_SHORTCUTS } from '../src/tools/shortcuts';
+import { ACTION_SHORTCUTS, isMac, RESERVED_SHORTCUTS, selectionMode, shortcutFor, TOOL_SHORTCUTS } from '../src/tools/shortcuts';
 
 describe('tool shortcuts match SketchUp defaults', () => {
   test('the assigned keys', () => {
@@ -20,9 +20,16 @@ describe('tool shortcuts match SketchUp defaults', () => {
   });
 
   test('keys reserved for later SketchUp tools are not assigned', () => {
-    expect(Object.keys(RESERVED_SHORTCUTS).sort()).toEqual(['a', 'b', 'f', 'g', 'm', 'q', 's', 't']);
-    expect(RESERVED_SHORTCUTS.g).toBe('Make Component');
-    for (const key of Object.keys(RESERVED_SHORTCUTS)) expect(TOOL_SHORTCUTS[key], key).toBeUndefined();
+    expect(Object.keys(RESERVED_SHORTCUTS).sort()).toEqual(['a', 'b', 'f', 'm', 'q', 's', 't']);
+    for (const key of Object.keys(RESERVED_SHORTCUTS)) {
+      expect(TOOL_SHORTCUTS[key], key).toBeUndefined();
+      expect(ACTION_SHORTCUTS[key], key).toBeUndefined();
+    }
+  });
+
+  test('G makes a component, as in SketchUp, and no tool uses it', () => {
+    expect(ACTION_SHORTCUTS).toEqual({ g: 'makeComponent' });
+    expect(TOOL_SHORTCUTS.g).toBeUndefined();
   });
 });
 

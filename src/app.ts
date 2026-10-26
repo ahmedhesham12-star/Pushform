@@ -8,10 +8,22 @@ import {
   type PushformDocument,
 } from './commands';
 import { t, type MessageKey } from './i18n';
-import { edgeCount, edgeGroup, faceCount, hasEdge, hasFace, type Model } from './kernel';
-import { definitionBounds, pathDefinition, rootDefinition, type InstanceId } from './scene';
+import { edgeCount, edgeGroup, faceCount, getEdge, getFace, hasEdge, hasFace, type Bounds, type Model, type Point3 } from './kernel';
+import {
+  applyPoint,
+  compose,
+  definitionBounds,
+  getDefinition,
+  instanceCount,
+  pathDefinition,
+  rootDefinition,
+  transformBounds,
+  union,
+  type InstanceId,
+} from './scene';
 import { saveAutosave } from './storage';
-import { createTools, shortcutFor, TOOL_SHORTCUTS, type Selection, type Tool, type ToolContext, type ToolId } from './tools';
+import { ACTION_SHORTCUTS, createTools, isMac, shortcutFor, TOOL_SHORTCUTS, type Selection, type Tool, type ToolContext, type ToolId } from './tools';
+import { ContextMenu, type MenuEntry } from './ui/contextMenu';
 import { el } from './ui/dom';
 import { ICONS } from './ui/icons';
 import { Intro } from './ui/intro';
@@ -51,7 +63,12 @@ export class App {
   private readonly actions: ActionBar;
   private readonly unitsMenu: UnitsMenu;
   private readonly intro = new Intro();
-  private nav: { mode: 'orbit' | 'pan'; x: number; y: number } | null = null;
+  private readonly menu = new ContextMenu();
+  /**
+   * Navigation in progress. A right-button press only starts orbiting once it
+   * moves past DRAG_THRESHOLD; released before that, it opens the menu.
+   */
+  private nav: { mode: 'orbit' | 'pan'; x: number; y: number; startX: number; startY: number; menu: boolean; dragging: boolean } | null = null;
   private down: { x: number; y: number } | null = null;
 
   constructor(root: HTMLElement, doc: PushformDocument) {
@@ -93,7 +110,7 @@ export class App {
     this.toolbar = new ToolBar(toolSpecs, (id) => this.setTool(id));
 
     const view = el('main', 'view');
-    view.append(this.intro.element);
+    view.append(this.intro.element, this.menu.element);
 
     const footer = el('footer', 'status');
     this.status = new StatusBar(() => this.tool.hint());
@@ -318,6 +335,150 @@ export class App {
     return faceCount(m) === 0 && edgeCount(m) === 0 && rootDefinition(this.session.doc.scene).instances.size === 0;
   }
 
+  /* ---------- groups and components ---------- */
+
+  /** The selection as command input, in the open context. */
+  private selectionInput() {
+    return {
+      definitionId: this.viewport.frame.definitionId,
+      faceIds: [...this.selection.faces],
+      edgeIds: [...this.selection.edges],
+      instanceIds: [...this.selection.instances],
+    };
+  }
+
+  /** Select exactly these faces and instances of the open context. */
+  private selectOnly(faces: readonly string[], instances: readonly InstanceId[]): void {
+    this.clearSelection();
+    for (const f of faces) this.selection.faces.add(f);
+    for (const i of instances) this.selection.instances.add(i);
+    this.applyHighlights();
+    this.status.hint();
+  }
+
+  /** Make the selection a group or a component, and select the new instance. */
+  private makeInstance(kind: 'group' | 'component'): void {
+    if (!this.hasSelection()) return this.status.flash(t('error.nothingSelected'), true);
+    this.cancel(true);
+    const input = this.selectionInput();
+    const r = kind === 'group' ? this.session.execute('core.makeGroup', input) : this.session.execute('core.makeComponent', input);
+    if (!r.ok) return this.flashError(r.error);
+    this.selectOnly([], [r.output.instanceId]);
+    const name = getDefinition(this.session.doc.scene, r.output.definitionId)?.name ?? '';
+    this.status.flash(kind === 'group' ? t('message.groupMade') : t('message.componentMade', { name }));
+  }
+
+  /** Explode the selected instances; their contents become the selection. */
+  private explodeSelected(): void {
+    const instanceIds = [...this.selection.instances];
+    if (!instanceIds.length) return;
+    this.cancel(true);
+    const r = this.session.execute('core.explode', { instanceIds });
+    if (!r.ok) return this.flashError(r.error);
+    this.selectOnly(r.output.faceIds, r.output.instanceIds);
+    this.status.flash(t('message.exploded'));
+  }
+
+  private makeUniqueSelected(): void {
+    const instanceIds = [...this.selection.instances];
+    if (!instanceIds.length) return;
+    const r = this.session.execute('core.makeUnique', { instanceIds });
+    if (!r.ok) return this.flashError(r.error);
+    const id = r.output.definitionIds[0];
+    if (!id) return this.status.flash(t('message.alreadyUnique'));
+    this.status.flash(t('message.madeUnique', { name: getDefinition(this.session.doc.scene, id)?.name ?? '' }));
+  }
+
+  /** Whether a selected component shares its definition with copies that are not selected. */
+  private canMakeUnique(): boolean {
+    const scene = this.session.doc.scene;
+    const placed = pathDefinition(scene, this.context)!.instances;
+    const counts = new Map<string, number>();
+    for (const id of this.selection.instances) {
+      const i = placed.get(id);
+      if (i) counts.set(i.definitionId, (counts.get(i.definitionId) ?? 0) + 1);
+    }
+    return [...counts].some(([d, n]) => scene.definitions.get(d)?.kind === 'component' && instanceCount(scene, d) > n);
+  }
+
+  /** World bounds of the selected faces, edges and instances. */
+  private selectionBounds(): Bounds | null {
+    const frame = this.viewport.frame;
+    const m = this.contextModel();
+    const scene = this.session.doc.scene;
+    const placed = pathDefinition(scene, this.context)!.instances;
+    let b: Bounds | null = null;
+    const add = (p: Point3) => {
+      const w = applyPoint(frame.world, p);
+      b = union(b, { min: w, max: w });
+    };
+    for (const f of this.selection.faces) for (const p of getFace(m, f)?.outer ?? []) add(p);
+    for (const e of this.selection.edges) {
+      const v = getEdge(m, e);
+      if (v) [v.a, v.b].forEach(add);
+    }
+    for (const id of this.selection.instances) {
+      const i = placed.get(id);
+      if (i) b = union(b, transformBounds(compose(frame.world, i.transform), definitionBounds(scene, i.definitionId)));
+    }
+    return b;
+  }
+
+  /**
+   * The right-click menu. Right-clicking something that is not selected
+   * selects it first, as in SketchUp; the items act on the selection.
+   */
+  private openContextMenu(e: PointerEvent): void {
+    this.viewport.setPointer(e);
+    const hit = this.viewport.pick();
+    if (hit && hit.kind !== 'outside') {
+      const set = hit.kind === 'edge' ? this.selection.edges : hit.kind === 'face' ? this.selection.faces : this.selection.instances;
+      if (!set.has(hit.id)) {
+        this.clearSelection();
+        for (const id of hit.kind === 'edge' ? edgeGroup(this.contextModel(), hit.id) : [hit.id]) set.add(id);
+        this.applyHighlights();
+        this.status.hint();
+      }
+    }
+    const scene = this.session.doc.scene;
+    const placed = pathDefinition(scene, this.context)!.instances;
+    const any = this.hasSelection();
+    const onlyOne = this.selection.instances.size === 1 && !this.selection.faces.size && !this.selection.edges.size;
+    const single = onlyOne ? [...this.selection.instances][0]! : null;
+    const singleKind = single ? scene.definitions.get(placed.get(single)?.definitionId ?? '')?.kind : undefined;
+    const contextKind = this.context.length ? pathDefinition(scene, this.context)!.kind : undefined;
+    const entries: MenuEntry[] = [
+      { label: t('menu.makeComponent'), shortcut: t('key.makeComponent'), enabled: any, run: () => this.makeInstance('component') },
+      { label: t('menu.makeGroup'), enabled: any, run: () => this.makeInstance('group') },
+      null,
+      {
+        label: t(singleKind === 'component' ? 'menu.editComponent' : 'menu.editGroup'),
+        enabled: single !== null,
+        run: () => single && this.openContext(single),
+      },
+      {
+        label: t(contextKind === 'component' ? 'menu.closeComponent' : 'menu.closeGroup'),
+        shortcut: t('key.escape'),
+        enabled: contextKind !== undefined,
+        run: () => this.setContext(this.context.slice(0, -1)),
+      },
+      { label: t('menu.explode'), enabled: this.selection.instances.size > 0, run: () => this.explodeSelected() },
+      { label: t('menu.makeUnique'), enabled: this.canMakeUnique(), run: () => this.makeUniqueSelected() },
+      null,
+      { label: t('menu.delete'), shortcut: t('key.delete'), enabled: any, run: () => this.deleteSelected() },
+      {
+        label: t('menu.zoomSelection'),
+        enabled: any,
+        run: () => {
+          const b = this.selectionBounds();
+          if (b) this.viewport.zoomToFit(b);
+        },
+      },
+    ];
+    const r = this.viewport.canvas.getBoundingClientRect();
+    this.menu.open(e.clientX - r.left, e.clientY - r.top, entries);
+  }
+
   /** Typed values after a finished command replace that command's amendable inputs. */
   private amend(text: string): void {
     const target = this.session.amendTarget();
@@ -372,11 +533,13 @@ export class App {
 
     canvas.addEventListener('pointerdown', (e) => {
       canvas.setPointerCapture(e.pointerId);
-      const navButton = e.button === 1 || e.button === 2;
+      // Ctrl-click on a Mac is a right click.
+      const menuButton = e.button === 2 || (e.button === 0 && e.ctrlKey && isMac());
+      const navButton = e.button === 1 || menuButton;
       if (navButton || (e.button === 0 && this.tool.navigation)) {
         const mode = navButton ? (e.shiftKey ? 'pan' : 'orbit') : this.tool.navigation!;
-        this.nav = { mode, x: e.clientX, y: e.clientY };
-        canvas.style.cursor = 'grabbing';
+        this.nav = { mode, x: e.clientX, y: e.clientY, startX: e.clientX, startY: e.clientY, menu: menuButton, dragging: !menuButton };
+        if (!menuButton) canvas.style.cursor = 'grabbing';
         e.preventDefault();
         return;
       }
@@ -392,6 +555,11 @@ export class App {
 
     canvas.addEventListener('pointermove', (e) => {
       if (this.nav) {
+        if (!this.nav.dragging) {
+          if (Math.hypot(e.clientX - this.nav.startX, e.clientY - this.nav.startY) <= DRAG_THRESHOLD) return;
+          this.nav.dragging = true;
+          canvas.style.cursor = 'grabbing';
+        }
         const dx = e.clientX - this.nav.x;
         const dy = e.clientY - this.nav.y;
         this.nav.x = e.clientX;
@@ -406,8 +574,11 @@ export class App {
 
     canvas.addEventListener('pointerup', (e) => {
       if (this.nav) {
+        const menuClick = this.nav.menu && !this.nav.dragging;
         this.nav = null;
         canvas.style.cursor = this.tool.cursor;
+        // A short right click (no drag) opens the menu, unless an operation is in progress.
+        if (menuClick && !this.tool.busy()) this.openContextMenu(e);
         return;
       }
       if (this.down) {
@@ -455,6 +626,8 @@ export class App {
   private bindKeyboard(): void {
     window.addEventListener('keydown', (e) => {
       if (e.target === this.measure.input) return;
+      // The open menu handles its own keys.
+      if (this.menu.isOpen) return;
       // Leave keys alone in other form controls (the units menu).
       if (e.target instanceof HTMLSelectElement) return;
       const mod = e.metaKey || e.ctrlKey;
@@ -497,6 +670,11 @@ export class App {
       }
       if (e.shiftKey && k === 'z') {
         this.zoomToFit();
+        return;
+      }
+      if (ACTION_SHORTCUTS[k] === 'makeComponent' && !e.shiftKey) {
+        e.preventDefault();
+        this.makeInstance('component');
         return;
       }
       const id = TOOL_SHORTCUTS[k];

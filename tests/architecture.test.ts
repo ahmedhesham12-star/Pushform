@@ -91,7 +91,7 @@ describe('architecture', () => {
     expect(bad.map((i) => `${i.file} -> ${i.spec}`)).toEqual([]);
   });
 
-  test.each(['kernel', 'scene', 'commands', 'units'])('%s uses no DOM globals', (layer) => {
+  test.each(['kernel', 'scene', 'commands', 'units', 'export'])('%s uses no DOM globals', (layer) => {
     const bad = sourceFiles()
       .filter((f) => layerOf(f) === layer)
       .filter((f) => DOM_GLOBALS.test(codeOnly(readFileSync(f, 'utf8'))));
@@ -126,6 +126,11 @@ describe('architecture', () => {
 
   test('the scene layer depends only on the kernel', () => {
     const bad = all.filter((i) => i.layer === 'scene' && (i.target === null || !['scene', 'kernel'].includes(i.target)));
+    expect(bad.map((i) => `${i.file} -> ${i.spec}`)).toEqual([]);
+  });
+
+  test('export depends only on the kernel and the scene', () => {
+    const bad = all.filter((i) => i.layer === 'export' && (i.target === null || !['export', 'scene', 'kernel'].includes(i.target)));
     expect(bad.map((i) => `${i.file} -> ${i.spec}`)).toEqual([]);
   });
 

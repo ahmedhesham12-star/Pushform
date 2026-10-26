@@ -10,6 +10,7 @@ import { createPanTool } from './pan';
 import { createPushPullTool } from './pushPull';
 import { createRectangleTool } from './rectangle';
 import { createSelectTool } from './select';
+import { createTapeTool } from './tape';
 import type { Tool, ToolContext, ToolId } from './tool';
 
 export type { Selection, Tool, ToolContext, ToolId } from './tool';
@@ -29,6 +30,7 @@ export function createTools(ctx: ToolContext): Record<ToolId, Tool> {
   return {
     select: createSelectTool(ctx),
     move: createMoveTool(ctx),
+    tape: createTapeTool(ctx),
     rotate: createRotateTool(ctx),
     line: createLineTool(ctx),
     rectangle: createRectangleTool(ctx),

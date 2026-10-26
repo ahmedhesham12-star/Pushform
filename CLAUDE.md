@@ -40,7 +40,7 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 - All user-visible text goes through `t()` with keys in `src/i18n/en.ts`. Never put text in HTML, icons or code literals.
 - Numbers shown to users go through Intl (via `src/units`).
 - CSS uses logical properties (`inline`/`block`, `start`/`end`). The only physical coordinates are those of the snap marker, the selection rectangle and the right-click menu, which follow pointer pixels.
-- Shortcuts and modifiers match SketchUp defaults (PROJECT.md, "SketchUp parity"). Tool and action keys live in `src/tools/shortcuts.ts` (G is Make Component); never assign a reserved key (S, A, B, T) to anything else. On a Mac, Option replaces Ctrl as a modifier.
+- Shortcuts and modifiers match SketchUp defaults (PROJECT.md, "SketchUp parity"). Tool and action keys live in `src/tools/shortcuts.ts` (G is Make Component); never assign a reserved key (S, A, B) to anything else. On a Mac, Option replaces Ctrl as a modifier.
 - Error codes are stable strings (`tooSmall`, `noSuchFace`); the UI maps them to messages.
 - Match the surrounding code: small modules, few comments, and comments explain why.
 - Kernel and units changes need tests in `tests/`.

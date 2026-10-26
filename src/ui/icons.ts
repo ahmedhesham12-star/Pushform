@@ -38,6 +38,10 @@ export const ICONS = {
     '<path d="M4 15.5 12.5 7l5.5 5.5-6.5 6.5H8z"/><path d="M8.5 11 14 16.5M13 19.5h7"/>',
     'stroke-linejoin="round" stroke-linecap="round"',
   ),
+  tape: svg(
+    '<rect x="3" y="6" width="12" height="12" rx="3"/><circle cx="9" cy="12" r="2.2"/><path d="M15 15.5h6v2.5h-6M18 15.5v1.2"/>',
+    'stroke-linejoin="round"',
+  ),
   orbit: svg(
     '<ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M12 3a4 9 0 0 1 0 18"/><path d="m18.5 6.2 2 2.4-3 .6"/>',
     'stroke-linecap="round" stroke-linejoin="round"',

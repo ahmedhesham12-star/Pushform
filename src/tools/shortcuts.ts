@@ -15,6 +15,7 @@ export const TOOL_SHORTCUTS: Readonly<Record<string, ToolId>> = {
   p: 'pushPull',
   f: 'offset',
   e: 'erase',
+  t: 'tape',
   o: 'orbit',
   h: 'pan',
 };
@@ -27,7 +28,6 @@ export const RESERVED_SHORTCUTS: Readonly<Record<string, string>> = {
   s: 'Scale',
   a: '2-point Arc',
   b: 'Paint Bucket',
-  t: 'Tape Measure',
 };
 
 export type ActionId = 'makeComponent';

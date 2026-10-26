@@ -14,7 +14,7 @@ export interface ToolButtonSpec<Id extends string> {
   group?: boolean;
 }
 
-/** The vertical tool palette. */
+/** The tool palette: icon buttons in two columns, named by their tooltips. */
 export class ToolBar<Id extends string> {
   readonly element = el('nav', 'tools');
   private readonly buttons = new Map<Id, HTMLButtonElement>();
@@ -26,10 +26,10 @@ export class ToolBar<Id extends string> {
       const b = el('button');
       b.type = 'button';
       b.title = s.keyName ? t('action.withShortcut', { name: t(s.label), key: s.keyName }) : t(s.label);
+      b.setAttribute('aria-label', t(s.label));
       b.setAttribute('aria-pressed', 'false');
       if (s.keyLabel) b.append(el('kbd', undefined, s.keyLabel));
       b.insertAdjacentHTML('beforeend', ICONS[s.icon]);
-      b.append(document.createTextNode(t(s.label)));
       b.addEventListener('click', () => onSelect(s.id));
       this.element.append(b);
       this.buttons.set(s.id, b);

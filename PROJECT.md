@@ -300,6 +300,8 @@ Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] unti
 | 2026-10-26 | Commands: `core.addGuideLine` (through two points), `core.addGuideOffset` (parallel to an edge, amend: distance), `core.addGuidePoint` (amend: distance), `core.addGuideAngle` (the Protractor, amend: angle), `core.deleteGuides` (the open context); `core.erase` takes `guideIds` | One command per way of making a guide, so each amends what was typed. |
 | 2026-10-26 | Guide lines are drawn dashed, cut to the part of the line in view (rebuilt when the camera moves); guide points as crosses of constant screen size | Infinite lines cannot be drawn, and lines passing behind the camera did not draw at all. |
 | 2026-10-26 | Inference with guides: guide points and intersections (guide with guide, guide with edge, near the pointer) rank with endpoints; points on guide lines come after points on edges | SketchUp's order; a guide line also gives a rectangle its direction, like an edge. |
+| 2026-10-26 | The tool bar has two columns of icon buttons in groups (select and erase, draw, edit, construction, view); names are tooltips and accessible labels, shortcut keys stay on the buttons | Product owner (milestone 4 plan): nine tools are coming and one column needed scrolling on a laptop. |
+| 2026-10-26 | Tape Measure (T): guides by default, Ctrl (Option) for measuring only; from an edge or guide line a parallel guide, from a point to a point a guide line through both, from a point to anywhere a guide point; a typed distance places the guide and typing again amends it | Product owner (milestone 4 plan), following SketchUp. |
 | 2026-10-26 | Hiding guides (View menu) is a setting of this device, not of the file; hidden guides are not drawn, picked or snapped to. Delete All Guides acts on the open editing context | The product owner approved these defaults with the milestone 4 plan. |
 
 ## SketchUp parity: shortcuts and modifiers
@@ -318,6 +320,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 | C | Circle |
 | P | Push/Pull |
 | E | Eraser |
+| T | Tape Measure (milestone 4) |
 | O | Orbit |
 | H | Pan |
 | Shift+Z | Zoom Extents |
@@ -342,7 +345,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - **Context menu items:** Make Component (G), Make Group, Edit Group/Component, Close Group/Component (Esc), Explode, Make Unique, Delete, Zoom to selection.
 - **Clicking outside** the group or component being edited (on faded geometry or empty space) closes it.
 
-**Reserved for later tools** (never assign them to anything else): M Move, Q Rotate, S Scale, F Offset, A 2-point Arc, B Paint Bucket, T Tape Measure.
+**Reserved for later tools** (never assign them to anything else): S Scale, A 2-point Arc, B Paint Bucket.
 
 - **Move (milestone 3):** with nothing selected, a corner (endpoint) under the pointer moves on its own (milestone 4), and faces bent out of their plane fold. Ctrl (Option on a Mac) toggles copying, tapped during the move or held at the first click. After a copy, typing `x5` makes a multiply array (5 copies at the same spacing; `5x` and `*5` too) and `/4` a divide array (the distance split into 4 equal steps). Arrays and distances are amendable like other operations. Arrow keys lock an axis, as in the Line tool. With nothing selected, Move takes the face, edge, group or component under the pointer.
 

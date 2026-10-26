@@ -174,8 +174,9 @@ input {
 /* ---------- tool bar ---------- */
 .tools {
   grid-area: tools;
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(2, 44px);
+  align-content: start;
   gap: 4px;
   padding: 10px 8px;
   border-inline-end: 1px solid var(--line);
@@ -185,11 +186,11 @@ input {
 .tools button {
   position: relative;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 3px;
-  inline-size: 72px;
-  padding: 9px 4px 7px;
+  justify-content: center;
+  inline-size: 44px;
+  block-size: 44px;
+  padding: 0;
   border: 0;
   border-radius: 8px;
   background: transparent;
@@ -205,12 +206,13 @@ input {
 }
 .tools kbd {
   position: absolute;
-  inset-block-start: 4px;
-  inset-inline-end: 6px;
+  inset-block-start: 3px;
+  inset-inline-end: 4px;
   font: 500 10px/1 Barlow, sans-serif;
   opacity: 0.6;
 }
 .tools hr {
+  grid-column: 1 / -1;
   inline-size: 100%;
   border: 0;
   border-block-start: 1px solid var(--line);
@@ -568,15 +570,15 @@ li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
     display: none;
   }
   .tools {
+    display: flex;
     flex-direction: row;
+    overflow-x: auto;
     border-inline-end: 0;
     border-block-start: 1px solid var(--line);
     padding: 6px;
   }
   .tools button {
-    inline-size: auto;
-    min-inline-size: 64px;
-    flex: 1;
+    flex: 0 0 44px;
   }
   .tools kbd,
   .tools hr {

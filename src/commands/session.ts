@@ -21,6 +21,8 @@ export interface AmendTarget {
   readonly commandId: string;
   readonly fields: readonly AmendableField<unknown>[];
   readonly values: readonly number[];
+  /** The full input of the command being amended (for flags such as an array's divide). */
+  readonly input: Readonly<Record<string, unknown>>;
 }
 export interface ChangeEvent {
   reason: ChangeReason;
@@ -89,7 +91,7 @@ export class CommandSession {
     const fields = a && this.registry.get(a.commandId)?.amendable;
     if (!a || !fields || this.undoStack.at(-1)?.after !== this.current) return null;
     const input = a.input as Record<string, number>;
-    return { commandId: a.commandId, fields, values: fields.map((f) => input[f.key]!) };
+    return { commandId: a.commandId, fields, values: fields.map((f) => input[f.key]!), input };
   }
 
   /**

@@ -7,6 +7,7 @@ export {
   type ParseError,
   type ParseResult,
   type ParseListResult,
+  type TypedArray,
   type TypedValuesResult,
 } from './parse';
 export { formatLength, formatArea, formatVolume, formatNumber, type FormatOptions } from './format';

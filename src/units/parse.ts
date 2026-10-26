@@ -82,18 +82,37 @@ function finish(mm: number): ParseResult {
 /** Separators between several typed values, e.g. "600, 400" or "24 x 36". Never spaces. */
 const LIST_SEPARATOR = /[,;x×،؛]/;
 
-export type TypedValuesResult = { ok: true; lengths: number[]; counts: number[] } | { ok: false; error: ParseError };
+/** A copy array typed after Move or Rotate: x5 (multiply, 5 copies) or /4 (divide the distance into 4). */
+export interface TypedArray {
+  count: number;
+  divide: boolean;
+}
+
+export type TypedValuesResult =
+  | { ok: true; lengths: number[]; counts: number[]; arrays: TypedArray[] }
+  | { ok: false; error: ParseError };
 
 /** A count typed with an "s" suffix, such as 48s for 48 segments or 6s for 6 sides. */
 const COUNT = /^(\d+)\s*s$/;
+/** Arrays as in SketchUp: x5, 5x and *5 multiply; /4 divides. Typed on their own, since x also separates values. */
+const MULTIPLY = /^(?:[x×*]\s*(\d+)|(\d+)\s*[x×*])$/;
+const DIVIDE = /^\/\s*(\d+)$/;
 
 /**
  * Parse what the user typed into the measurements box: lengths (either unit
  * system, see parseLength) and counts with an "s" suffix, in any order and
  * separated like parseLengthList. "500mm, 48s" gives one length and one count.
+ * An array (x5, 5x, *5 or /4) is typed on its own.
  */
 export function parseTypedValues(input: string, fileUnit: LengthUnit): TypedValuesResult {
-  const parts = normalize(input)
+  const whole = normalize(input);
+  const multiply = MULTIPLY.exec(whole);
+  const divide = DIVIDE.exec(whole);
+  if (multiply || divide) {
+    const count = Number(multiply ? (multiply[1] ?? multiply[2]) : divide![1]);
+    return { ok: true, lengths: [], counts: [], arrays: [{ count, divide: !!divide }] };
+  }
+  const parts = whole
     .split(LIST_SEPARATOR)
     .map((p) => p.trim())
     .filter(Boolean);
@@ -110,7 +129,7 @@ export function parseTypedValues(input: string, fileUnit: LengthUnit): TypedValu
     if (!r.ok) return r;
     lengths.push(r.mm);
   }
-  return { ok: true, lengths, counts };
+  return { ok: true, lengths, counts, arrays: [] };
 }
 
 /** Parse one or more lengths, such as the width and depth of a rectangle. */

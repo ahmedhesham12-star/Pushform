@@ -76,6 +76,8 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
   noSuchFace: 'error.noSuchFace',
   nothingSelected: 'error.nothingSelected',
   noSuchInstance: 'error.noSuchInstance',
+  moveBends: 'error.moveBends',
+  moveCrosses: 'error.moveCrosses',
 };
 
 export class App {

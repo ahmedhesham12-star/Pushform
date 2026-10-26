@@ -7,11 +7,12 @@
  * viewport.
  *
  * Mutations (createModel, drawRectangle, drawRegularPolygon, drawLine, pushPull, erase,
- * extractGeometry, transformGeometry, mergeGeometry, deserialize) are for
+ * extractGeometry, transformGeometry, mergeGeometry, moveGeometry, deserialize) are for
  * src/commands only; everything else is read-only and may be used anywhere.
  */
 import { extract as extractTopology, merge as mergeTopology, transformTopology } from './assembly';
 import { erase as eraseTopology } from './erase';
+import { moveGeometry as moveTopology, type MoveError } from './move';
 import { drawLine as drawTopologyLine } from './lines';
 import { pushPull as pushTopology } from './pushPull';
 import * as q from './query';
@@ -39,6 +40,7 @@ const wrap = (t: Topology) => t as unknown as Model;
 export type { Vec3 } from './vec';
 export type { Point3, FaceId, EdgeId, CurveId, CurveKind } from './types';
 export type { FaceView, EdgeView, SnapPoint, SnapKind, Bounds } from './query';
+export type { MoveError };
 export type { DrawError, RectangleSpec, RegularPolygonSpec, SerializedTopology, FaceMesh, Triangle };
 export { cleanNormal, planeAxes } from './vec';
 export { GROUND_NORMAL, MAX_SEGMENTS } from './shapes';
@@ -97,6 +99,22 @@ export function erase(m: Model, faceIds: readonly string[], edgeIds: readonly st
 }
 
 /**
+ * Move faces and edges by a vector (the Move tool). Connected geometry
+ * stretches; a move that would bend a stretched face out of its plane, fold
+ * it or cross other geometry is refused. Geometry not connected to anything
+ * merges where it lands. Returns the same model when the vector is zero.
+ */
+export function moveGeometry(
+  m: Model,
+  faceIds: readonly string[],
+  edgeIds: readonly string[],
+  vector: Vec3,
+): { ok: true; model: Model; faceIds: string[]; edgeIds: string[] } | { ok: false; error: MoveError } {
+  const r = moveTopology(data(m), faceIds, edgeIds, vector);
+  return r.ok ? { ok: true, model: wrap(r.topology), faceIds: r.faceIds, edgeIds: r.edgeIds } : r;
+}
+
+/**
  * Split selected faces and edges out of a model (for groups and components).
  * Edges also used by unselected faces are copied, so both models keep them.
  */
@@ -114,9 +132,9 @@ export function transformGeometry(m: Model, mapPoint: (p: Point3) => Point3, map
  * Insert `source` (in the target's coordinates) into `target` through the planar
  * engine (exploding a group, copying geometry). Coplanar regions merge.
  */
-export function mergeGeometry(target: Model, source: Model): { model: Model; faceIds: string[] } {
+export function mergeGeometry(target: Model, source: Model): { model: Model; faceIds: string[]; edgeIds: string[] } {
   const r = mergeTopology(data(target), data(source));
-  return { model: wrap(r.topology), faceIds: r.faceIds };
+  return { model: wrap(r.topology), faceIds: r.faceIds, edgeIds: r.edgeIds };
 }
 
 /** Load a saved model: version 2 topology, or a version 1 face-loop model (converted). */

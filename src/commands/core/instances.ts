@@ -56,7 +56,7 @@ function uniqueName(s: Scene, base: string): string {
  * An instance placed again in its parent: a component shares its definition;
  * a group gets its own copy, which shares the geometry until one of them is edited.
  */
-function placeCopy(s: Scene, parent: DefinitionId, i: Instance, transform: Instance['transform']): [InstanceId, Scene] {
+export function placeCopy(s: Scene, parent: DefinitionId, i: Instance, transform: Instance['transform']): [InstanceId, Scene] {
   let definition = i.definitionId;
   if (s.definitions.get(definition)?.kind === 'group') [definition, s] = duplicateDefinition(s, definition);
   let id: InstanceId;

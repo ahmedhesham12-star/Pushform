@@ -69,6 +69,8 @@ export interface MergeResult {
   topology: Topology;
   /** Faces created in the target for the source's faces (new ids). */
   faceIds: FaceId[];
+  /** Edges the source's edges became in the target, split where they met other geometry. */
+  edgeIds: EdgeId[];
 }
 
 /**
@@ -154,5 +156,5 @@ export function merge(target: Topology, source: Topology): MergeResult {
     for (const f of res.removed) created.delete(f);
   }
   const topology = d.commit();
-  return { topology, faceIds: [...created].filter((f) => topology.faces.has(f)) };
+  return { topology, faceIds: [...created].filter((f) => topology.faces.has(f)), edgeIds: [...new Set(inserted)].filter((e) => topology.edges.has(e)) };
 }

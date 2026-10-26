@@ -145,6 +145,27 @@ describe('parseTypedValues', () => {
   test.each(['s', '4.5s', '-3s', 'abc', ''])('rejects %j', (text) => {
     expect(parseTypedValues(text, 'm').ok).toBe(false);
   });
+
+  test.each([
+    ['x5', 5, false],
+    ['5x', 5, false],
+    ['*5', 5, false],
+    ['X 12', 12, false],
+    ['5×', 5, false],
+    ['/4', 4, true],
+    ['/ 4', 4, true],
+    ['/٤', 4, true],
+  ])('array %j', (text, count, divide) => {
+    const r = parseTypedValues(text, 'm');
+    expect(r.ok && r.arrays).toEqual([{ count, divide }]);
+    expect(r.ok && r.lengths.length + r.counts.length).toBe(0);
+  });
+
+  test('x still separates lengths', () => {
+    expect(typed('600 x 400', 'mm')).toEqual({ lengths: [600, 400], counts: [] });
+    const r = parseTypedValues('600 x 400', 'mm');
+    expect(r.ok && r.arrays).toEqual([]);
+  });
 });
 
 describe('formatLength: metric', () => {

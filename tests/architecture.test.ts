@@ -22,6 +22,7 @@ const KERNEL_MUTATIONS = [
   'extractGeometry',
   'transformGeometry',
   'mergeGeometry',
+  'moveGeometry',
   'deserialize',
 ];
 const DOM_GLOBALS = /\b(window|document|localStorage|sessionStorage|navigator|requestAnimationFrame|HTMLElement)\b/;

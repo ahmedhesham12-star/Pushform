@@ -12,6 +12,8 @@ export type CommandErrorCode =
   | 'tooSmall'
   | 'notOnPlane'
   | 'nothingToErase'
+  | 'moveBends'
+  | 'moveCrosses'
   | 'nothingSelected'
   | 'noSuchInstance'
   | 'noSuchDefinition'
@@ -54,19 +56,23 @@ export interface CommandDef<I = unknown, O = unknown> {
 }
 
 type NumberKeys<I> = { [K in keyof I]-?: I[K] extends number ? K : never }[keyof I] & string;
+type BooleanKeys<I> = { [K in keyof I]-?: I[K] extends boolean ? K : never }[keyof I] & string;
 
 /**
  * One amendable input. Typed values are magnitudes applied in the direction
  * the original input had, so the user does not have to retype signs.
  * - positive: the typed value must be greater than zero (sizes).
  * - signed: a negative typed value reverses the direction (distances).
- * kind says what the user types: a length (mm, the default) or a whole count
- * typed with an "s" suffix, like 48s for segments or 6s for sides.
+ * kind says what the user types: a length (mm, the default), a whole count
+ * typed with an "s" suffix, like 48s for segments or 6s for sides, or an
+ * array after a copy, typed x5 (multiply) or /4 (divide): the count goes to
+ * `key` and whether it divides to the boolean input named by `flag`.
  */
 export interface AmendableField<I> {
   readonly key: NumberKeys<I>;
   readonly mode: 'positive' | 'signed';
-  readonly kind?: 'length' | 'count';
+  readonly kind?: 'length' | 'count' | 'array';
+  readonly flag?: BooleanKeys<I>;
 }
 
 /**

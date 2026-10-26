@@ -1,0 +1,127 @@
+/**
+ * Moving loose geometry by a vector, as the Move tool does. The selected faces
+ * and edges move with their vertices; geometry made only of moving vertices
+ * moves along. Geometry connected to the selection stretches, unless that
+ * would bend a face out of its plane or fold or cross it, which is blocked.
+ */
+import { EPSILON, VERTEX_TOLERANCE, snapPoint } from './precision';
+import { add, cleanNormal, dot, length, sub, type Vec3 } from './vec';
+import { Draft } from './draft';
+import { onPlane, planeThrough, polygonNormal, samePlane, type Plane } from './geometry';
+import { extract, merge, transformTopology } from './assembly';
+import { planeProblems } from './validate';
+import { GROUND } from './shapes';
+import type { EdgeId, FaceId, Topology, VertexId } from './types';
+
+export type MoveError = 'moveBends' | 'moveCrosses';
+
+export type MoveResult =
+  | {
+      ok: true;
+      topology: Topology;
+      /** The moved faces and edges in the result (their ids change when the move merged them). */
+      faceIds: FaceId[];
+      edgeIds: EdgeId[];
+    }
+  | { ok: false; error: MoveError };
+
+export function moveGeometry(t: Topology, faceIds: readonly FaceId[], edgeIds: readonly EdgeId[], vector: Vec3): MoveResult {
+  const d = new Draft(t);
+  const moving = new Set<VertexId>();
+  for (const f of faceIds) {
+    const face = t.faces.get(f);
+    if (face) for (const v of [face.outer, ...face.holes].flat()) moving.add(v);
+  }
+  for (const e of edgeIds) for (const v of t.edges.get(e)?.v ?? []) moving.add(v);
+  if (!moving.size || length(vector) < EPSILON) {
+    return { ok: true, topology: t, faceIds: faceIds.filter((f) => t.faces.has(f)), edgeIds: edgeIds.filter((e) => t.edges.has(e)) };
+  }
+
+  // Everything made only of moving vertices moves rigidly; edges with one moving end stretch.
+  const rigidFaces = [...t.faces].filter(([, f]) => [f.outer, ...f.holes].flat().every((v) => moving.has(v))).map(([id]) => id);
+  const rigidEdges: EdgeId[] = [];
+  const stretched: EdgeId[] = [];
+  for (const [id, e] of t.edges) {
+    const n = e.v.filter((v) => moving.has(v)).length;
+    if (n === 2) rigidEdges.push(id);
+    else if (n === 1) stretched.push(id);
+  }
+  // Free only when no edge and no other face (a hole around it, for one) holds on to a moving vertex.
+  const rigidSet = new Set(rigidFaces);
+  const held = [...t.faces].some(([id, f]) => !rigidSet.has(id) && [f.outer, ...f.holes].flat().some((v) => moving.has(v)));
+  if (!stretched.length && !held) return moveIsland(t, d, moving, rigidFaces, rigidEdges, vector);
+
+  for (const v of moving) d.moveVertex(v, add(d.point(v), vector));
+  // A stretched point landing on another point would need the two merged: not supported, so blocked.
+  if ([...moving].some((v) => landsOnOther(d, v))) return { ok: false, error: 'moveCrosses' };
+  for (const e of stretched) {
+    const [a, b] = d.edge(e).v;
+    if (length(sub(d.point(a), d.point(b))) <= VERTEX_TOLERANCE) return { ok: false, error: 'moveCrosses' };
+  }
+
+  // Stretched faces must stay flat and keep their orientation; they take their new plane's normal.
+  const touched = new Set<FaceId>();
+  for (const v of moving) for (const f of d.facesOfVertex(v)) touched.add(f);
+  for (const f of touched) {
+    if (rigidSet.has(f)) continue;
+    const face = d.face(f);
+    const n = polygonNormal(face.outer.map((v) => d.point(v)));
+    if (!n || dot(n, face.normal) <= 0) return { ok: false, error: 'moveCrosses' };
+    const plane = planeThrough(n, d.point(face.outer[0]!));
+    if ([face.outer, ...face.holes].flat().some((v) => !onPlane(plane, d.point(v)))) return { ok: false, error: 'moveBends' };
+    d.setFace(f, { ...face, normal: cleanNormal(n) });
+  }
+  moveCurves(d, rigidEdges, vector);
+
+  if (conflicts(d, touched, [...rigidEdges, ...stretched])) return { ok: false, error: 'moveCrosses' };
+  const topology = d.commit();
+  return { ok: true, topology, faceIds: faceIds.filter((f) => topology.faces.has(f)), edgeIds: edgeIds.filter((e) => topology.edges.has(e)) };
+}
+
+/**
+ * Geometry not connected to anything else. It moves in place, keeping its ids,
+ * unless it lands on other geometry; then it is taken out and merged back at
+ * its new place, so points landing on points join and coplanar faces merge.
+ */
+function moveIsland(t: Topology, d: Draft, moving: Set<VertexId>, faceIds: FaceId[], edgeIds: EdgeId[], vector: Vec3): MoveResult {
+  for (const v of moving) d.moveVertex(v, add(d.point(v), vector));
+  moveCurves(d, edgeIds, vector);
+  if (![...moving].some((v) => landsOnOther(d, v)) && !conflicts(d, new Set(faceIds), edgeIds)) {
+    return { ok: true, topology: d.commit(), faceIds, edgeIds };
+  }
+  const x = extract(t, faceIds, edgeIds);
+  const moved = transformTopology(x.extracted, (p) => add(p, vector), (n) => n);
+  const r = merge(x.remaining, moved);
+  return { ok: true, topology: r.topology, faceIds: r.faceIds, edgeIds: r.edgeIds };
+}
+
+/** Whether another vertex lies within the tolerance of v (findVertex may return v itself on a tie). */
+function landsOnOther(d: Draft, v: VertexId): boolean {
+  const p = d.point(v);
+  for (const [id, x] of d.vertices) if (id !== v && length(sub(x.p, p)) <= VERTEX_TOLERANCE) return true;
+  return false;
+}
+
+/** Curves made only of moved edges keep their center with them. */
+function moveCurves(d: Draft, movedEdges: readonly EdgeId[], vector: Vec3): void {
+  const moved = new Set(movedEdges);
+  for (const [id, c] of d.curves) {
+    if (c.edges.length && c.edges.every((e) => moved.has(e))) d.curves.set(id, { ...c, center: snapPoint(add(c.center, vector)) });
+  }
+}
+
+/** Whether the planes of the given faces, or any plane holding one of the given edges, break the planar invariants. */
+function conflicts(d: Draft, faces: ReadonlySet<FaceId>, edges: readonly EdgeId[]): boolean {
+  const planes: Plane[] = [];
+  const addPlane = (pl: Plane) => {
+    if (!planes.some((x) => samePlane(x, pl))) planes.push(pl);
+  };
+  for (const f of faces) addPlane(planeThrough(d.face(f).normal, d.point(d.face(f).outer[0]!)));
+  const candidates = [GROUND, ...[...d.faces.values()].map((f) => planeThrough(f.normal, d.point(f.outer[0]!)))];
+  for (const e of edges) {
+    if (!d.edges.has(e)) continue;
+    const [a, b] = d.edge(e).v.map((v) => d.point(v));
+    for (const pl of candidates) if (onPlane(pl, a!) && onPlane(pl, b!)) addPlane(pl);
+  }
+  return planes.some((pl) => planeProblems(d, pl).length > 0);
+}

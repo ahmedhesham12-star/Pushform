@@ -85,6 +85,9 @@ export const en = {
   'error.notOnPlane': 'The rectangle has to lie on the face it starts on.',
   'error.noSuchFace': 'That face no longer exists.',
   'error.nothingSelected': 'Select geometry, groups or components first.',
+  'error.moveBends': 'That move would bend a face out of its plane. Move more of the geometry, or move it along the face.',
+  'error.moveCrosses': 'That move would fold a face or run it into other geometry.',
+  'error.typeDistanceOrArray': 'Type a distance, x5 for 5 copies, or /4 to divide the distance into 4.',
   'error.noSuchInstance': 'That group or component no longer exists.',
   'error.generic': 'That did not work ({code}).',
   'error.typeTwoSizes': 'Type two positive sizes separated by a comma, like 600mm, 400mm.',
@@ -110,6 +113,7 @@ export const en = {
   'command.makeUnique': 'Make unique',
   'command.rename': 'Rename',
   'command.copy': 'Copy',
+  'command.move': 'Move',
 
   'scene.component': 'Component',
   'scene.group': 'Group',

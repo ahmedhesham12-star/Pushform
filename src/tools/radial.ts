@@ -2,6 +2,7 @@ import type { Vector3 } from 'three';
 import { t, type MessageKey } from '../i18n';
 import { MAX_SEGMENTS, previewRegularPolygon } from '../kernel';
 import { formatLength, formatNumber, parseTypedValues } from '../units';
+import { inferOnPlane } from './inference';
 import type { Tool, ToolContext, ToolId } from './tool';
 
 interface RadialKind {
@@ -107,7 +108,7 @@ export function createRadialTool(ctx: ToolContext, kind: RadialKind): Tool {
       if (state) return commit(radiusOf(state));
       const pl = ctx.viewport.planeUnderCursor();
       if (!pl) return;
-      const center = ctx.viewport.snapOnPlane(pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground');
+      const center = inferOnPlane(ctx, pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground').point;
       state = { faceId: pl.faceId, onFace: pl.onFace, normal: pl.normal, center, edge: null };
       show();
       ctx.hint();
@@ -116,13 +117,13 @@ export function createRadialTool(ctx: ToolContext, kind: RadialKind): Tool {
     move() {
       if (!state) {
         const pl = ctx.viewport.planeUnderCursor();
-        if (pl) ctx.viewport.snapOnPlane(pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground');
+        if (pl) inferOnPlane(ctx, pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground');
         else ctx.viewport.hideMarker();
         return;
       }
       const raw = ctx.viewport.picker.rayPlane(state.center, state.normal);
       if (!raw) return;
-      state.edge = ctx.viewport.snapOnPlane(state.center, state.normal, raw, state.onFace ? 'face' : 'ground');
+      state.edge = inferOnPlane(ctx, state.center, state.normal, raw, state.onFace ? 'face' : 'ground').point;
       preview(state);
     },
 

@@ -31,7 +31,7 @@ export interface SelectionItems {
 
 /**
  * Change the selection with SketchUp's modifiers: replace, add, remove, or
- * toggle. A toggle flips each item, unless \`toggleTo\` gives one state for all
+ * toggle. A toggle flips each item, unless `toggleTo` gives one state for all
  * (a click on one edge of a curve turns the whole curve on or off).
  */
 export function applySelection(selection: Selection, mode: SelectionMode, items: SelectionItems, toggleTo?: boolean): void {

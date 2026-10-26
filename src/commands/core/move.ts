@@ -39,7 +39,7 @@ export type MoveInput = z.infer<typeof moveInput>;
 export const moveCopiesInput = z
   .strictObject({
     ...selection,
-    /** How many copies; with \`divide\`, how many equal steps the distance is split into. */
+    /** How many copies; with `divide`, how many equal steps the distance is split into. */
     copies: z.number().int().min(1).max(MAX_COPIES),
     /** False: copies at distance, 2 x distance, and so on (x5). True: the distance divided into equal steps (/4). */
     divide: z.boolean(),

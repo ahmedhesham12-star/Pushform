@@ -267,6 +267,8 @@ Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] unti
 | 2026-10-26 | Move and copy are two commands: `core.move` (amend: distance) and `core.moveCopies` (amend: distance, array) | Arrays only make sense after a copy; typing `x5` after a plain move says the values do not fit. |
 | 2026-10-26 | Typed arrays are recognized only when typed on their own | `x` also separates values (`600 x 400`). |
 | 2026-10-26 | Previews draw into separate meshes; picking and inference keep using the committed scene, and the Move tool also excludes the selection it moves | Geometry being moved must not catch the pointer, or the destination would run away. |
+| 2026-10-26 | Points and edges win over faces in every tool's inference, and hidden points are not inferred (Move testing feedback) | Rectangle, Circle and Polygon snapped only to points and the grid, so an edge under the pointer showed "On face"; a hidden midpoint could capture the pointer through a face. |
+| 2026-10-26 | Push/pull infers the level of any point, edge or face under the pointer; hits on faces use the face's exact plane | SketchUp's push-to-surface; float32 mesh hits would leave faces a few millionths of a mm off. |
 | 2026-10-26 | Solid volume in Entity Info for a group or component whose own geometry is closed and consistently oriented; none when it holds other groups or components | Cheap to compute exactly; nested solids are a later step. |
 
 ## SketchUp parity: shortcuts and modifiers
@@ -308,6 +310,9 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 **Reserved for later tools** (never assign them to anything else): M Move, Q Rotate, S Scale, F Offset, A 2-point Arc, B Paint Bucket, T Tape Measure.
 
 - **Move (milestone 3):** Ctrl (Option on a Mac) toggles copying, tapped during the move or held at the first click. After a copy, typing `x5` makes a multiply array (5 copies at the same spacing; `5x` and `*5` too) and `/4` a divide array (the distance split into 4 equal steps). Arrays and distances are amendable like other operations. Arrow keys lock an axis, as in the Line tool. With nothing selected, Move takes the face, edge, group or component under the pointer.
+
+- **Push/Pull (milestone 3):** while pushing, hovering a point, edge or face anywhere else (other groups and components and faded geometry too) ends the face level with it. Double-clicking a face repeats the last push/pull distance on it.
+- **Inference order, every tool:** endpoints and midpoints first, then points on edges, then faces or the ground. Points and edges hidden behind faces are not inferred.
 
 **Parity list for later milestones (not built yet):**
 - **Rotate:** the same copy and array rules as Move (milestone 3, step 8).

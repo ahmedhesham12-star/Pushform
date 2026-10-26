@@ -6,6 +6,7 @@ import {
   DoubleSide,
   GridHelper,
   Group,
+  type Intersection,
   HemisphereLight,
   Line,
   LineBasicMaterial,
@@ -19,8 +20,9 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
-import { planeAxes, type Bounds } from '../kernel';
+import { getFace, planeAxes, type Bounds, type Model } from '../kernel';
 import {
+  applyPoint,
   contextRelation,
   pathDefinition,
   pathTransform,
@@ -49,8 +51,6 @@ const MAX_GROUND_DISTANCE = 300_000;
 const SNAP_RADIUS_PX = 14;
 /** How close (pixels) the pointer must be to an edge to pick it. */
 const EDGE_PICK_PX = 6;
-/** Points within this distance (mm) of a plane count as on it. */
-const ON_PLANE = 0.1;
 
 const PREVIEW_COLOR = 0x1d5c86;
 const previewFill = new MeshBasicMaterial({
@@ -135,6 +135,8 @@ export class Viewport {
   private frameValue = Frame.ROOT;
   private context: readonly InstanceId[] = [];
   private shown: PushformScene | null = null;
+  /** Geometry of the open editing context, as last committed. */
+  private contextModel: Model | null = null;
   private worldEdgeList: WorldEdge[] = [];
   /** Previews draw here, so picking and inference keep using the committed scene. */
   private readonly previewModel = new ModelView();
@@ -205,6 +207,7 @@ export class Viewport {
     this.shown = scene;
     this.context = context;
     this.frameValue = new Frame(context.length ? def.id : undefined, pathTransform(scene, context));
+    this.contextModel = def.model;
     this.modelView.build(def.model, this.frameValue.matrix);
     this.instancesView.build(scene, context);
     this.showPreviewMeshes(false);
@@ -253,12 +256,39 @@ export class Viewport {
 
   /** Raycast hits on the committed scene, nearest first, without excluded entities. */
   private hits() {
-    return this.picker.raycaster.intersectObjects(this.allPickables, false).filter((h) => {
-      const faceId = h.object.userData.faceId as string | undefined;
-      if (faceId) return !this.isExcluded(this.context, faceId);
-      const placed = this.instancesView.placementOf(h);
-      return !placed || !this.isExcluded(placed.placement.path);
-    });
+    return this.picker.raycaster.intersectObjects(this.allPickables, false).filter((h) => !this.hitExcluded(h));
+  }
+
+  private hitExcluded(h: Intersection): boolean {
+    const faceId = h.object.userData.faceId as string | undefined;
+    if (faceId) return this.isExcluded(this.context, faceId);
+    const placed = this.instancesView.placementOf(h);
+    return !!placed && this.isExcluded(placed.placement.path);
+  }
+
+  /**
+   * The point on the surface the pointer actually sees, or null when that
+   * surface is excluded (the face being pushed): hidden faces behind it do
+   * not count.
+   */
+  pickVisiblePoint(): Vector3 | null {
+    const h = this.picker.raycaster.intersectObjects(this.allPickables, false)[0];
+    return h && !this.hitExcluded(h) ? this.exactPoint(h) : null;
+  }
+
+  /**
+   * Where the pointer ray meets the exact plane of a hit face (meshes are
+   * float32, so the raw hit point is off by a few millionths of a mm).
+   */
+  private exactPoint(h: Intersection): Vector3 {
+    let plane: { point: Vector3; normal: Vector3 } | null = null;
+    const faceId = h.object.userData.faceId as string | undefined;
+    const f = faceId && this.contextModel ? getFace(this.contextModel, faceId) : undefined;
+    if (f) plane = { point: this.frameValue.toWorld(f.outer[0]!), normal: this.frameValue.dirToWorld(f.normal) };
+    const placed = faceId ? null : this.instancesView.placementOf(h);
+    const g = placed?.faceId ? getFace(placed.placement.definition.model, placed.faceId) : undefined;
+    if (placed && g) plane = { point: toVector(applyPoint(placed.placement.world, g.outer[0]!)), normal: toVector(placed.normal) };
+    return (plane && this.picker.rayPlane(plane.point, plane.normal)) ?? h.point.clone();
   }
 
   /** The editing context's coordinate frame: tools convert world points to its local coordinates. */
@@ -318,7 +348,7 @@ export class Viewport {
   pickFace(): FaceHit | null {
     const hit = this.hits()[0];
     const faceId = hit?.object.userData.faceId as string | undefined;
-    return hit && faceId ? { faceId, point: hit.point.clone() } : null;
+    return hit && faceId ? { faceId, point: this.exactPoint(hit) } : null;
   }
 
   /** The nearest point under the pointer on any visible geometry (for zooming). */
@@ -334,8 +364,6 @@ export class Viewport {
    */
   pickEdge(scope: 'context' | 'all' = 'context'): EdgeHit | null {
     const { x, y } = this.picker.mouse;
-    const cam = this.camera.camera.position;
-    const pickables = this.allPickables;
     const candidates: { px: number; edge: WorldEdge; point: Vector3 }[] = [];
     for (const edge of this.worldEdgeList) {
       if (scope === 'context' && contextRelation(edge.path, this.context) !== 'context') continue;
@@ -353,12 +381,7 @@ export class Viewport {
     }
     candidates.sort((p, q) => p.px - q.px);
     for (const c of candidates) {
-      // Hidden when a face is clearly in front of the edge along the line of sight.
-      // Faces the edge lies on are hit right at the edge point, so they do not hide it.
-      const d = c.point.distanceTo(cam);
-      this.occlusion.set(cam, c.point.clone().sub(cam).normalize());
-      const hit = this.occlusion.intersectObjects(pickables, false)[0];
-      if (hit && hit.distance < d - Math.max(1, d * 1e-4)) continue;
+      if (this.hidden(c.point)) continue;
       const path = c.edge.path;
       return { edgeId: c.edge.edgeId, point: c.point, path, relation: contextRelation(path, this.context) };
     }
@@ -417,51 +440,51 @@ export class Viewport {
     const faceId = hit?.object.userData.faceId as string | undefined;
     if (hit && faceId) {
       const normal = this.normalOf(faceId);
-      if (normal) return { faceId, onFace: true, normal, point: hit.point.clone() };
+      if (normal) return { faceId, onFace: true, normal, point: this.exactPoint(hit) };
     }
     const placed = hit ? this.instancesView.placementOf(hit) : null;
-    if (hit && placed) return { faceId: null, onFace: true, normal: toVector(placed.normal).normalize(), point: hit.point.clone() };
+    if (hit && placed) return { faceId: null, onFace: true, normal: toVector(placed.normal).normalize(), point: this.exactPoint(hit) };
     const g = this.groundPoint();
     return g && g.distanceTo(this.camera.camera.position) < MAX_GROUND_DISTANCE
       ? { faceId: null, onFace: false, normal: this.groundNormal(), point: g }
       : null;
   }
 
-  /** Nearest inference point on screen within the snap radius. */
+  /** Nearest inference point on screen within the snap radius that no face hides. */
   nearestSnap(filter: (p: Vector3) => boolean): SnapCandidate | null {
-    let best: SnapCandidate | null = null;
-    let bestDistance = SNAP_RADIUS_PX;
     const { x, y } = this.picker.mouse;
+    const near: { d: number; s: SnapCandidate }[] = [];
     for (const s of this.snaps) {
       if (!filter(s.point) || this.isExcluded(s.path)) continue;
       const p = this.picker.toScreen(s.point);
       if (p.z > 1) continue;
       const d = Math.hypot(p.x - x, p.y - y);
-      if (d < bestDistance) {
-        bestDistance = d;
-        best = s;
-      }
+      if (d < SNAP_RADIUS_PX) near.push({ d, s });
     }
-    return best;
+    near.sort((a, b) => a.d - b.d);
+    return near.find((n) => !this.hidden(n.s.point))?.s ?? null;
   }
 
   /**
-   * Snap a raw point on a plane to an endpoint or midpoint on that plane, or
-   * else to the grid. Shows the inference marker and returns the snapped point.
+   * Whether a face is clearly in front of a point along the line of sight.
+   * Faces the point lies on are hit right at it, so they do not hide it; the
+   * margin allows for float32 meshes seen at a grazing angle.
    */
-  snapOnPlane(planePoint: Vector3, n: Vector3, raw: Vector3, fallback: MarkerKind): Vector3 {
-    const best = this.nearestSnap((p) => Math.abs(p.clone().sub(planePoint).dot(n)) < ON_PLANE);
-    if (best) {
-      this.showMarker(best.point, best.kind);
-      return best.point.clone();
-    }
+  private hidden(point: Vector3): boolean {
+    const cam = this.camera.camera.position;
+    const d = point.distanceTo(cam);
+    this.occlusion.set(cam, point.clone().sub(cam).normalize());
+    const hit = this.occlusion.intersectObjects(this.allPickables, false)[0];
+    return !!hit && hit.distance < d - Math.max(1, d * 1e-3);
+  }
+
+  /** A raw point on a plane (through planePoint, normal n), snapped to the grid step along the plane's axes. */
+  gridPoint(planePoint: Vector3, n: Vector3, raw: Vector3): Vector3 {
     const [u, v] = planeAxes(toPoint(n)).map(toVector) as [Vector3, Vector3];
     const step = this.snapStep;
     const pu = Math.round(raw.dot(u) / step) * step;
     const pv = Math.round(raw.dot(v) / step) * step;
-    const p = u.multiplyScalar(pu).add(v.multiplyScalar(pv)).add(n.clone().multiplyScalar(planePoint.dot(n)));
-    this.showMarker(p, fallback);
-    return p;
+    return u.multiplyScalar(pu).add(v.multiplyScalar(pv)).add(n.clone().multiplyScalar(planePoint.dot(n)));
   }
 
   showMarker(p: Vector3, kind: MarkerKind): void {

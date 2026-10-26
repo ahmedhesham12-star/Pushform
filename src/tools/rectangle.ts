@@ -3,6 +3,7 @@ import { t } from '../i18n';
 import { planeAxes, previewRectangle } from '../kernel';
 import { formatLength, parseLengthList } from '../units';
 import { toVector } from '../viewport';
+import { inferOnPlane } from './inference';
 import type { Tool, ToolContext } from './tool';
 
 /** Below this size (mm) the preview is not drawn. */
@@ -70,7 +71,7 @@ export function createRectangleTool(ctx: ToolContext): Tool {
       if (state) return commit();
       const pl = ctx.viewport.planeUnderCursor();
       if (!pl) return;
-      const start = ctx.viewport.snapOnPlane(pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground');
+      const start = inferOnPlane(ctx, pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground').point;
       state = { faceId: pl.faceId, onFace: pl.onFace, normal: pl.normal, start, current: start.clone() };
       ctx.setMeasurement(t('measure.dimensions'), sizes(0, 0));
       ctx.hint();
@@ -79,13 +80,13 @@ export function createRectangleTool(ctx: ToolContext): Tool {
     move() {
       if (!state) {
         const pl = ctx.viewport.planeUnderCursor();
-        if (pl) ctx.viewport.snapOnPlane(pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground');
+        if (pl) inferOnPlane(ctx, pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground');
         else ctx.viewport.hideMarker();
         return;
       }
       const raw = ctx.viewport.picker.rayPlane(state.start, state.normal);
       if (!raw) return;
-      state.current = ctx.viewport.snapOnPlane(state.start, state.normal, raw, state.onFace ? 'face' : 'ground');
+      state.current = inferOnPlane(ctx, state.start, state.normal, raw, state.onFace ? 'face' : 'ground').point;
       preview(state);
     },
 

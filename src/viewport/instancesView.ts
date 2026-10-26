@@ -85,6 +85,8 @@ export interface PlacementHit {
   readonly relation: 'inside' | 'outside';
   /** Front normal of the picked face, in world coordinates. */
   readonly normal: Vec3;
+  /** The picked face, in the placement's definition. */
+  readonly faceId: string | null;
 }
 
 /**
@@ -140,7 +142,7 @@ export class InstancesView {
     if (!data.placement || !data.relation || !data.geometry || hit.faceIndex == null) return null;
     const faceId = data.geometry.triangleFaces[hit.faceIndex];
     const local = (faceId && data.geometry.normals.get(faceId)) || ([0, 1, 0] as Vec3);
-    return { placement: data.placement, relation: data.relation, normal: applyVector(data.placement.world, local) };
+    return { placement: data.placement, relation: data.relation, normal: applyVector(data.placement.world, local), faceId: faceId ?? null };
   }
 
   /** Bounding boxes around instances placed in the open context, in their highlight colors. */

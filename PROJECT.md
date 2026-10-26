@@ -430,13 +430,15 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 ## Next steps (proposed, not yet approved)
 1. **Milestone 4**, in this order unless the product owner decides otherwise:
    1. **Folding** (first): a move or rotation of loose geometry that would bend a face splits it into planar triangles instead of being refused, as SketchUp does; moving edges and corners is how users make sloped and angled parts.
-   2. **Scale and Flip**: the document format already carries a scale per instance (fixed at [1, 1, 1] for now); mirrored components, such as left and right doors, need it.
-   3. **Arcs** (the 2-point Arc, A), as curves like circles.
-   4. **Tags** (layers) for showing and hiding parts.
-   5. **Materials** (the Paint Bucket, B), carried into GLB export.
-   6. **Solid tools**: union, subtract and intersect for groups and components that are solids, and solid volume for groups holding other groups.
-   7. **Hardware import**: manufacturer models (STEP or glTF) placed as components.
-   8. **OBJ and DXF export.**
+   2. **Tape Measure** (T): measure the distance between two points, and place guide lines (parallel to an edge, at a typed offset) and guide points that drawing snaps to, as in SketchUp.
+   3. **Dimensions**: linear dimensions between two points, shown in the file's units, that follow the geometry when it moves or is edited.
+   4. **Scale and Flip**: the document format already carries a scale per instance (fixed at [1, 1, 1] for now); mirrored components, such as left and right doors, need it.
+   5. **Arcs** (the 2-point Arc, A), as curves like circles.
+   6. **Tags** (layers) for showing and hiding parts.
+   7. **Materials** (the Paint Bucket, B), carried into GLB export.
+   8. **Solid tools**: union, subtract and intersect for groups and components that are solids, and solid volume for groups holding other groups.
+   9. **Hardware import**: manufacturer models (STEP or glTF) placed as components.
+   10. **OBJ and DXF export.**
 2. A stretch that lands a point on another point merges the two instead of being refused.
 3. Kernel: intersecting faces of different solids, and confirming the box-against-box result in SketchUp (product owner).
 4. Inference: parallel, perpendicular and "from point", and a reverse-face command.

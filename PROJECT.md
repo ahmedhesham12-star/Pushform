@@ -221,6 +221,7 @@ Both levels are validated on load.
 | 2026-10-26 | Stretch only when every other edge at a moved vertex is parallel to the push direction; otherwise build walls | Testing found slots reaching a box edge dragged the wall's corners (diagonal edges) and the push applied 0 mm. |
 | 2026-10-26 | Walls and the landed face go through the planar engine: carving cuts covered faces away, adding beside a face keeps it as the shared face, same-orientation neighbors merge | One rule covers slots, notches, tabs, push-through (including faces touching the opposite face's edge) and boxes built against boxes. |
 | 2026-10-26 | A face that would cover its opposite face completely stops 1 mm short | Pushing a box top onto its bottom would otherwise delete the whole solid. |
+| 2026-10-26 | A wall built by pushing a face down beside a box merges with the box's coplanar, same-facing wall (approved by the product owner) | Matches SketchUp's automatic merging of coplanar neighbors. Covered by the push-down case of repro A. |
 | 2026-10-26 | Segment insertion splits edges from other planes that pass through the segment; a push that stretches into conflicts is redone with walls | Review finding (crossing edges) and randomized push/pull runs. Stretching stays the first choice because it keeps meaning, such as a pocket shrinking as its floor rises; walls are the safe fallback. |
 | 2026-10-26 | One undo step per line segment (approved) | Matches SketchUp; amend changes the last segment. |
 | 2026-10-26 | Curves group circle and polygon edges; only circle and arc walls get soft edges | Requested: select and erase a curve as one, and shade a pushed circle as a cylinder. A pushed polygon should stay a faceted prism. |
@@ -232,6 +233,7 @@ Both levels are validated on load.
 - **Ground faces face up**, deliberately. SketchUp makes them face down.
 - **New faces in a free plane** use a fixed rule (largest normal component positive), not the camera or neighboring solids. There is no "reverse face" command yet.
 - **Pushing a whole face onto its opposite face** (a box top onto its bottom) stops 1 mm short. SketchUp deletes the solid.
+- **A box built against another box** keeps one shared wall, split where the heights differ. This is the behavior the product owner specified (repros A and B). **Unverified against SketchUp** until the product owner confirms it there.
 - **Walls of different solids** that cross each other do not intersect (there is no "intersect faces"). Faces pushed level with a neighbor merge only when they end up adjacent.
 - **Inference is simpler.** There are endpoints, midpoints, points on edges, points on faces, the three axes and arrow-key axis locks. Parallel, perpendicular and "from point" inference are not built yet.
 - **Erase has no modifiers** (no hide or soften while erasing).
@@ -262,7 +264,7 @@ Both levels are validated on load.
 - **Documents:** version 2 format, with version 1 conversion that keeps face ids.
 - **Testing feedback fixed:** overlapping rectangles split faces instead of failing; the measurements box is read-only when there is nothing to type; push/pull on a face covering part of a neighbor's edge (a slot reaching the box edge) builds straight walls and notches the neighbor instead of dragging its corners.
 - **Verification:**
-  - 320 unit tests pass in about 6 s and the production build succeeds. The randomized rectangle and push/pull runs on horizontal faces (`tests/crossings.test.ts`, about 5.5 s) cover seed 11 for 80 steps, 8 seeds for 40 steps, and the 7 seeds that found bugs. Two longer sweeps of 120 seeds at 60 steps each run with `npm run test:stress` (about 85 s, the two sweeps in parallel); they pass and must pass before a milestone is merged into `main`. Boxes built against boxes follow the product owner's expected results (repros A and B in `tests/slots.test.ts`): one shared wall, split where the heights differ. They include randomized overlapping rectangles (grid-aligned and arbitrary), and randomized slots, notches and tabs on a box, with invariant checks after every step and preview-equals-commit checks.
+  - 320 unit tests pass in about 6 s and the production build succeeds. The randomized rectangle and push/pull runs on horizontal faces (`tests/crossings.test.ts`, about 5.5 s) cover seed 11 for 80 steps, 8 seeds for 40 steps, and the 7 seeds that found bugs. Two longer sweeps of 120 seeds at 60 steps each run with `npm run test:stress` (about 85 s, the two sweeps in parallel); they pass and must pass before a milestone is merged into `main`. Boxes built against boxes follow the behavior the product owner specified (repros A and B in `tests/slots.test.ts`): one shared wall, split where the heights differ. The tests confirm that specification, not SketchUp's behavior, which is still unverified. They include randomized overlapping rectangles (grid-aligned and arbitrary), and randomized slots, notches and tabs on a box, with invariant checks after every step and preview-equals-commit checks.
   - Scripted browser checks (not in the repo) covered: overlaps, pockets and push-through, edge selection and erase, the line tool, circles and polygons, amend, autosave, and loading a milestone 1 autosave.
 
 ### Known limitations
@@ -275,7 +277,7 @@ Both levels are validated on load.
 ## Next steps (proposed, not yet approved)
 1. File open and save (`.pushform` JSON download and upload) and the first export (glTF or STL, from `faceMeshes`).
 2. Move, copy, rotate and offset tools, then components (also needed for imports).
-3. Kernel: intersecting faces of different solids.
+3. Kernel: intersecting faces of different solids, and confirming the box-against-box result in SketchUp (product owner).
 4. Inference: parallel, perpendicular and "from point", and a reverse-face command.
 5. Arabic locale: catalog, an Arabic-capable font, and an RTL layout pass.
 6. Tooling: ESLint and Prettier, browser end-to-end tests in CI, and code-splitting three.js.

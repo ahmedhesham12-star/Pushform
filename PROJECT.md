@@ -483,6 +483,8 @@ Checked on 2026-10-26 in SketchUp 2023 (Windows), by scripts run through the Rub
 
 Checkpoints for the product owner's manual testing: (a) after folding, Tape Measure and Protractor; (b) after Dimensions and Text; (c) after Scale, Flip and arcs.
 
+Progress (2026-10-26): ready for checkpoint (a). Done: folding (with single corners moved by Move), guides (data, drawing, selection, inference, View menu), Tape Measure and the two-column tool bar, Protractor. 622 unit tests pass and the build succeeds; stress sweeps 5 (1500 seeds, with corners) and 6 pass after folding. The mixed random run gets folding, scale, flip and arcs in step 13.
+
 Decisions approved for milestone 4 (2026-10-26, product owner):
 - **Tape Measure follows SketchUp:** guides are created by default (the cursor shows a +) and Ctrl toggles measure-only. From an edge: a guide line parallel to it, at the pointer's offset or a typed one. From a point to another point: a guide line through both. From a point to anywhere else: a guide point there. The measurements box always shows the distance.
 - **Instances keep rotation, translation and scale** (scale may be negative or non-uniform). An operation that would skew one instance is refused with a message: non-uniform scale along axes that are not the instance's own, or exploding a non-uniformly scaled group with turned groups inside. Uniform scale and Flip always work.

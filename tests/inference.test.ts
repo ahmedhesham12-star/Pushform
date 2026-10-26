@@ -20,7 +20,8 @@ function context(under: Under) {
   const markers: string[] = [];
   const viewport = {
     nearestSnap: (filter: (p: Vector3) => boolean) => (under.snap && filter(under.snap.point) ? { ...under.snap, path: [] } : null),
-    pickEdge: () => (under.edge ? { edgeId: 'e1', point: under.edge.clone(), path: [], relation: 'context' } : null),
+    pickEdge: () =>
+      under.edge ? { edgeId: 'e1', point: under.edge.clone(), a: under.edge.clone(), b: under.edge.clone().setX(0), path: [], relation: 'context' } : null,
     axisInference: () => null,
     axisDirection: () => new Vector3(1, 0, 0),
     closestOnLine: () => null,

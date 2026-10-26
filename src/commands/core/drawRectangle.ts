@@ -16,7 +16,9 @@ export const drawRectangleInput = z.strictObject({
   normal: z.tuple([z.number(), z.number(), z.number()]).optional(),
   /** First corner, on the target plane. */
   corner: point3,
-  /** Signed sizes in mm along the plane axes (X and Z on the ground). */
+  /** Direction of the first side, to align the rectangle to an edge; the plane's axes when omitted. */
+  axis: z.tuple([z.number(), z.number(), z.number()]).optional(),
+  /** Signed sizes in mm along the rectangle's axes (X and Z on the ground). */
   width: length,
   depth: length,
 });
@@ -41,8 +43,8 @@ export const drawRectangle: CommandDef<DrawRectangleInput, DrawRectangleOutput> 
   run(doc, input) {
     const target = targetModel(doc, input.definitionId);
     if (!target.ok) return target;
-    const { faceId, normal, corner, width, depth } = input;
-    const r = kernelDrawRectangle(target.model, { faceId, normal: normal ?? null, corner, width, depth });
+    const { faceId, normal, corner, width, depth, axis } = input;
+    const r = kernelDrawRectangle(target.model, { faceId, normal: normal ?? null, corner, width, depth, axis: axis ?? null });
     if (!r.ok) return { ok: false, error: { code: r.error } };
     return { ok: true, doc: withDefinitionModel(doc, input.definitionId, r.model), output: { faceIds: r.faceIds } };
   },

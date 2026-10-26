@@ -86,11 +86,16 @@ export interface PlaneHit {
   onFace: boolean;
   normal: Vector3;
   point: Vector3;
+  /** The face's outer loop, when on a face (the context's or another group's). */
+  outline?: Vector3[];
 }
 
 export interface EdgeHit {
   edgeId: string;
   point: Vector3;
+  /** The edge's ends. */
+  a: Vector3;
+  b: Vector3;
   /** Instance path of the geometry the edge belongs to. */
   path: readonly InstanceId[];
   relation: 'context' | 'inside' | 'outside';
@@ -393,7 +398,7 @@ export class Viewport {
     for (const c of candidates) {
       if (this.hidden(c.point)) continue;
       const path = c.edge.path;
-      return { edgeId: c.edge.edgeId, point: c.point, path, relation: contextRelation(path, this.context) };
+      return { edgeId: c.edge.edgeId, point: c.point, a: toVector(c.edge.a), b: toVector(c.edge.b), path, relation: contextRelation(path, this.context) };
     }
     return null;
   }
@@ -450,10 +455,16 @@ export class Viewport {
     const faceId = hit?.object.userData.faceId as string | undefined;
     if (hit && faceId) {
       const normal = this.normalOf(faceId);
-      if (normal) return { faceId, onFace: true, normal, point: this.exactPoint(hit) };
+      const f = this.contextModel ? getFace(this.contextModel, faceId) : undefined;
+      const outline = f?.outer.map((p) => this.frameValue.toWorld(p));
+      if (normal) return { faceId, onFace: true, normal, point: this.exactPoint(hit), ...(outline ? { outline } : {}) };
     }
     const placed = hit ? this.instancesView.placementOf(hit) : null;
-    if (hit && placed) return { faceId: null, onFace: true, normal: toVector(placed.normal).normalize(), point: this.exactPoint(hit) };
+    if (hit && placed) {
+      const g = placed.faceId ? getFace(placed.placement.definition.model, placed.faceId) : undefined;
+      const outline = g?.outer.map((p) => toVector(applyPoint(placed.placement.world, p)));
+      return { faceId: null, onFace: true, normal: toVector(placed.normal).normalize(), point: this.exactPoint(hit), ...(outline ? { outline } : {}) };
+    }
     const g = this.groundPoint();
     return g && g.distanceTo(this.camera.camera.position) < MAX_GROUND_DISTANCE
       ? { faceId: null, onFace: false, normal: this.groundNormal(), point: g }

@@ -174,6 +174,7 @@ Core commands (geometry commands and the group and component commands take the o
 | `core.rotate` (faceIds, edgeIds, instanceIds, center, axis, angle in degrees) | the turned `faceIds`, `edgeIds`, `instanceIds` | angle |
 | `core.rotateCopies` (same, plus copies and divide) | the copies' ids | angle, array |
 | `core.offset` (faceId, or edgeIds; distance, positive inward) | `faceIds` created, new `edgeIds` | distance |
+| `core.drawRectangle` takes an optional `axis` | the first side's direction (to align to an edge) | |
 
 How the session works:
 - `execute` is for typed callers. `executeUnchecked` is for untrusted JSON from plugins, MCP or replay.
@@ -275,7 +276,8 @@ Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] unti
 | 2026-10-26 | Move and Rotate share one kernel operation (a rigid motion of a selection) and one command implementation; arrays are a transform per copy | Rotating loose geometry follows exactly the stretch and refusal rules of moving it. |
 | 2026-10-26 | Axis inference and arrow-key locks use the open context's axes | Matches SketchUp, where editing a turned group uses its axes. |
 | 2026-10-26 | Offset added to milestone 3, after Rotate (product owner) | Needed for frames, rebates and inlays. |
-| 2026-10-26 | Offset follows the face's outer boundary (as the product owner specified), with mitered corners; an inward offset is refused when it would cross a hole or land inside one; the new loop goes through the planar engine | SketchUp also offsets inner loops; kept to the outer boundary for this milestone. |
+| 2026-10-26 | Offset offsets every loop of a face, as SketchUp does (product owner, checkpoint (b)): inward shrinks the outer loop and grows the holes, outward the opposite; refused when a loop would collapse or loops would cross or touch; the new loops go through the planar engine, and every region of the offset shape becomes a face | One rule (offset to the left of every loop) covers outer loops and holes, since holes run the other way. |
+| 2026-10-26 | Rectangles align to a turned edge or face (product owner); the default rectangle axes are the plane's axes projected into the plane | Drawing on rotated objects followed the world axes and came out skewed; on slanted faces the old axes did not lie in the face. |
 | 2026-10-26 | Offset's new loop follows the pointer (distance from the boundary), and clicks finish on release so a double-click can repeat the last offset | Matches SketchUp; measuring from the first click made an offset started in a face's middle go outward. |
 | 2026-10-26 | `npm test` starts Vitest through `scripts/vitest.mjs`, from the canonical project path | On Windows a working directory with a lowercase drive letter (VS Code terminals can open as d:\) made Vitest load itself twice; every test file then failed before running a test. |
 | 2026-10-26 | Solid volume in Entity Info for a group or component whose own geometry is closed and consistently oriented; none when it holds other groups or components | Cheap to compute exactly; nested solids are a later step. |
@@ -326,7 +328,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - **Inference order, every tool:** endpoints and midpoints first, then points on edges, then faces or the ground. Points and edges hidden behind faces are not inferred.
 
 - **Rotate (milestone 3):** the protractor lies on the face under the pointer or the ground; arrow keys lock it to the red, green or blue axis before the center is clicked. Click the center, the start of the angle and the end, or type an angle. Angles snap to 15 degree steps near them; points and edges under the pointer give exact angles. Ctrl copies and `x5`, `/4` make arrays, as in Move. A plain number typed after a rotation is an angle in degrees.
-- **Offset (milestone 3):** click a face and move in or out: the new loop follows the pointer; click again or type a distance, and typing afterwards amends it. With connected edges selected (an open chain or a loop in one plane), those are offset. Straight corners stay sharp; circles and polygons offset as curves with the same segment count. Double-clicking a face repeats the last offset.
+- **Offset (milestone 3):** click a face and move in or out: the new loop follows the pointer; click again or type a distance, and typing afterwards amends it. A face's holes are offset with it: inward they grow, outward they shrink. With connected edges selected (an open chain or a loop in one plane), those are offset. Straight corners stay sharp; circles and polygons offset as curves with the same segment count. Double-clicking a face repeats the last offset.
 - **Axes inside a group or component** are its own axes: arrow-key locks and axis inference follow a turned instance.
 
 **Parity list for later milestones (not built yet):**
@@ -335,8 +337,13 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - **Paint Bucket:** Alt (Cmd on Mac) samples a material.
 - **Later:** a settings screen for custom shortcuts.
 
+## Deliberate improvements over SketchUp
+- **Ground faces face up.** SketchUp makes them face down.
+- **Rectangles align to edges** (checkpoint (b), product owner): a rectangle started on an edge that runs along neither axis, or on a face none of whose edges runs along an axis, follows that edge (or the face's edge nearest the start): its first side runs along the edge and the second across it in the face's plane. Started in empty space, on the ground, or on a face with an edge along an axis, it follows the axes as before (inside a group or component, that group's own axes).
+- **Rectangles on slanted faces** get sides that lie on the face; the plane's axes are projected into it.
+
 ## Differences from SketchUp
-- **Ground faces face up**, deliberately. SketchUp makes them face down.
+- **Ground faces face up**, deliberately (see above).
 - **New faces in a free plane** use a fixed rule (largest normal component positive), not the camera or neighboring solids. There is no "reverse face" command yet.
 - **Pushing a whole face onto its opposite face** (a box top onto its bottom) stops 1 mm short. SketchUp deletes the solid.
 - **A box built against another box** keeps one shared wall, split where the heights differ. This is the behavior the product owner specified (repros A and B). **Unverified against SketchUp** until the product owner confirms it there.
@@ -384,19 +391,19 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - **Viewport:** instances drawn from shared geometry with their transforms; editing contexts (double-click to open, Esc or a click outside to close, everything outside faded); picking returns context faces and edges, instances in the context, or geometry outside it; inference across all instances and contexts in world coordinates.
 - **Right-click menu** and G for Make Component.
 - **Panels:** Entity Info (one group or component: type, editable definition and instance names, copy count, volume; several items: how many of each type, with total area and length) and Outliner (tree, copy counts, click to select, double-click or F2 to rename, right-click menu).
-- **Offset tool (added after step 8):** faces and edge chains, sharp corners, curves keep their segment count, amend, double-click repeat, refused when too large.
+- **Offset tool (added after step 8):** faces (with their holes) and edge chains, sharp corners, curves keep their segment count, amend, double-click repeat, refused when too large.
+- **Checkpoint (b) feedback:** rectangles align to turned edges and faces (an improvement over SketchUp), follow a turned group's axes inside it, and lie on slanted faces; Offset offsets holes too.
 - **Move testing feedback:** edge and point inference win over faces in every tool; hidden points are not inferred; Push/Pull ends level with points, edges and faces anywhere; double-click repeats the last push/pull.
 - **Rotate tool (step 8):** protractor on faces or locked axes, center, start and angle with inference, 15 degree snapping, typed angles and amend, Ctrl copy and arrays; loose geometry turns with the same rules as moving; axes inside groups follow the group.
 - **Move tool (step 7):** start and destination with shared inference (Line and Move), typed distance, amend, Ctrl copy, arrays (`x5`, `5x`, `*5`, `/4`), loose geometry that stretches with bending and crossing moves refused.
 - **Checkpoint (a) feedback:** double-click, triple-click, window and crossing selection, Ctrl+A; modifiers on groups and components; Make Group and Make Component on mixed selections.
-- **Verification:** 468 unit tests pass and the build succeeds; the stress sweeps pass, including the new 3 (extract and merge), 4 (scene commands) and 5 (moving loose geometry, 1000 seeds). Scripted browser checks (not in the repo) cover instances, contexts, snapping to another copy, the menu and the panels.
+- **Verification:** 522 unit tests pass and the build succeeds; the stress sweeps pass, including the new 3 (extract and merge), 4 (scene commands) and 5 (moving loose geometry, 1000 seeds). Scripted browser checks (not in the repo) cover instances, contexts, snapping to another copy, the menu and the panels.
 
 ### Known limitations
 - The differences from SketchUp listed above.
 - Each operation recomputes its whole plane and an adjacency index. That is fine for typical models; very large models may slow down.
 - Undo history is not kept across reloads.
 - There is no file open, save or export yet; the only storage is the browser autosave (milestone 3, steps 9 and 10).
-- Offset works on a face's outer boundary only; SketchUp also offsets its holes.
 - A stretch that would land a point on another point is refused rather than merging the two points (an island that lands on a point does merge).
 - While moving loose geometry, its own endpoints and midpoints at the original position are still inference targets (its faces and edges are not).
 

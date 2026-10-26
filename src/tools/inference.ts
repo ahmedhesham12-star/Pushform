@@ -14,6 +14,8 @@ export interface Inferred {
   kind: MarkerKind;
   /** The axis the point lies on from the start point, if inferred along one. */
   axis: Axis | null;
+  /** The edge the point lies on, when inferred on one (its ends, world). */
+  edge?: { a: Vector3; b: Vector3 };
 }
 
 /**
@@ -31,7 +33,7 @@ export function inferOnPlane(ctx: ToolContext, planePoint: Vector3, normal: Vect
   const found: Inferred = snap
     ? { point: snap.point.clone(), kind: snap.kind, axis: null }
     : edge && onPlane(edge.point)
-      ? { point: edge.point.clone(), kind: 'edge', axis: null }
+      ? { point: edge.point.clone(), kind: 'edge', axis: null, edge: { a: edge.a, b: edge.b } }
       : { point: vp.gridPoint(planePoint, normal, raw), kind: fallback, axis: null };
   vp.showMarker(found.point, found.kind);
   return found;
@@ -60,7 +62,7 @@ export function inferPoint(ctx: ToolContext, start: Vector3 | null, lock: Axis |
   const snap = vp.nearestSnap(() => true);
   if (snap) return { point: snap.point.clone(), kind: snap.kind, axis: null };
   const edge = vp.pickEdge('all');
-  if (edge) return { point: edge.point.clone(), kind: 'edge', axis: null };
+  if (edge) return { point: edge.point.clone(), kind: 'edge', axis: null, edge: { a: edge.a, b: edge.b } };
   if (start) {
     const a = vp.axisInference(start);
     if (a) return onAxis(start, a.axis, a.point);

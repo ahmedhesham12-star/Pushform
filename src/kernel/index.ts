@@ -21,6 +21,7 @@ import { deserializeTopology, serializeTopology, type SerializedTopology } from 
 import {
   drawRectangle as drawRect,
   drawRegularPolygon as drawRegular,
+  rectangleAxes,
   rectangleCorners,
   regularPolygonPoints,
   type DrawError,
@@ -212,5 +213,7 @@ export const solidVolume = (m: Model) => q.solidVolume(data(m));
 export const checkModel = (m: Model) => validate(data(m));
 /** Corners of a rectangle as drawRectangle would create it; used for previews. */
 export const previewRectangle = rectangleCorners;
+/** The directions a rectangle's sides follow: the plane's axes, or a given first side (to align to an edge). */
+export { rectangleAxes };
 /** Corners of a circle or polygon as drawRegularPolygon would create it; used for previews. */
 export const previewRegularPolygon = regularPolygonPoints;

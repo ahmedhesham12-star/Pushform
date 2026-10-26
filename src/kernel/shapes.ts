@@ -65,9 +65,27 @@ export function drawLoop(
   return { topology: d.commit(), faceIds: [...created].filter((f) => d.faces.has(f)), edgeIds: [...drawn] };
 }
 
-/** The four corners of a rectangle with signed sizes along the plane axes of n. */
-export function rectangleCorners(n: Vec3, corner: Point3, width: number, depth: number): Point3[] {
-  const [u, v] = planeAxes(n);
+/** A vector with its component along unit normal n removed, made unit length (zero when it was along n). */
+function inPlane(a: Vec3, n: Vec3): Vec3 {
+  return normalize(sub(a, scale(n, dot(a, n))));
+}
+
+/**
+ * The directions a rectangle's sides follow in the plane with normal n: the
+ * plane's axes (projected into it, so a slanted face gets sides that lie on
+ * it), or the given first-side direction and the direction across it.
+ */
+export function rectangleAxes(n: Vec3, axis?: Vec3 | null): [Vec3, Vec3] {
+  const u0 = axis ? inPlane(axis, n) : null;
+  if (u0 && length(u0) > 0.5) return [u0, cross(u0, n)];
+  const [a, b] = planeAxes(n);
+  const u = inPlane(a, n);
+  return [u, inPlane(sub(b, scale(u, dot(b, u))), n)];
+}
+
+/** The four corners of a rectangle with signed sizes along its axes (see rectangleAxes). */
+export function rectangleCorners(n: Vec3, corner: Point3, width: number, depth: number, axis?: Vec3 | null): Point3[] {
+  const [u, v] = rectangleAxes(n, axis);
   const U = scale(u, width);
   const V = scale(v, depth);
   return [corner, add(corner, U), add(add(corner, U), V), add(corner, V)].map(snapPoint);
@@ -80,6 +98,8 @@ export interface RectangleSpec {
   corner: Point3;
   width: number;
   depth: number;
+  /** Direction of the first side, to align the rectangle to an edge; the plane's axes when omitted. */
+  axis?: Vec3 | null | undefined;
 }
 
 export interface RegularPolygonSpec {
@@ -133,6 +153,6 @@ export function drawRectangle(t: Topology, spec: RectangleSpec): DrawResult {
   const target = drawingPlane(t, spec.faceId, spec.corner, spec.normal);
   if (!target) return { ok: false, error: 'noSuchFace' };
   if (!onPlane(target.plane, spec.corner, 0.1)) return { ok: false, error: 'notOnPlane' };
-  const pts = rectangleCorners(target.normal, spec.corner, spec.width, spec.depth);
+  const pts = rectangleCorners(target.normal, spec.corner, spec.width, spec.depth, spec.axis);
   return { ok: true, ...drawLoop(t, target.plane, target.normal, pts) };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { createSession, serializeDocument, type CommandSession } from '../src/commands';
-import { checkModel, listEdges, listFaces, type FaceView, type Point3 } from '../src/kernel';
+import { checkModel, listEdges, listFaces, serialize, type FaceView, type Point3 } from '../src/kernel';
 
 /*
  * Push/pull on faces that cover only part of a neighbour's edge: slots,
@@ -193,6 +193,102 @@ describe('randomized slots, notches and tabs', () => {
       const dist = (r() < 0.5 ? -1 : 1) * (50 + Math.floor(r() * 4) * 100);
       push(s, target, dist);
     }
+  });
+});
+
+/** Faces whose loops use the edge between points a and b. */
+function facesOnEdge(s: CommandSession, a: Point3, b: Point3): string[] {
+  const m = serialize(s.doc.model);
+  const id = (p: Point3) => Object.entries(m.vertices).find(([, q]) => near(q, p))?.[0];
+  const va = id(a);
+  const vb = id(b);
+  if (!va || !vb) return [];
+  return Object.entries(m.faces)
+    .filter(([, f]) =>
+      [f.outer, ...f.holes].some((l) => l.some((v, i) => {
+        const w = l[(i + 1) % l.length];
+        return (v === va && w === vb) || (v === vb && w === va);
+      })),
+    )
+    .map(([fid]) => fid);
+}
+
+describe('adjacent boxes sharing a full edge (testing repros A and B)', () => {
+  /** Repro A: two ground rectangles sharing the edge x = 1000; the first pushed up 500. */
+  function reproA() {
+    const s = createSession();
+    const a = s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 1000, depth: 500 });
+    const b = s.execute('core.drawRectangle', { faceId: null, corner: [1000, 0, 0], width: 1000, depth: 500 });
+    if (!a.ok || !b.ok) throw new Error();
+    const first = a.output.faceIds[0]!;
+    const second = b.output.faceIds[0]!;
+    expect(push(s, first, 500).distance).toBe(500);
+    return { s, second };
+  }
+  const shared = (s: CommandSession, y: number) => facesAt(s, [1000, y, 250]);
+
+  test('second pushed up 500: the wall at x = 1000 is one face shared by both boxes', () => {
+    const { s, second } = reproA();
+    expect(push(s, second, 500).distance).toBe(500);
+    expect(shared(s, 250)).toHaveLength(1);
+    // Its top edge bounds the wall and both tops.
+    expect(facesOnEdge(s, [1000, 500, 0], [1000, 500, 500])).toHaveLength(3);
+  });
+
+  test('second pushed up 300: the wall splits at y = 300; the lower part is shared, the upper part is the first box only', () => {
+    const { s, second } = reproA();
+    expect(push(s, second, 300).distance).toBe(300);
+    const lower = shared(s, 150);
+    const upper = shared(s, 400);
+    expect(lower).toHaveLength(1);
+    expect(upper).toHaveLength(1);
+    expect(lower[0]!.id).not.toBe(upper[0]!.id);
+    // The split line bounds the lower part, the upper part and the second box's top.
+    expect(facesOnEdge(s, [1000, 300, 0], [1000, 300, 500])).toHaveLength(3);
+    // The upper part's top edge bounds only it and the first box's top.
+    expect(facesOnEdge(s, [1000, 500, 0], [1000, 500, 500])).toHaveLength(2);
+  });
+
+  test('second pushed up 800: the wall splits at y = 500; the part above is the second box only', () => {
+    const { s, second } = reproA();
+    expect(push(s, second, 800).distance).toBe(800);
+    expect(shared(s, 250)).toHaveLength(1);
+    const above = shared(s, 650);
+    expect(above).toHaveLength(1);
+    expect(above[0]!.id).not.toBe(shared(s, 250)[0]!.id);
+    // The second box's wall faces away from it.
+    expect(above[0]!.normal).toEqual([-1, 0, 0]);
+    expect(facesOnEdge(s, [1000, 500, 0], [1000, 500, 500])).toHaveLength(3);
+  });
+
+  test('second pushed down 300: walls are created below ground', () => {
+    const { s, second } = reproA();
+    expect(push(s, second, -300).distance).toBe(-300);
+    expect(facesAt(s, [1500, -300, 250]).map((f) => f.id)).toEqual([second]);
+    expect(facesAt(s, [2000, -150, 250])).toHaveLength(1);
+    expect(facesAt(s, [1500, -150, 0])).toHaveLength(1);
+    expect(facesAt(s, [1500, -150, 500])).toHaveLength(1);
+    // At x = 1000 the pit wall faces the same way as the first box's wall and lies in its plane, so they merge.
+    expect(facesAt(s, [1000, -150, 250])).toHaveLength(1);
+    expect(facesAt(s, [1000, -150, 250])[0]!.id).toBe(shared(s, 250)[0]!.id);
+  });
+
+  test('repro B: a new rectangle against an existing box, pushed up 300', () => {
+    const s = createSession();
+    const a = s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 1000, depth: 500 });
+    if (!a.ok) throw new Error();
+    push(s, a.output.faceIds[0]!, 500);
+    const b = s.execute('core.drawRectangle', { faceId: null, corner: [1000, 0, 0], width: 1000, depth: 500 });
+    if (!b.ok) throw new Error();
+    expect(checkModel(s.doc.model)).toEqual([]);
+    const second = facesAt(s, [1500, 0, 250]).find((f) => f.normal[1] === 1)!.id;
+    expect(push(s, second, 300).distance).toBe(300);
+    const lower = shared(s, 150);
+    const upper = shared(s, 400);
+    expect(lower).toHaveLength(1);
+    expect(upper).toHaveLength(1);
+    expect(lower[0]!.id).not.toBe(upper[0]!.id);
+    expect(facesOnEdge(s, [1000, 300, 0], [1000, 300, 500])).toHaveLength(3);
   });
 });
 

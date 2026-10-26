@@ -230,7 +230,6 @@ Both levels are validated on load.
 - **Ground faces face up**, deliberately. SketchUp makes them face down.
 - **New faces in a free plane** use a fixed rule (largest normal component positive), not the camera or neighboring solids. There is no "reverse face" command yet.
 - **Pushing a whole face onto its opposite face** (a box top onto its bottom) stops 1 mm short. SketchUp deletes the solid.
-- **A box built against another box** keeps one shared face between them. SketchUp's result here was not verified against SketchUp itself.
 - **Walls of different solids** that cross each other do not intersect (there is no "intersect faces"). Faces pushed level with a neighbor merge only when they end up adjacent.
 - **Inference is simpler.** There are endpoints, midpoints, points on edges, points on faces, the three axes and arrow-key axis locks. Parallel, perpendicular and "from point" inference are not built yet.
 - **Erase has no modifiers** (no hide or soften while erasing).
@@ -261,7 +260,7 @@ Both levels are validated on load.
 - **Documents:** version 2 format, with version 1 conversion that keeps face ids.
 - **Testing feedback fixed:** overlapping rectangles split faces instead of failing; the measurements box is read-only when there is nothing to type; push/pull on a face covering part of a neighbor's edge (a slot reaching the box edge) builds straight walls and notches the neighbor instead of dragging its corners.
 - **Verification:**
-  - 296 unit tests pass and the production build succeeds. They include randomized overlapping rectangles (grid-aligned and arbitrary), and randomized slots, notches and tabs on a box, with invariant checks after every step and preview-equals-commit checks.
+  - 301 unit tests pass and the production build succeeds. Boxes built against boxes follow the product owner's expected results (repros A and B in `tests/slots.test.ts`): one shared wall, split where the heights differ. They include randomized overlapping rectangles (grid-aligned and arbitrary), and randomized slots, notches and tabs on a box, with invariant checks after every step and preview-equals-commit checks.
   - Scripted browser checks (not in the repo) covered: overlaps, pockets and push-through, edge selection and erase, the line tool, circles and polygons, amend, autosave, and loading a milestone 1 autosave.
 
 ### Known limitations
@@ -274,7 +273,7 @@ Both levels are validated on load.
 ## Next steps (proposed, not yet approved)
 1. File open and save (`.pushform` JSON download and upload) and the first export (glTF or STL, from `faceMeshes`).
 2. Move, copy, rotate and offset tools, then components (also needed for imports).
-3. Kernel: intersecting faces of different solids, and confirming the box-against-box result against SketchUp.
+3. Kernel: intersecting faces of different solids.
 4. Inference: parallel, perpendicular and "from point", and a reverse-face command.
 5. Arabic locale: catalog, an Arabic-capable font, and an RTL layout pass.
 6. Tooling: ESLint and Prettier, browser end-to-end tests in CI, and code-splitting three.js.

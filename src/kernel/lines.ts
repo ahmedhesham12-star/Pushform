@@ -88,7 +88,7 @@ export function resolveEdgeCrossings(d: Draft, e: EdgeId): void {
 }
 
 /** Insert a segment that lies in no plane with geometry: through existing vertices on it, no crossings. */
-function insertSegment3d(d: Draft, p: Point3, q: Point3): EdgeId[] {
+export function insertSegment3d(d: Draft, p: Point3, q: Point3): EdgeId[] {
   const va = vertexAt3d(d, p);
   const vb = vertexAt3d(d, q);
   if (va === vb) return [];

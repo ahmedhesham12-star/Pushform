@@ -12,7 +12,18 @@ import { describe, expect, test } from 'vitest';
 const SRC = resolve(__dirname, '../src');
 /** Pure, DOM-free packages the kernel may use. */
 const KERNEL_PACKAGES = ['earcut'];
-const KERNEL_MUTATIONS = ['createModel', 'drawRectangle', 'drawRegularPolygon', 'drawLine', 'pushPull', 'erase', 'deserialize'];
+const KERNEL_MUTATIONS = [
+  'createModel',
+  'drawRectangle',
+  'drawRegularPolygon',
+  'drawLine',
+  'pushPull',
+  'erase',
+  'extractGeometry',
+  'transformGeometry',
+  'mergeGeometry',
+  'deserialize',
+];
 const DOM_GLOBALS = /\b(window|document|localStorage|sessionStorage|navigator|requestAnimationFrame|HTMLElement)\b/;
 
 interface ImportInfo {

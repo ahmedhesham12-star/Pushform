@@ -6,9 +6,11 @@
  * so the representation can change without touching commands, tools or the
  * viewport.
  *
- * Mutations (createModel, drawRectangle, drawRegularPolygon, drawLine, pushPull, erase, deserialize) are for
+ * Mutations (createModel, drawRectangle, drawRegularPolygon, drawLine, pushPull, erase,
+ * extractGeometry, transformGeometry, mergeGeometry, deserialize) are for
  * src/commands only; everything else is read-only and may be used anywhere.
  */
+import { extract as extractTopology, merge as mergeTopology, transformTopology } from './assembly';
 import { erase as eraseTopology } from './erase';
 import { drawLine as drawTopologyLine } from './lines';
 import { pushPull as pushTopology } from './pushPull';
@@ -25,6 +27,7 @@ import {
 } from './shapes';
 import { faceMeshes as meshes, faceTriangles as triangles, type FaceMesh, type Triangle } from './triangulate';
 import { emptyTopology, type Point3, type Topology } from './types';
+import type { Vec3 } from './vec';
 import { validate } from './validate';
 
 declare const opaque: unique symbol;
@@ -91,6 +94,29 @@ export function pushPull(m: Model, faceId: string, distance: number): PushPullRe
 export function erase(m: Model, faceIds: readonly string[], edgeIds: readonly string[]): { model: Model; removedFaceIds: string[] } {
   const r = eraseTopology(data(m), faceIds, edgeIds);
   return { model: wrap(r.topology), removedFaceIds: r.removedFaceIds };
+}
+
+/**
+ * Split selected faces and edges out of a model (for groups and components).
+ * Edges also used by unselected faces are copied, so both models keep them.
+ */
+export function extractGeometry(m: Model, faceIds: readonly string[], edgeIds: readonly string[]): { remaining: Model; extracted: Model } {
+  const r = extractTopology(data(m), faceIds, edgeIds);
+  return { remaining: wrap(r.remaining), extracted: wrap(r.extracted) };
+}
+
+/** A copy of the model moved rigidly: points through mapPoint, normals through mapVector. */
+export function transformGeometry(m: Model, mapPoint: (p: Point3) => Point3, mapVector: (v: Vec3) => Vec3): Model {
+  return wrap(transformTopology(data(m), mapPoint, mapVector));
+}
+
+/**
+ * Insert `source` (in the target's coordinates) into `target` through the planar
+ * engine (exploding a group, copying geometry). Coplanar regions merge.
+ */
+export function mergeGeometry(target: Model, source: Model): { model: Model; faceIds: string[] } {
+  const r = mergeTopology(data(target), data(source));
+  return { model: wrap(r.topology), faceIds: r.faceIds };
 }
 
 /** Load a saved model: version 2 topology, or a version 1 face-loop model (converted). */

@@ -91,26 +91,8 @@ export function validate(t: Topology): string[] {
         if (!pairs.has(pairKey(loop[i]!, loop[(i + 1) % loop.length]!))) bad(`face ${id} has a loop step without an edge`);
       }
     }
+    problems.push(...faceShapeProblems(t, id));
     const plane = planeThrough(f.normal, P(f.outer[0]!));
-    if (all.some((v) => !onPlane(plane, P(v)))) bad(`face ${id} is not planar`);
-    const outerN = newell(f.outer.map(P));
-    if (dot(normalize(outerN), f.normal) < 1 - 1e-6) bad(`face ${id} outer loop is not counter-clockwise around its normal`);
-    for (const h of f.holes) if (dot(newell(h.map(P)), f.normal) >= 0) bad(`face ${id} has a hole that is not clockwise`);
-
-    const b = planeBasis(f.normal);
-    const outer2 = f.outer.map((v) => to2(b, P(v)));
-    const holes2 = f.holes.map((h) => h.map((v) => to2(b, P(v))));
-    const outerSet = new Set(f.outer);
-    f.holes.forEach((h, i) => {
-      const probe = h.findIndex((v) => !outerSet.has(v));
-      if (probe >= 0 && !pointInPolygon(holes2[i]![probe]!, outer2)) bad(`face ${id} has a hole outside its outer loop`);
-    });
-    const segs: [Vec2, Vec2][] = [outer2, ...holes2].flatMap((l) => l.map((p, i) => [p, l[(i + 1) % l.length]!] as [Vec2, Vec2]));
-    for (let i = 0; i < segs.length; i++) {
-      for (let j = i + 1; j < segs.length; j++) {
-        if (segmentCrossing(segs[i]![0], segs[i]![1], segs[j]![0], segs[j]![1])) bad(`face ${id} loops cross themselves`);
-      }
-    }
     const group = planes.find((g) => samePlane(g.plane, plane));
     if (group) group.faces.push(id);
     else planes.push({ plane, faces: [id] });
@@ -119,6 +101,40 @@ export function validate(t: Topology): string[] {
   /* planes: edges never cross, vertices never sit inside edges, faces never overlap */
   if (!planes.some((g) => samePlane(g.plane, GROUND))) planes.push({ plane: GROUND, faces: [] });
   for (const { plane } of planes) problems.push(...planeProblems(t, plane));
+  return problems;
+}
+
+/**
+ * The shape of one face: flat, its outer loop counter-clockwise and its holes
+ * clockwise around its normal, every hole inside the outer loop, and no loop
+ * crossing another or itself. Cheap enough for the faces an operation moved.
+ */
+export function faceShapeProblems(t: Topology, id: FaceId): string[] {
+  const problems: string[] = [];
+  const bad = (msg: string) => problems.push(msg);
+  const f = t.faces.get(id);
+  if (!f) return problems;
+  const P = (v: VertexId) => t.vertices.get(v)!.p;
+  const plane = planeThrough(f.normal, P(f.outer[0]!));
+  if ([f.outer, ...f.holes].flat().some((v) => !onPlane(plane, P(v)))) bad(`face ${id} is not planar`);
+  const outerN = newell(f.outer.map(P));
+  if (dot(normalize(outerN), f.normal) < 1 - 1e-6) bad(`face ${id} outer loop is not counter-clockwise around its normal`);
+  for (const h of f.holes) if (dot(newell(h.map(P)), f.normal) >= 0) bad(`face ${id} has a hole that is not clockwise`);
+
+  const b = planeBasis(f.normal);
+  const outer2 = f.outer.map((v) => to2(b, P(v)));
+  const holes2 = f.holes.map((h) => h.map((v) => to2(b, P(v))));
+  const outerSet = new Set(f.outer);
+  f.holes.forEach((h, i) => {
+    const probe = h.findIndex((v) => !outerSet.has(v));
+    if (probe >= 0 && !pointInPolygon(holes2[i]![probe]!, outer2)) bad(`face ${id} has a hole outside its outer loop`);
+  });
+  const segs: [Vec2, Vec2][] = [outer2, ...holes2].flatMap((l) => l.map((p, i) => [p, l[(i + 1) % l.length]!] as [Vec2, Vec2]));
+  for (let i = 0; i < segs.length; i++) {
+    for (let j = i + 1; j < segs.length; j++) {
+      if (segmentCrossing(segs[i]![0], segs[i]![1], segs[j]![0], segs[j]![1])) bad(`face ${id} loops cross themselves`);
+    }
+  }
   return problems;
 }
 

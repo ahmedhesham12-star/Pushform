@@ -262,6 +262,54 @@ export interface RebuildResult {
  * owner, and `ignore` lists edges to leave out of the region graph; together
  * they join two faces across an edge that is about to be erased.
  */
+/**
+ * Split the plane's edges where they cross each other or pass through a
+ * vertex of the plane. Insertion keeps a plane clean, but loose lines drawn
+ * while the plane had no face are not split against each other; this runs
+ * before faces are built in the plane (found by the mixed random run).
+ * Returns each new piece with the edge it came from.
+ */
+function splitCrossings(d: Draft, pl: Plane, basis: Basis): Map<EdgeId, EdgeId> {
+  const origin = new Map<EdgeId, EdgeId>();
+  const P = (v: VertexId) => to2(basis, d.point(v));
+  const split = (e: EdgeId, v: VertexId) => {
+    const from = origin.get(e) ?? e;
+    for (const piece of d.splitEdge(e, v)) origin.set(piece, from);
+  };
+  for (let guard = 0; guard < 10_000; guard++) {
+    const edges = inPlaneEdges(d, pl);
+    const verts = new Set(edges.flatMap(([, e]) => e.v));
+    const found = (() => {
+      for (let i = 0; i < edges.length; i++) {
+        const [id, e] = edges[i]!;
+        const a = P(e.v[0]);
+        const b = P(e.v[1]);
+        for (const v of verts) {
+          if (e.v.includes(v)) continue;
+          const r = pointSegment(P(v), a, b);
+          if (r.distance <= VERTEX_TOLERANCE && r.t > 0 && r.t < 1) return () => split(id, v);
+        }
+        for (let j = i + 1; j < edges.length; j++) {
+          const [id2, e2] = edges[j]!;
+          const c = segmentCrossing(a, b, P(e2.v[0]), P(e2.v[1]));
+          if (!c) continue;
+          const A = d.point(e.v[0]);
+          const X = add(A, scale(sub(d.point(e.v[1]), A), c.t));
+          return () => {
+            const v = d.findVertex(X) ?? d.addVertex(X);
+            split(id, v);
+            split(id2, v);
+          };
+        }
+      }
+      return null;
+    })();
+    if (!found) break;
+    found();
+  }
+  return origin;
+}
+
 export function rebuildPlane(
   d: Draft,
   pl: Plane,
@@ -273,6 +321,13 @@ export function rebuildPlane(
 ): RebuildResult {
   const basis: Basis = planeBasis(pl.n);
   const P = (v: VertexId) => to2(basis, d.point(v));
+  // Pieces of split edges stay drawn (or ignored) when the edge was.
+  const origin = splitCrossings(d, pl, basis);
+  if (origin.size) {
+    const carry = (set: ReadonlySet<EdgeId>) => new Set([...set, ...[...origin].filter(([, from]) => set.has(from)).map(([piece]) => piece)]);
+    drawn = carry(drawn);
+    ignore = carry(ignore);
+  }
 
   const old = [...d.faces]
     .filter(([, f]) => samePlane(planeThrough(f.normal, d.point(f.outer[0]!)), pl))

@@ -105,6 +105,15 @@ describe('stretching connected geometry', () => {
     expect(moveGeometry(t, [innerFace], [], [1200, 0, 0])).toEqual({ ok: false, error: 'moveCrosses' });
   });
 
+  test('an inner face moved clear out of the face around it is refused (found by stress sweep 6)', () => {
+    const outer = rect(emptyTopology(), 0, 0, 2000, 2000);
+    const inner = rect(outer.topology, 500, 500, 500, 500, outer.faceIds[0]!);
+    const t = inner.topology;
+    const innerFace = inner.faceIds.find((f) => t.faces.get(f)!.holes.length === 0)!;
+    // One jump past the outer edge: no edges cross at the end, but the hole would be outside its face.
+    expect(moveGeometry(t, [innerFace], [], [3000, 0, 0])).toEqual({ ok: false, error: 'moveCrosses' });
+  });
+
   test('stretching a point onto another point is blocked', () => {
     const t = box(emptyTopology(), 0, 0, 1000, 1000, 500);
     const top = faceWith(t, [0, 1, 0], (y) => y === 500);

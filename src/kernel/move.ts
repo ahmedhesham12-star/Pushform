@@ -10,7 +10,7 @@ import { add, cleanNormal, dot, length, sub, type Vec3 } from './vec';
 import { Draft } from './draft';
 import { onPlane, planeThrough, polygonNormal, samePlane, type Plane } from './geometry';
 import { extract, merge, transformTopology } from './assembly';
-import { planeProblems } from './validate';
+import { faceShapeProblems, planeProblems } from './validate';
 import { GROUND } from './shapes';
 import type { EdgeId, FaceId, Point3, Topology, VertexId } from './types';
 
@@ -84,6 +84,8 @@ export function transformSelection(t: Topology, faceIds: readonly FaceId[], edge
     d.setFace(f, { ...face, normal: cleanNormal(n) });
   }
 
+  // A hole moved out of the face around it (in one jump, so no edges cross) is refused too.
+  if ([...touched].some((f) => faceShapeProblems(d, f).length)) return { ok: false, error: 'moveCrosses' };
   if (conflicts(d, touched, [...rigidEdges, ...stretched])) return { ok: false, error: 'moveCrosses' };
   const topology = d.commit();
   return { ok: true, topology, faceIds: faceIds.filter((f) => topology.faces.has(f)), edgeIds: edgeIds.filter((e) => topology.edges.has(e)) };

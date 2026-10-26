@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { drawLine } from '../src/kernel/lines';
 import { faceArea } from '../src/kernel/query';
 import { drawRectangle } from '../src/kernel/shapes';
 import { emptyTopology, type Topology } from '../src/kernel/types';
@@ -241,5 +242,18 @@ describe('randomized overlapping rectangles', () => {
       t = draw(t, rect).topology;
     }
     expectCoverage(t, rects);
+  });
+});
+
+describe('loose lines crossing in a plane that gets its first face', () => {
+  test('they are split where they cross, so the face is valid (found by stress sweep 6, seed 4057)', () => {
+    // Two lines crossing in the vertical plane z = 0, where there is no face yet: drawn as loose 3D lines.
+    let t = drawLine(emptyTopology(), [0, 100, 0], [1000, 600, 0]).topology;
+    t = drawLine(t, [0, 600, 0], [1000, 100, 0]).topology;
+    expect(t.edges.size).toBe(2);
+    // A rectangle around them in that plane.
+    const r = drawRectangle(t, { faceId: null, normal: [0, 0, 1], corner: [-100, 0, 0], width: 1200, depth: 800 });
+    if (!r.ok) throw new Error(r.error);
+    expect(validate(r.topology)).toEqual([]);
   });
 });

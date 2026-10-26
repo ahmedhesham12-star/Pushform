@@ -288,6 +288,7 @@ Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] unti
 | 2026-10-26 | STL: binary, millimeters, Z up (a quarter turn about red, no mirroring); every group and component placed | Slicers and CAD tools take Z as up; this is the export-time conversion planned in milestone 1. |
 | 2026-10-26 | GLB: our own writer (approved), meters, Y up; the node tree follows the scene and each definition is one mesh shared by its instances; one double-sided default material; checked with the Khronos glTF validator in the tests (dev dependency, Apache-2.0) | Keeps components as instances in other programs; no exporter dependency in the app. |
 | 2026-10-26 | Export code loads on demand; the bundle warning limit is 900 kB until three.js is split out | The main bundle (about 800 kB, three.js about 600 kB of it) passed the old 800 kB limit. |
+| 2026-10-26 | rebuildPlane first splits edges of its plane that cross or pass through a vertex; a stretch checks the shape of every face it touched | Found by the mixed random run: loose lines are not split against each other while their plane has no face, and a hole could be moved out of its face in one jump. |
 | 2026-10-26 | Solid volume in Entity Info for a group or component whose own geometry is closed and consistently oriented; none when it holds other groups or components | Cheap to compute exactly; nested solids are a later step. |
 
 ## SketchUp parity: shortcuts and modifiers
@@ -394,7 +395,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
   - 329 unit tests pass in about 6 s and the production build succeeds. The randomized rectangle and push/pull runs on horizontal faces (`tests/crossings.test.ts`, about 5.5 s) cover seed 11 for 80 steps, 8 seeds for 40 steps, and the 7 seeds that found bugs. Two longer sweeps of 120 seeds at 60 steps each run with `npm run test:stress` (about 85 s, the two sweeps in parallel); they pass and must pass before a milestone is merged into `main`. Boxes built against boxes follow the behavior the product owner specified (repros A and B in `tests/slots.test.ts`): one shared wall, split where the heights differ. The tests confirm that specification, not SketchUp's behavior, which is still unverified. They include randomized overlapping rectangles (grid-aligned and arbitrary), and randomized slots, notches and tabs on a box, with invariant checks after every step and preview-equals-commit checks.
   - Scripted browser checks (not in the repo) covered: overlaps, pockets and push-through, edge selection and erase, the line tool, circles and polygons, amend, autosave, and loading a milestone 1 autosave.
 
-**Milestone 3** (in progress), on branch `milestone-3`. Done through checkpoint (c):
+**Milestone 3** (2026-10-26), on branch `milestone-3`, complete; checkpoints (a), (b) and (c) passed. Not yet merged into `main`:
 - **Scene layer and document version 3**, with version 2 conversion.
 - **Kernel:** extract, rigid transform and merge (explode, copies), solid volume.
 - **Commands:** make group, make component, explode, make unique, rename definition and instance, copy instances, erase instances; nesting.
@@ -409,7 +410,12 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - **Rotate tool (step 8):** protractor on faces or locked axes, center, start and angle with inference, 15 degree snapping, typed angles and amend, Ctrl copy and arrays; loose geometry turns with the same rules as moving; axes inside groups follow the group.
 - **Move tool (step 7):** start and destination with shared inference (Line and Move), typed distance, amend, Ctrl copy, arrays (`x5`, `5x`, `*5`, `/4`), loose geometry that stretches with bending and crossing moves refused.
 - **Checkpoint (a) feedback:** double-click, triple-click, window and crossing selection, Ctrl+A; modifiers on groups and components; Make Group and Make Component on mixed selections.
-- **Verification:** 540 unit tests pass and the build succeeds; the stress sweeps pass, including the new 3 (extract and merge), 4 (scene commands) and 5 (moving loose geometry, 1000 seeds). Scripted browser checks (not in the repo) cover instances, contexts, snapping to another copy, the menu and the panels.
+- **Acceptance test** (`tests/acceptance.test.ts`): a carcass group (800 x 500 x 720 mm, open front, 18 mm panels, made with Offset and Push/Pull), a drawer component placed three times with a move-copy array (one copy, then `x2` typed), three front groups, and the middle drawer with its front pulled open 300 mm; saved and reopened (file and autosave) and compared, edited after reopening, and exported (STL, and GLB through the Khronos validator).
+- **Verification:**
+  - 560 unit tests pass in about 9 s, and the production build succeeds.
+  - `npm run test:stress` passes: six sweeps, 1890 seeds, about 4 minutes. New in milestone 3: 3 (extract and merge), 4 (scene commands), 5 (moving and turning loose geometry, 1000 seeds) and 6 (every milestone 3 command mixed, with amend, undo and redo and a save and open after every step, 200 seeds).
+  - Sweeps 5 and 6 found four kernel bugs, all fixed with the failing seeds pinned in `npm test`: a corner landing on a vertex during a stretch, a hole moved out of its face in one jump, and loose lines crossing in a plane that later got a face.
+  - Scripted browser checks (not in the repo) cover instances and contexts, snapping to other instances and faded geometry, the menu and panels, selection, Move, Rotate, Offset, push to surface, rectangle alignment, files and export.
 
 ### Known limitations
 - The differences from SketchUp listed above.
@@ -421,12 +427,20 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - While moving loose geometry, its own endpoints and midpoints at the original position are still inference targets (its faces and edges are not).
 
 ## Next steps (proposed, not yet approved)
-1. Milestone 4, to be planned: folding moved geometry into planar triangles first; Scale and Flip; arcs; tags; materials; solid tools; hardware import; OBJ and DXF export.
-2. Offset of the edges of a face's holes alone, and SketchUp's other offset cases, if needed.
+1. **Milestone 4**, in this order unless the product owner decides otherwise:
+   1. **Folding** (first): a move or rotation of loose geometry that would bend a face splits it into planar triangles instead of being refused, as SketchUp does; moving edges and corners is how users make sloped and angled parts.
+   2. **Scale and Flip**: the document format already carries a scale per instance (fixed at [1, 1, 1] for now); mirrored components, such as left and right doors, need it.
+   3. **Arcs** (the 2-point Arc, A), as curves like circles.
+   4. **Tags** (layers) for showing and hiding parts.
+   5. **Materials** (the Paint Bucket, B), carried into GLB export.
+   6. **Solid tools**: union, subtract and intersect for groups and components that are solids, and solid volume for groups holding other groups.
+   7. **Hardware import**: manufacturer models (STEP or glTF) placed as components.
+   8. **OBJ and DXF export.**
+2. A stretch that lands a point on another point merges the two instead of being refused.
 3. Kernel: intersecting faces of different solids, and confirming the box-against-box result in SketchUp (product owner).
 4. Inference: parallel, perpendicular and "from point", and a reverse-face command.
 5. Arabic locale: catalog, an Arabic-capable font, and an RTL layout pass.
-6. Tooling: ESLint and Prettier, browser end-to-end tests in CI, and code-splitting three.js.
+6. Tooling: ESLint and Prettier, browser end-to-end tests in CI, and code-splitting three.js (the main bundle is about 800 kB).
 7. MCP bridge: expose the command layer to external AI clients (bring-your-own, local).
    - Read-only query commands so external callers can find geometry: list faces with id, center, normal, size and area. Today these queries exist only as kernel functions used inside the app.
    - Every face-creating command now returns the ids of the faces it creates, including push/pull walls and bottoms (done in milestone 2).

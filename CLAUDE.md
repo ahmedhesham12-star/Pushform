@@ -7,7 +7,7 @@ Browser-based push/pull 3D modeler. TypeScript (strict), Vite, three.js, Vitest,
 - `npm run dev`: dev server (http://localhost:5173)
 - `npm test`: unit and architecture tests (Vitest, run once). The test scripts start Vitest through `scripts/vitest.mjs` from the canonical project path; with a lowercase drive letter (d:\) every test file failed on Windows.
 - `npm run test:watch`: tests in watch mode
-- `npm run test:stress`: slow randomized sweeps in `tests/stress` (about 1.5 minutes; not part of `npm test`)
+- `npm run test:stress`: slow randomized sweeps in `tests/stress` (about 4 minutes; not part of `npm test`)
 - `npm run build`: type-check (`tsc --noEmit`), then production build into `dist/`
 - `npm run preview`: serve the production build
 - `npm run typecheck`: type-check only

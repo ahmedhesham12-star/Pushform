@@ -18,6 +18,7 @@ export type EntityInfoData =
       volume: string | null;
     }
   | { kind: 'dimension'; length: string }
+  | { kind: 'text'; text: string }
   | {
       kind: 'selection';
       /** How many items are selected. */
@@ -71,6 +72,10 @@ export class EntityInfo {
       case 'dimension':
         this.row(t('info.type'), t('info.dimension'));
         this.row(t('info.length'), data.length);
+        break;
+      case 'text':
+        this.row(t('info.type'), t('info.text'));
+        this.row(t('info.textValue'), data.text);
         break;
       case 'selection':
         this.row(t('info.selected'), data.total);

@@ -58,6 +58,7 @@ import {
 } from './tools';
 import { ContextMenu, type MenuEntry } from './ui/contextMenu';
 import { EntityInfo, type EntityInfoData } from './ui/entityInfo';
+import { TextEditor } from './ui/textEditor';
 import { Outliner } from './ui/outliner';
 import { el } from './ui/dom';
 import { ICONS } from './ui/icons';
@@ -112,6 +113,7 @@ export class App {
   private readonly unitsMenu: UnitsMenu;
   private readonly intro = new Intro();
   private readonly menu = new ContextMenu();
+  private readonly textEditor: TextEditor;
   /** The open file: its name without extension (null until saved or opened) and where Save writes. */
   private fileName: string | null;
   private fileHandle: FileHandle | null = null;
@@ -185,6 +187,7 @@ export class App {
       { id: 'tape', label: 'tool.tape', icon: 'tape', ...key('tape'), group: true },
       { id: 'protractor', label: 'tool.protractor', icon: 'protractor', ...key('protractor') },
       { id: 'dimension', label: 'tool.dimension', icon: 'dimension', ...key('dimension') },
+      { id: 'text', label: 'tool.text', icon: 'text', ...key('text') },
       { id: 'orbit', label: 'tool.orbit', icon: 'orbit', ...key('orbit'), group: true },
       { id: 'pan', label: 'tool.pan', icon: 'pan', ...key('pan') },
     ];
@@ -235,6 +238,7 @@ export class App {
 
     root.append(top, this.toolbar.element, view, panel, footer, this.menu.element);
     this.viewport = new Viewport(view);
+    this.textEditor = new TextEditor(view);
     this.viewport.setGuidesVisible(loadViewSettings().guides);
 
     this.tools = createTools(this.toolContext());
@@ -335,7 +339,8 @@ export class App {
     const count = (n: number) => formatNumber(n);
     if (annotations.size === 1 && !faces.size && !edges.size && !instances.size && !guides.size) {
       const a = pathDefinition(doc.scene, this.context)?.annotations.get([...annotations][0]!);
-      if (a) return { kind: 'dimension', length: formatLength(dimensionLength(a), doc.units) };
+      if (a?.kind === 'dimension') return { kind: 'dimension', length: formatLength(dimensionLength(a), doc.units) };
+      if (a) return { kind: 'text', text: a.text };
     }
     if (instances.size) {
       const id = [...instances][0]!;
@@ -461,6 +466,7 @@ export class App {
       contextPath: () => this.context,
       setMeasurement: (label, value) => this.measure.set(label, value),
       setMeasurementLabel: (label) => this.measure.setLabel(label),
+      editText: (place, text, done) => this.textEditor.open(place, text, done),
       hint: () => {
         this.status.hint();
         this.syncMeasureEditable();
@@ -1016,8 +1022,8 @@ export class App {
   private bindKeyboard(): void {
     window.addEventListener('keydown', (e) => {
       if (e.target === this.measure.input) return;
-      // Leave keys alone while typing a name in the panels.
-      if (e.target instanceof HTMLInputElement) return;
+      // Leave keys alone while typing a name in the panels or a text in place.
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       // The open menu handles its own keys.
       if (this.menu.isOpen) return;
       // Ctrl (Option on a Mac) pressed on its own goes to the tool: Move toggles copying with it.

@@ -1,5 +1,15 @@
 import type { CommandRegistry } from '../registry';
-import { addDimension, type AddDimensionInput, type AnnotationOutput } from './annotations';
+import {
+  addDimension,
+  addScreenText,
+  addText,
+  editText,
+  type AddDimensionInput,
+  type AddScreenTextInput,
+  type AddTextInput,
+  type AnnotationOutput,
+  type EditTextInput,
+} from './annotations';
 import { clearModel, type ClearModelInput } from './clearModel';
 import { drawLine, type DrawLineInput, type DrawLineOutput } from './drawLine';
 import { drawRectangle, type DrawRectangleInput, type DrawRectangleOutput } from './drawRectangle';
@@ -87,6 +97,9 @@ declare module '../types' {
     'core.addGuideAngle': { input: AddGuideAngleInput; output: GuideOutput };
     'core.deleteGuides': { input: DeleteGuidesInput; output: { count: number } };
     'core.addDimension': { input: AddDimensionInput; output: AnnotationOutput };
+    'core.addText': { input: AddTextInput; output: AnnotationOutput };
+    'core.addScreenText': { input: AddScreenTextInput; output: AnnotationOutput };
+    'core.editText': { input: EditTextInput; output: Record<string, never> };
   }
 }
 
@@ -117,11 +130,17 @@ export function registerCoreCommands(registry: CommandRegistry): void {
   registry.register(addGuideAngle);
   registry.register(deleteGuides);
   registry.register(addDimension);
+  registry.register(addText);
+  registry.register(addScreenText);
+  registry.register(editText);
 }
 
 export type {
   AddDimensionInput,
+  AddScreenTextInput,
+  AddTextInput,
   AnnotationOutput,
+  EditTextInput,
   AddGuideAngleInput,
   AddGuideLineInput,
   AddGuideOffsetInput,

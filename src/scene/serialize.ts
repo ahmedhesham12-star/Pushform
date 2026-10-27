@@ -16,12 +16,10 @@ export interface SerializedAnchor {
   point: number[];
   ref?: { path: string[]; definition: string; a: string; b?: string; t?: number };
 }
-export interface SerializedAnnotation {
-  kind: 'dimension';
-  start: SerializedAnchor;
-  end: SerializedAnchor;
-  offset: number[];
-}
+export type SerializedAnnotation =
+  | { kind: 'dimension'; start: SerializedAnchor; end: SerializedAnchor; offset: number[] }
+  | { kind: 'text'; anchor: SerializedAnchor; leader: number[]; text: string }
+  | { kind: 'screenText'; position: number[]; text: string };
 
 /**
  * The scene of a version 3 or 4 document: definitions, each with its topology
@@ -65,7 +63,7 @@ export function serializeScene(s: Scene): SerializedScene {
     }
     if (d.annotations.size) {
       const annotations: Record<string, SerializedAnnotation> = {};
-      for (const [aid, a] of d.annotations) annotations[aid] = { kind: a.kind, start: saveAnchor(a.start), end: saveAnchor(a.end), offset: [...a.offset] };
+      for (const [aid, a] of d.annotations) annotations[aid] = saveAnnotation(a);
       definitions[id].annotations = annotations;
     }
   }
@@ -76,6 +74,12 @@ function saveAnchor(a: Anchor): SerializedAnchor {
   if (!a.ref) return { point: [...a.point] };
   const { path, definitionId, a: va, b, t } = a.ref;
   return { point: [...a.point], ref: { path: [...path], definition: definitionId, a: va, ...(b === undefined ? {} : { b, t: t ?? 0.5 }) } };
+}
+
+function saveAnnotation(a: Annotation): SerializedAnnotation {
+  if (a.kind === 'dimension') return { kind: a.kind, start: saveAnchor(a.start), end: saveAnchor(a.end), offset: [...a.offset] };
+  if (a.kind === 'text') return { kind: a.kind, anchor: saveAnchor(a.anchor), leader: [...a.leader], text: a.text };
+  return { kind: a.kind, position: [...a.position], text: a.text };
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -113,10 +117,21 @@ function anchor(v: unknown): Anchor | null {
 }
 
 function annotation(v: unknown): Annotation | null {
-  if (!isObject(v) || v.kind !== 'dimension' || !numbers(v.offset, 3)) return null;
-  const start = anchor(v.start);
-  const end = anchor(v.end);
-  return start && end ? { kind: 'dimension', start, end, offset: v.offset as unknown as [number, number, number] } : null;
+  if (!isObject(v)) return null;
+  if (v.kind === 'dimension' && numbers(v.offset, 3)) {
+    const start = anchor(v.start);
+    const end = anchor(v.end);
+    return start && end ? { kind: 'dimension', start, end, offset: v.offset as unknown as [number, number, number] } : null;
+  }
+  if (typeof v.text !== 'string') return null;
+  if (v.kind === 'text' && numbers(v.leader, 3)) {
+    const at = anchor(v.anchor);
+    return at ? { kind: 'text', anchor: at, leader: v.leader as unknown as [number, number, number], text: v.text } : null;
+  }
+  if (v.kind === 'screenText' && numbers(v.position, 2) && v.position.every((x) => x >= 0 && x <= 1)) {
+    return { kind: 'screenText', position: [v.position[0]!, v.position[1]!], text: v.text };
+  }
+  return null;
 }
 
 /** Validate and load a version 3 or 4 scene. Returns null for invalid data. */

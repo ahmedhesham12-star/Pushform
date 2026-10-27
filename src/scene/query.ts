@@ -93,17 +93,23 @@ export interface WorldAnnotation {
   readonly annotationId: AnnotationId;
   /** The annotation in world coordinates. */
   readonly annotation: Annotation;
-  /** What a dimension shows: its length in its own definition's mm. */
-  readonly length: number;
+  /** What a dimension shows: its length in its own definition's mm; null for text. */
+  readonly length: number | null;
   readonly path: readonly InstanceId[];
 }
 
-/** The annotations of every placement, in world coordinates. */
+/** The annotations of every placement, in world coordinates. Screen text shows once, with its definition's first placement. */
 export function worldAnnotations(s: Scene): WorldAnnotation[] {
   const out: WorldAnnotation[] = [];
+  const onScreen = new Set<string>();
   for (const p of placements(s)) {
     for (const [annotationId, a] of p.definition.annotations) {
-      out.push({ annotationId, annotation: transformAnnotation(p.world, a), length: dimensionLength(a), path: p.path });
+      if (a.kind === 'screenText') {
+        if (onScreen.has(annotationId)) continue;
+        onScreen.add(annotationId);
+      }
+      const length = a.kind === 'dimension' ? dimensionLength(a) : null;
+      out.push({ annotationId, annotation: transformAnnotation(p.world, a), length, path: p.path });
     }
   }
   return out;

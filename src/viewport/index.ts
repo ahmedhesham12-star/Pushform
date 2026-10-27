@@ -10,7 +10,7 @@ export {
   type AnnotationHit,
 } from './viewport';
 export { Frame } from './frame';
-export { dimensionLine } from './annotationsView';
+export { annotationSegment, dimensionLine, labelPoint, type LabelBox } from './annotationsView';
 export type { Highlight, EdgeHighlight } from './modelView';
 export type { ShownGuide } from './guidesView';
 export type { MarkerKind } from './marker';

@@ -50,6 +50,7 @@ export const ICONS = {
     '<path d="M4 9v9M20 9v9M4 13.5h16"/><path d="m5.5 15 3-3M15.5 15l3-3"/><path d="M9 7.5h6" stroke-dasharray="1.6 1.4"/>',
     'stroke-linecap="round"',
   ),
+  text: svg('<path d="M4 20 10 14"/><circle cx="4" cy="20" r="1" fill="currentColor"/><path d="M10 5h10v9H10zM12.5 8h5M12.5 11h3.5"/>', 'stroke-linejoin="round" stroke-linecap="round"'),
   orbit: svg(
     '<ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M12 3a4 9 0 0 1 0 18"/><path d="m18.5 6.2 2 2.4-3 .6"/>',
     'stroke-linecap="round" stroke-linejoin="round"',

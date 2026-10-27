@@ -17,6 +17,7 @@ export type ToolId =
   | 'tape'
   | 'protractor'
   | 'dimension'
+  | 'text'
   | 'orbit'
   | 'pan';
 
@@ -67,6 +68,12 @@ export interface ToolContext {
   setMeasurement(label: string, value: string): void;
   /** Change the measurements box label and keep its value. */
   setMeasurementLabel(label: string): void;
+  /**
+   * Write a text in place over the canvas (canvas pixels: centered on the
+   * point, or hanging from it with `corner`). `done` gets the text, or null
+   * when it was dropped or left empty.
+   */
+  editText(place: { x: number; y: number; corner?: boolean }, text: string, done: (text: string | null) => void): void;
   /** Re-show the active tool's status hint. */
   hint(): void;
   flash(message: string, isError?: boolean): void;

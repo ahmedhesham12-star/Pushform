@@ -37,7 +37,7 @@ import {
   type WorldGuide,
 } from '../scene';
 import { DEFAULT_UNIT_SETTINGS, formatLength, gridStep, isImperial, MM_PER, type UnitSettings } from '../units';
-import { AnnotationsView, dimensionLine } from './annotationsView';
+import { annotationSegment, AnnotationsView, labelPoint, type LabelBox } from './annotationsView';
 import { OrbitCamera } from './camera';
 import { toPoint, toVector } from './convert';
 import { Frame } from './frame';
@@ -144,7 +144,7 @@ export interface GuideHit {
 /** A dimension near the pointer: on its label, or close to its lines. */
 export interface AnnotationHit {
   annotationId: string;
-  /** The middle of its dimension line (world). */
+  /** Where its label is (world); the camera target for screen text. */
   point: Vector3;
   path: readonly InstanceId[];
   relation: 'context' | 'inside' | 'outside';
@@ -244,6 +244,7 @@ export class Viewport {
         this.camera.camera,
         this.camera.target,
         (p) => this.picker.toScreen(p),
+        this.canvasSize(),
         (p) => !this.hidden(p),
       );
       this.renderer.render(this.scene, this.camera.camera);
@@ -385,7 +386,7 @@ export class Viewport {
         path: a.path,
         faded: contextRelation(a.path, this.context) === 'outside',
         annotation: a.annotation,
-        text: formatLength(a.length, this.units),
+        text: a.annotation.kind === 'dimension' ? formatLength(a.length ?? 0, this.units) : a.annotation.text,
       })),
     );
     this.requestRender();
@@ -397,9 +398,26 @@ export class Viewport {
     this.requestRender();
   }
 
+  /** The canvas size in CSS pixels, as canvas coordinates use it. */
+  canvasSize(): { width: number; height: number } {
+    const r = this.canvas.getBoundingClientRect();
+    return { width: r.width, height: r.height };
+  }
+
+  /** Where an annotation's label is drawn (canvas pixels), or undefined when it is not shown. */
+  annotationLabel(id: string): LabelBox | undefined {
+    return this.annotationsView.labelBoxes().get(id);
+  }
+
+  /** Hide one annotation's label while its text is edited in its place; null shows it again. */
+  hideAnnotationLabel(id: string | null): void {
+    this.annotationsView.hideLabel(id);
+  }
+
   /**
-   * The dimension under the pointer: its label, or its lines within
-   * EDGE_PICK_PX. Scope 'context' looks only at the editing context's.
+   * The dimension or text under the pointer: its label, or its dimension line
+   * or leader within EDGE_PICK_PX. Scope 'context' looks only at the editing
+   * context's.
    */
   pickAnnotation(scope: 'context' | 'all' = 'context'): AnnotationHit | null {
     const { x, y } = this.picker.mouse;
@@ -408,8 +426,7 @@ export class Viewport {
     for (const a of this.annotationList) {
       const relation = contextRelation(a.path, this.context);
       if (scope === 'context' && relation !== 'context') continue;
-      const { from, to } = dimensionLine(a.annotation);
-      const point = from.clone().lerp(to, 0.5);
+      const point = labelPoint(a.annotation) ?? this.camera.target.clone();
       const box = boxes.get(a.annotationId);
       const hit = (px: number, onLabel: boolean) => {
         if (!best || px < best.px) best = { px, hit: { annotationId: a.annotationId, point, path: a.path, relation, onLabel } };
@@ -418,6 +435,9 @@ export class Viewport {
         hit(0, true);
         continue;
       }
+      const segment = annotationSegment(a.annotation);
+      if (!segment) continue;
+      const [from, to] = segment;
       const s = this.picker.toScreen(from);
       const e = this.picker.toScreen(to);
       if (s.z > 1 || e.z > 1) continue;

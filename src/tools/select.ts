@@ -15,7 +15,7 @@ import {
 } from '../kernel';
 import { applyPoint, compose, definitionBounds, pathDefinition, transformAnnotation, worldEdges, type InstanceId } from '../scene';
 import { formatArea, formatLength } from '../units';
-import { dimensionLine, type Picked } from '../viewport';
+import { annotationSegment, type Picked } from '../viewport';
 import { isMac, selectionMode, type SelectionMode } from './shortcuts';
 import { entityOf, sameEntity, type Selection, type Tool, type ToolContext } from './tool';
 import { dragRect, windowHits, type ScreenPoint, type WindowItem } from './windowSelect';
@@ -66,7 +66,7 @@ const withCurves = (m: Model, edges: Iterable<string>) => new Set([...edges].fla
  * - click selects a face, an edge (a whole curve), a guide, a dimension, or
  *   a group or component;
  * - double-click a face for the face and its edges, an edge for the edge and
- *   its faces, a group or component to edit it;
+ *   its faces, a group or component to edit it, a text to write over it;
  * - triple-click for everything connected to the face or edge;
  * - drag a window: left to right selects what is fully inside, right to left
  *   (crossing) also what it touches; hidden items are included.
@@ -126,8 +126,26 @@ export function createSelectTool(ctx: ToolContext): Tool {
     }
   };
 
-  /** Double click: a face with its edges, an edge with its faces; a group or component opens. */
+  /** Write over a text in place; one undo step when it changed. */
+  const editText = (id: string) => {
+    const vp = ctx.viewport;
+    const definitionId = vp.frame.definitionId;
+    const a = pathDefinition(ctx.session.doc.scene, ctx.contextPath())?.annotations.get(id);
+    const box = vp.annotationLabel(id);
+    if (!a || a.kind === 'dimension' || !box) return false;
+    vp.hideAnnotationLabel(id);
+    ctx.editText({ x: box.x, y: box.y }, a.text, (text) => {
+      vp.hideAnnotationLabel(null);
+      if (text === null) return;
+      const r = ctx.session.execute('core.editText', { definitionId, annotationId: id, text });
+      if (!r.ok) ctx.flashError(r.error);
+    });
+    return true;
+  };
+
+  /** Double click: a face with its edges, an edge with its faces; a group or component opens; a text is edited. */
   const doubleClick = (hit: Picked | null, mode: SelectionMode) => {
+    if (hit?.kind === 'annotation' && editText(hit.id)) return;
     if (!hit || hit.kind === 'outside' || hit.kind === 'guide' || hit.kind === 'annotation') return click(hit, mode);
     if (hit.kind === 'instance') return ctx.openContext(hit.id);
     const m = model();
@@ -201,12 +219,17 @@ export function createSelectTool(ctx: ToolContext): Tool {
         guides.push({ id, points: [a, b], segments: [[a, b] as const] });
       }
     }
-    // A dimension is its dimension line.
+    // A dimension is its dimension line, leader text its leader, screen text its label.
     const annotations: WindowItem[] = [];
     for (const [id, a] of pathDefinition(scene, context)?.annotations ?? []) {
-      const { from, to } = dimensionLine(transformAnnotation(frame.world, a));
-      const [p, q] = [screen(from), screen(to)];
-      annotations.push({ id, points: [p, q], segments: [[p, q] as const] });
+      const segment = annotationSegment(transformAnnotation(frame.world, a));
+      if (segment) {
+        const [p, q] = segment.map(screen) as [ScreenPoint, ScreenPoint];
+        annotations.push({ id, points: [p, q], segments: [[p, q] as const] });
+        continue;
+      }
+      const box = vp.annotationLabel(id);
+      if (box) annotations.push({ id, points: [{ x: box.x, y: box.y, visible: true }], segments: [] });
     }
     return { faces, edges, instances, guides, annotations };
   };

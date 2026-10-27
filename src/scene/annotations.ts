@@ -1,9 +1,10 @@
 /**
- * Annotations: dimensions (milestone 4) a definition holds next to its
- * geometry, in its local mm. Their ends are anchors, attached to a vertex or
- * to a point along an edge of the definition's geometry or of a nested
- * group or component, so they follow when that geometry moves. Like guides,
- * they never split or join geometry.
+ * Annotations: dimensions and text (milestone 4) a definition holds next to
+ * its geometry, in its local mm. Dimension ends and the point a text's
+ * leader points at are anchors, attached to a vertex or to a point along an
+ * edge of the definition's geometry or of a nested group or component, so
+ * they follow when that geometry moves. Like guides, they never split or
+ * join geometry.
  */
 import { edgeThrough, snapPoint, VERTEX_TOLERANCE, vertexAt, vertexPoint, type Point3, type Vec3 } from '../kernel';
 import { newId, placedInstances, type Definition, type DefinitionId, type InstanceId, type Scene } from './scene';
@@ -40,7 +41,25 @@ export interface Dimension {
   readonly offset: Vec3;
 }
 
-export type Annotation = Dimension;
+/** Text with a leader line from an anchor; the text sits at the anchor plus `leader`. */
+export interface LeaderText {
+  readonly kind: 'text';
+  readonly anchor: Anchor;
+  readonly leader: Vec3;
+  readonly text: string;
+}
+
+/**
+ * Text fixed on the screen, not in the model: `position` is the fraction of
+ * the view's width and height from its top left corner to the text's.
+ */
+export interface ScreenText {
+  readonly kind: 'screenText';
+  readonly position: readonly [number, number];
+  readonly text: string;
+}
+
+export type Annotation = Dimension | LeaderText | ScreenText;
 
 /** The local space at the end of `path`, below a definition: its transform into that definition and its definition id. */
 function below(s: Scene, from: DefinitionId, path: readonly InstanceId[]): { transform: Transform; definitionId: DefinitionId } | null {
@@ -119,11 +138,10 @@ export function followAnchors(s: Scene): Scene {
     if (!d.annotations.size) continue;
     let annotations: Map<AnnotationId, Annotation> | null = null;
     for (const [id, a] of d.annotations) {
-      const start = follow(s, d.id, a.start);
-      const end = follow(s, d.id, a.end);
-      if (start === a.start && end === a.end) continue;
+      const next = withAnchors(a, (x) => follow(s, d.id, x));
+      if (next === a) continue;
       annotations ??= new Map(d.annotations);
-      annotations.set(id, { ...a, start, end });
+      annotations.set(id, next);
     }
     if (!annotations) continue;
     definitions ??= new Map(s.definitions);
@@ -136,10 +154,34 @@ export function followAnchors(s: Scene): Scene {
 export const dimensionLength = (d: Dimension) =>
   Math.hypot(d.end.point[0] - d.start.point[0], d.end.point[1] - d.start.point[1], d.end.point[2] - d.start.point[2]);
 
+/** An annotation with each anchor mapped; the same annotation when none changed. */
+function withAnchors(a: Annotation, map: (x: Anchor) => Anchor): Annotation {
+  if (a.kind === 'dimension') {
+    const [start, end] = [map(a.start), map(a.end)];
+    return start === a.start && end === a.end ? a : { ...a, start, end };
+  }
+  if (a.kind === 'text') {
+    const anchor = map(a.anchor);
+    return anchor === a.anchor ? a : { ...a, anchor };
+  }
+  return a;
+}
+
 /** An annotation placed with a transform (into a parent's space, or the world). References are kept. */
 export function transformAnnotation(t: Transform, a: Annotation): Annotation {
-  const anchor = (x: Anchor): Anchor => ({ ...x, point: snapPoint(applyPoint(t, x.point)) });
-  return { ...a, start: anchor(a.start), end: anchor(a.end), offset: applyVector(t, a.offset) };
+  const moved = withAnchors(a, (x) => ({ ...x, point: snapPoint(applyPoint(t, x.point)) }));
+  if (moved.kind === 'dimension') return { ...moved, offset: applyVector(t, moved.offset) };
+  if (moved.kind === 'text') return { ...moved, leader: applyVector(t, moved.leader) };
+  return moved;
+}
+
+/** Change the text of a text annotation; the same scene when it is not one or the text is unchanged. */
+export function setAnnotationText(s: Scene, definitionId: DefinitionId, id: AnnotationId, text: string): Scene {
+  const d = s.definitions.get(definitionId);
+  const a = d?.annotations.get(id);
+  if (!d || !a || a.kind === 'dimension' || a.text === text) return s;
+  const annotations = new Map(d.annotations).set(id, { ...a, text });
+  return { ...s, definitions: new Map(s.definitions).set(d.id, { ...d, annotations }) };
 }
 
 /** Add an annotation to a definition; returns its id and the new scene. */

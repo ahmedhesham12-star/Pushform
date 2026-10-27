@@ -3,6 +3,7 @@ import { createEraseTool } from './erase';
 import { createPolygonTool } from './polygon';
 import { createDimensionTool } from './dimension';
 import { createProtractorTool } from './protractor';
+import { createTextTool } from './text';
 import { createLineTool } from './line';
 import { createMoveTool } from './move';
 import { createOffsetTool } from './offset';
@@ -35,6 +36,7 @@ export function createTools(ctx: ToolContext): Record<ToolId, Tool> {
     tape: createTapeTool(ctx),
     protractor: createProtractorTool(ctx),
     dimension: createDimensionTool(ctx),
+    text: createTextTool(ctx),
     rotate: createRotateTool(ctx),
     line: createLineTool(ctx),
     rectangle: createRectangleTool(ctx),

@@ -193,7 +193,7 @@ Plugins call `registry.register(def)` and extend the typed `CommandMap` through 
 - New tools get it by declaring their fields.
 
 ### Document format
-`.pushform` files are this JSON, version 4 (milestone 4): a scene of definitions, each holding a version 2 topology model, the instances placed in them, its guides and its dimensions. Version 3 (milestone 3) is the same without guides and dimensions and still opens.
+`.pushform` files are this JSON, version 4 (milestone 4): a scene of definitions, each holding a version 2 topology model, the instances placed in them, its guides and its annotations (dimensions and text). Version 3 (milestone 3) is the same without guides and annotations and still opens.
 ```
 { format: 'pushform', version: 4, units: { unit, precision },
   scene: { root: definition id, next,
@@ -205,7 +205,9 @@ Plugins call `registry.register(def)` and extend the typed `CommandMap` through 
                                 guides?: { id: { kind: 'line', point, direction }
                                               | { kind: 'point', point } },
                                 annotations?: { id: { kind: 'dimension', start: anchor, end: anchor,
-                                                      offset: [x, y, z] } } } } } }
+                                                      offset: [x, y, z] }
+                                                  | { kind: 'text', anchor, leader: [x, y, z], text }
+                                                  | { kind: 'screenText', position: [x, y], text } } } } } }
 
 anchor: { point: [x, y, z],
           ref?: { path: [instance ids], definition, a: vertex id, b?: vertex id, t?: 0..1 } }
@@ -216,7 +218,7 @@ model: { kind: 'topology', version: 2, next,
          faces: { id: { normal, outer: [vertex ids], holes: [[vertex ids]] } },
          curves: { id: { kind, edges, segments, center, normal, radius } } }
 ```
-Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] until Flip and Scale arrive in milestone 4, instances only of existing non-root definitions, no nesting cycles, guide lines with a non-zero direction (stored as a unit vector), dimension anchors with a point and, when attached, a reference whose fraction lies strictly between 0 and 1. **Version 2 documents** (milestone 2) load as the root definition; the conversion is tested against a milestone 2 autosave (`tests/fixtures/milestone2-autosave.json`).
+Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] until Flip and Scale arrive in milestone 4, instances only of existing non-root definitions, no nesting cycles, guide lines with a non-zero direction (stored as a unit vector), dimension and text anchors with a point and, when attached, a reference whose fraction lies strictly between 0 and 1, screen text positions between 0 and 1. **Version 2 documents** (milestone 2) load as the root definition; the conversion is tested against a milestone 2 autosave (`tests/fixtures/milestone2-autosave.json`).
 
 **Version 1 documents** (milestone 1 autosaves, face-loop models) are converted on load:
 - Corners at the same position become one shared vertex, and every loop side becomes a shared edge.
@@ -313,6 +315,8 @@ Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] unti
 | 2026-10-27 | The command session brings every anchor up to date after each command that changes the document (previews and amends too), so dimensions follow geometry and undo snapshots hold both. A reference that no longer resolves (made into a group, exploded, rebuilt) attaches again by position, first to a vertex then to an edge; with nothing there the dimension stays where it was, detached | SketchUp 2023 keeps a dimension whose geometry is erased, detached, with its last value (see "Verified in SketchUp"). References name the definition at the end of their path, because ids only mean something within one model. |
 | 2026-10-27 | `core.addDimension` takes two points and an offset; each end attaches to the vertex or edge at its point (the context's own geometry first, then nested groups and components). `core.erase` takes `annotationIds`; exploding moves a group's dimensions up | Tools, plugins and MCP clients pass points, not ids; the command finds what they touch. |
 | 2026-10-27 | The Dimension tool: two points, or a click along an edge for its ends, then the pointer places the line. It lies in the plane of the face under the pointer when that face holds the measured line, otherwise in the axis plane through the line that faces the view. Values are DOM labels over the canvas (file units and precision), hidden behind faces; lines are drawn like edges, with tick marks | A screen-direction rule cannot tell the planes apart (every direction square to the line projects onto the same screen normal); hovering a face is a direct way to choose. |
+| 2026-10-27 | Text: leader text (`core.addText`: a point, which attaches like a dimension end, a leader vector and the text) and screen text (`core.addScreenText`: a position as fractions of the view from its top left corner, held by the open context's definition and shown once however many times it is placed). `core.editText` changes either; writing the same text is no change, so no undo step | Screen text belongs to the open context's definition (approved default). Text is the user's content, so it does not go through `t()`. |
+| 2026-10-27 | The Text tool starts a leader with what it points at: a point's coordinates in red, green, blue (our x, -z, y), an edge's length, a face's area, a group's or component's name; a first click on empty space places screen text. The text is written in place in a field over the canvas: Enter or leaving it finishes, Shift+Enter starts a line, Escape drops it. Double-click with Select writes over a text | SketchUp's defaults as far as we know them (listed under "Not verified"). The field takes the focus after the pointer press, whose default action would otherwise take it away again and finish the text at once. |
 
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
@@ -493,6 +497,8 @@ Checked on 2026-10-26 in SketchUp 2023 (Windows), by scripts run through the Rub
    - Rounded corner workflow: draw a rectangle, draw tangent arcs at its corners, erase the corner edges, and get one face that push/pulls into a rounded panel.
 
 Checkpoints for the product owner's manual testing: (a) after folding, Tape Measure and Protractor; (b) after Dimensions and Text; (c) after Scale, Flip and arcs.
+
+Progress (2026-10-27): checkpoint (a) passed. Done since: dimensions (step 5) and text (step 6); ready for checkpoint (b). 648 unit tests pass and the build succeeds.
 
 Progress (2026-10-26): ready for checkpoint (a). Done: folding (with single corners moved by Move), guides (data, drawing, selection, inference, View menu), Tape Measure and the two-column tool bar, Protractor. 622 unit tests pass and the build succeeds; stress sweeps 5 (1500 seeds, with corners) and 6 pass after folding. The mixed random run gets folding, scale, flip and arcs in step 13.
 

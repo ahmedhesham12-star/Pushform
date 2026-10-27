@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { createSession, definitionModel, documentFromText, documentToText, type CommandSession } from '../src/commands';
 import { listEdges, listFaces, vertexAt, edgeThrough, vertexPoint } from '../src/kernel';
-import { dimensionLength, getDefinition, worldAnnotations, type Dimension } from '../src/scene';
+import { dimensionLength, getDefinition, worldAnnotations, type Dimension, type LeaderText } from '../src/scene';
 
 /* Dimensions: anchored to geometry, they follow it through every command. All sizes in mm. */
 
@@ -21,7 +21,7 @@ const top = (s: CommandSession, definitionId?: string) =>
   listFaces(definitionModel(s.doc, definitionId)!).find((f) => f.normal[1] > 0.9 && f.outer[0]![1] > 0)!.id;
 
 const dimension = (s: CommandSession, id: string, definitionId?: string): Dimension =>
-  getDefinition(s.doc.scene, definitionId ?? s.doc.scene.rootId)!.annotations.get(id)!;
+  getDefinition(s.doc.scene, definitionId ?? s.doc.scene.rootId)!.annotations.get(id)! as Dimension;
 
 const lengthOf = (s: CommandSession, id: string, definitionId?: string) => dimensionLength(dimension(s, id, definitionId));
 
@@ -132,7 +132,7 @@ describe('dimension commands', () => {
     ok(s.execute('core.explode', { instanceIds: [g.instanceId] }));
     const root = getDefinition(s.doc.scene, s.doc.scene.rootId)!;
     expect(root.annotations.size).toBe(1);
-    const [id, d] = [...root.annotations][0]!;
+    const [id, d] = [...root.annotations][0]! as [string, Dimension];
     expect(d.start.point).toEqual([0, 0, 1000]);
     expect(d.start.ref).toMatchObject({ path: [], definitionId: s.doc.scene.rootId });
     ok(s.execute('core.pushPull', { faceId: top(s), distance: 100 }));
@@ -150,7 +150,7 @@ describe('dimension commands', () => {
     const world = worldAnnotations(s.doc.scene);
     expect(world).toHaveLength(3);
     const inCopy = world.find((w) => w.path[0] === copy.instanceIds[0])!;
-    expect(inCopy.annotation.start.point).toEqual([2000, 0, 0]);
+    expect((inCopy.annotation as Dimension).start.point).toEqual([2000, 0, 0]);
     expect(inCopy.length).toBe(500);
   });
 
@@ -206,5 +206,81 @@ describe('dimension commands', () => {
     ok(s.execute('core.addDimension', { start: [0, 0, 0], end: [800, 0, 0], offset: [0, 0, -100] }));
     ok(s.execute('core.clearModel', {}));
     expect(getDefinition(s.doc.scene, s.doc.scene.rootId)!.annotations.size).toBe(0);
+  });
+});
+
+describe('text commands', () => {
+  test('leader text on a vertex follows it; editing changes what it says, in one undo step', () => {
+    const s = createSession();
+    const face = box(s);
+    const { annotationId } = ok(s.execute('core.addText', { point: [0, 500, 0], leader: [-200, 200, 0], text: 'Corner' }));
+    const text = () => getDefinition(s.doc.scene, s.doc.scene.rootId)!.annotations.get(annotationId) as LeaderText;
+    expect(text().anchor.ref).toMatchObject({ path: [], definitionId: s.doc.scene.rootId });
+    ok(s.execute('core.pushPull', { faceId: face, distance: 100 }));
+    expect(text().anchor.point).toEqual([0, 600, 0]);
+    expect(text().leader).toEqual([-200, 200, 0]);
+    const before = s.doc;
+    ok(s.execute('core.editText', { annotationId, text: 'Corner\nof the box' }));
+    expect(text().text).toBe('Corner\nof the box');
+    // Writing the same text again changes nothing, so there is no undo step for it.
+    const r = s.execute('core.editText', { annotationId, text: 'Corner\nof the box' });
+    expect(r.ok && r.changed).toBe(false);
+    s.undo();
+    expect(s.doc).toBe(before);
+    expect(text().text).toBe('Corner');
+  });
+
+  test('text on a face stays where it was put', () => {
+    const s = createSession();
+    const face = box(s);
+    const { annotationId } = ok(s.execute('core.addText', { point: [500, 500, 300], leader: [0, 300, 0], text: '0.60 m²' }));
+    expect((getDefinition(s.doc.scene, s.doc.scene.rootId)!.annotations.get(annotationId) as LeaderText).anchor.ref).toBeUndefined();
+    ok(s.execute('core.pushPull', { faceId: face, distance: 100 }));
+    expect((getDefinition(s.doc.scene, s.doc.scene.rootId)!.annotations.get(annotationId) as LeaderText).anchor.point).toEqual([500, 500, 300]);
+  });
+
+  test('screen text shows once, even in a component placed twice', () => {
+    const s = createSession();
+    box(s);
+    const m = definitionModel(s.doc)!;
+    const c = ok(s.execute('core.makeComponent', { faceIds: listFaces(m).map((f) => f.id), edgeIds: listEdges(m).map((e) => e.id) }));
+    ok(s.execute('core.addScreenText', { definitionId: c.definitionId, position: [0.1, 0.2], text: 'Cabinet' }));
+    ok(s.execute('core.addText', { definitionId: c.definitionId, point: [0, 0, 0], leader: [0, 100, 0], text: 'Foot' }));
+    ok(s.execute('core.copyInstances', { instanceIds: [c.instanceId], translation: [2000, 0, 0] }));
+    const world = worldAnnotations(s.doc.scene);
+    expect(world.filter((w) => w.annotation.kind === 'screenText')).toHaveLength(1);
+    expect(world.filter((w) => w.annotation.kind === 'text')).toHaveLength(2);
+    expect(world.every((w) => w.length === null)).toBe(true);
+  });
+
+  test('empty text, a screen position off the view and editing a dimension are refused', () => {
+    const s = createSession();
+    expect(s.execute('core.addText', { point: [0, 0, 0], leader: [0, 1, 0], text: '' }).ok).toBe(false);
+    expect(s.execute('core.addScreenText', { position: [1.5, 0], text: 'A' }).ok).toBe(false);
+    const { annotationId } = ok(s.execute('core.addDimension', { start: [0, 0, 0], end: [800, 0, 0], offset: [0, 0, -100] }));
+    const r = s.execute('core.editText', { annotationId, text: 'A' });
+    expect(r.ok ? null : r.error.code).toBe('noSuchText');
+  });
+
+  test('text and screen text are saved and opened', () => {
+    const s = createSession();
+    box(s);
+    ok(s.execute('core.addText', { point: [0, 500, 0], leader: [-200, 200, 0], text: 'Corner\nfront' }));
+    ok(s.execute('core.addScreenText', { position: [0.05, 0.9], text: 'Kitchen, rev. 2' }));
+    const reopened = documentFromText(documentToText(s.doc))!;
+    expect(getDefinition(reopened.scene, reopened.scene.rootId)!.annotations).toEqual(getDefinition(s.doc.scene, s.doc.scene.rootId)!.annotations);
+  });
+
+  test('exploding brings text up to the parent', () => {
+    const s = createSession();
+    box(s);
+    const m = definitionModel(s.doc)!;
+    const g = ok(s.execute('core.makeGroup', { faceIds: listFaces(m).map((f) => f.id), edgeIds: listEdges(m).map((e) => e.id) }));
+    ok(s.execute('core.addText', { definitionId: g.definitionId, point: [0, 500, 0], leader: [0, 100, 0], text: 'Top' }));
+    ok(s.execute('core.move', { instanceIds: [g.instanceId], direction: [1, 0, 0], distance: 1000 }));
+    ok(s.execute('core.explode', { instanceIds: [g.instanceId] }));
+    const [, a] = [...getDefinition(s.doc.scene, s.doc.scene.rootId)!.annotations][0]! as [string, LeaderText];
+    expect(a.anchor.point).toEqual([1000, 500, 0]);
+    expect(a.anchor.ref).toMatchObject({ path: [] });
   });
 });

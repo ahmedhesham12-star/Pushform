@@ -282,7 +282,7 @@ input {
   color: var(--ink);
 }
 
-/* Physical position on purpose: dimension values sit on canvas pixels, like the snap marker. */
+/* Physical position on purpose: dimension values, text and the text editor sit on canvas pixels, like the snap marker. */
 .annotation-labels {
   position: absolute;
   inset: 0;
@@ -300,8 +300,32 @@ input {
   color: var(--ink);
   background: var(--canvas);
 }
+.annotation-label.text,
+.annotation-label.screenText {
+  white-space: pre;
+  font-variant-numeric: normal;
+  border: 1px solid var(--line);
+}
+.annotation-label.screenText {
+  font-size: 14px;
+}
 .annotation-label.faded {
   opacity: 0.35;
+}
+.text-editor {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  padding: 2px 4px;
+  resize: none;
+  overflow: hidden;
+  font: inherit;
+  font-size: 12px;
+  color: var(--ink);
+  background: var(--ui);
+  border: 1px solid var(--accent);
+  outline: none;
 }
 .annotation-label.hover {
   color: var(--accent);

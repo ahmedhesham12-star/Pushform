@@ -9,6 +9,7 @@ interface GltfNode {
   mesh?: number;
   translation?: number[];
   rotation?: number[];
+  scale?: number[];
   children?: number[];
 }
 
@@ -92,6 +93,8 @@ export function exportGlb(scene: Scene, name = ''): Uint8Array<ArrayBuffer> {
     if (label) n.name = label;
     if (t.translation.some((v) => v !== 0)) n.translation = t.translation.map((v) => v * M);
     if (t.rotation[3] !== 1) n.rotation = [...t.rotation];
+    // A negative scale mirrors; glTF readers then wind the triangles the other way, as the spec says.
+    if (t.scale.some((v) => v !== 1)) n.scale = [...t.scale];
     return node(def, n);
   };
   const root = node(rootDefinition(scene), { name: name || 'Model' });

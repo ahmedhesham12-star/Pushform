@@ -27,7 +27,7 @@ import {
 } from './geometry';
 import { insertSegment, rebuildPlane, type RegionRule } from './planar';
 import { GROUND, GROUND_NORMAL } from './shapes';
-import type { CurveId, EdgeId, FaceId, Point3, Topology, VertexId } from './types';
+import { withRadius, type CurveId, type EdgeId, type FaceId, type Point3, type Topology, type VertexId } from './types';
 
 export type OffsetError = 'offsetTooLarge' | 'offsetNotChain' | 'noSuchFace';
 
@@ -256,7 +256,7 @@ export function offset(t: Topology, faceId: FaceId | null, edgeIds: readonly Edg
     if (!c) return null;
     const src = t.curves.get(c);
     if (!src) return null;
-    if (!newCurves.has(c)) newCurves.set(c, d.addCurve({ kind: src.kind, segments: src.segments, center: src.center, normal: src.normal, radius: length(sub(at, src.center)) }));
+    if (!newCurves.has(c)) newCurves.set(c, d.addCurve({ kind: src.kind, segments: src.segments, center: src.center, normal: src.normal, ...withRadius(src.radius === undefined ? undefined : length(sub(at, src.center))) }));
     return newCurves.get(c)!;
   };
   const drawn = new Set<EdgeId>();

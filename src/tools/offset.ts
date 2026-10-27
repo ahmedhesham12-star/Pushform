@@ -106,7 +106,7 @@ export function createOffsetTool(ctx: ToolContext): Tool {
         edgeIds,
         path: found.path,
         planePoint: frame.toWorld(found.path.points[0]!),
-        normal: frame.dirToWorld(found.path.normal).normalize(),
+        normal: frame.normalToWorld(found.path.normal),
         distance: 0,
         armed: false,
       };

@@ -8,7 +8,7 @@
  */
 import { edgeThrough, snapPoint, VERTEX_TOLERANCE, vertexAt, vertexPoint, type Model, type Point3, type Vec3 } from '../kernel';
 import { newId, placedInstances, type Definition, type DefinitionId, type InstanceId, type Scene } from './scene';
-import { applyPoint, applyVector, compose, IDENTITY, inverse, type Transform } from './transform';
+import { AFFINE_IDENTITY, applyPoint, applyVector, invert, multiply, type Affine, type AnyTransform } from './transform';
 
 export type AnnotationId = string;
 
@@ -62,13 +62,13 @@ export interface ScreenText {
 export type Annotation = Dimension | LeaderText | ScreenText;
 
 /** The local space at the end of `path`, below a definition: its transform into that definition and its definition id. */
-function below(s: Scene, from: DefinitionId, path: readonly InstanceId[]): { transform: Transform; definitionId: DefinitionId } | null {
-  let transform = IDENTITY;
+function below(s: Scene, from: DefinitionId, path: readonly InstanceId[]): { transform: Affine; definitionId: DefinitionId } | null {
+  let transform = AFFINE_IDENTITY;
   let definitionId = from;
   for (const id of path) {
     const i = s.definitions.get(definitionId)?.instances.get(id);
     if (!i) return null;
-    transform = compose(transform, i.transform);
+    transform = multiply(transform, i.transform);
     definitionId = i.definitionId;
   }
   return { transform, definitionId };
@@ -97,9 +97,9 @@ export function attachAnchor(s: Scene, definitionId: DefinitionId, point: Point3
   const p = snapPoint(point);
   const def = s.definitions.get(definitionId);
   if (!def) return { point: p };
-  const places = [{ path: [] as readonly InstanceId[], definitionId, world: IDENTITY }];
+  const places = [{ path: [] as readonly InstanceId[], definitionId, world: AFFINE_IDENTITY }];
   for (const placed of placedInstances(s, definitionId)) places.push({ path: placed.path, definitionId: placed.instance.definitionId, world: placed.world });
-  const local = (world: Transform, q: Point3): Point3 => applyPoint(inverse(world), q);
+  const local = (world: Affine, q: Point3): Point3 => applyPoint(invert(world), q);
   for (const place of places) {
     const model = s.definitions.get(place.definitionId)!.model;
     const v = vertexAt(model, local(place.world, p), VERTEX_TOLERANCE);
@@ -168,7 +168,7 @@ function withAnchors(a: Annotation, map: (x: Anchor) => Anchor): Annotation {
 }
 
 /** An annotation placed with a transform (into a parent's space, or the world). References are kept. */
-export function transformAnnotation(t: Transform, a: Annotation): Annotation {
+export function transformAnnotation(t: AnyTransform, a: Annotation): Annotation {
   const moved = withAnchors(a, (x) => ({ ...x, point: snapPoint(applyPoint(t, x.point)) }));
   if (moved.kind === 'dimension') return { ...moved, offset: applyVector(t, moved.offset) };
   if (moved.kind === 'text') return { ...moved, leader: applyVector(t, moved.leader) };
@@ -222,7 +222,7 @@ function across(v: Vec3, a: Vec3, b: Vec3): Vec3 {
  * its offset. Screen text does not move. The scene returned has every
  * anchor followed.
  */
-export function transformAnnotations(s: Scene, definitionId: DefinitionId, ids: Iterable<AnnotationId>, t: Transform): Scene {
+export function transformAnnotations(s: Scene, definitionId: DefinitionId, ids: Iterable<AnnotationId>, t: AnyTransform): Scene {
   const followed = followAnchors(s);
   const before = s.definitions.get(definitionId);
   const d = followed.definitions.get(definitionId);
@@ -261,7 +261,7 @@ export function rehomeAnnotations(
   from: DefinitionId,
   to: DefinitionId,
   model: Model,
-  toLocal: Transform,
+  toLocal: AnyTransform,
 ): Map<AnnotationId, Annotation> {
   const out = new Map<AnnotationId, Annotation>();
   const rehome = (x: Anchor): Anchor => {

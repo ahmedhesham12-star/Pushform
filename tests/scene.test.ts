@@ -13,7 +13,8 @@ import {
   findInstance,
   IDENTITY,
   instanceCount,
-  inverse,
+  invert,
+  multiply,
   pathDefinition,
   pathTransform,
   placedInstances,
@@ -37,9 +38,9 @@ describe('transforms', () => {
     const t = compose(translation([100, 0, 0]), quarter([0, 1, 0]));
     // A quarter turn around +Y takes +X to -Z, then the translation applies.
     expect(near(applyPoint(t, [10, 0, 0]), [100, 0, -10])).toBe(true);
-    const back = applyPoint(inverse(t), applyPoint(t, [3, 4, 5]));
+    const back = applyPoint(invert(t), applyPoint(t, [3, 4, 5]));
     expect(near(back, [3, 4, 5])).toBe(true);
-    expect(near(applyPoint(compose(t, inverse(t)), [7, 8, 9]), [7, 8, 9])).toBe(true);
+    expect(near(applyPoint(multiply(t, invert(t)), [7, 8, 9]), [7, 8, 9])).toBe(true);
   });
 
   test('rotation about a center keeps the center fixed', () => {
@@ -124,6 +125,13 @@ describe('scene serialization (version 3)', () => {
     expect(json.definitions[back.rootId].instances.i11.transform.scale).toEqual([1, 1, 1]);
   });
 
+  test('keeps a mirror and a stretch (milestone 4)', () => {
+    const j = JSON.parse(JSON.stringify(serializeScene(sample().s)));
+    j.definitions[j.root].instances.i11.transform.scale = [-1, 2.5, 1];
+    const back = deserializeScene(j)!;
+    expect(back.definitions.get(back.rootId)!.instances.get('i11')!.transform.scale).toEqual([-1, 2.5, 1]);
+  });
+
   const mutate = (fn: (j: ReturnType<typeof serializeScene>) => void) => {
     const j = JSON.parse(JSON.stringify(serializeScene(sample().s)));
     fn(j);
@@ -131,7 +139,7 @@ describe('scene serialization (version 3)', () => {
   };
 
   test.each([
-    ['a scale other than 1 (Flip and Scale arrive in milestone 4)', (j: ReturnType<typeof serializeScene>) => (j.definitions[j.root]!.instances.i11!.transform.scale = [-1, 1, 1])],
+    ['a zero scale', (j: ReturnType<typeof serializeScene>) => (j.definitions[j.root]!.instances.i11!.transform.scale = [1, 0, 1])],
     ['a rotation that is not a unit quaternion', (j: ReturnType<typeof serializeScene>) => (j.definitions[j.root]!.instances.i11!.transform.rotation = [0, 0, 0, 2])],
     ['an instance of a missing definition', (j: ReturnType<typeof serializeScene>) => (j.definitions[j.root]!.instances.i11!.definition = 'd404')],
     ['an instance of the root', (j: ReturnType<typeof serializeScene>) => (j.definitions[j.root]!.instances.i11!.definition = j.root)],

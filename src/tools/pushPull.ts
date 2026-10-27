@@ -3,7 +3,7 @@ import { definitionModel } from '../commands';
 import { t } from '../i18n';
 import { faceEdges } from '../kernel';
 import { dragStep, formatLength, parseLengthList } from '../units';
-import type { MarkerKind } from '../viewport';
+import { toVector, type MarkerKind } from '../viewport';
 import { sameEntity, type Tool, type ToolContext } from './tool';
 
 /** Distances below this (mm) are treated as no push at all. */
@@ -15,8 +15,10 @@ interface PushState {
   origin: Vector3;
   normal: Vector3;
   startY: number;
-  /** Distance of the current preview after clamping, in mm. */
+  /** Distance of the current preview after clamping, in the context's own mm. */
   distance: number;
+  /** Local mm per world mm along the normal (1 unless the context is scaled). */
+  toLocal: number;
 }
 
 /** A push distance, and what it was inferred from (shown with the marker), if anything. */
@@ -85,7 +87,7 @@ export function createPushPullTool(ctx: ToolContext): Tool {
     ctx.viewport.paint(s.faceId, 'selected');
     ctx.setMeasurement(t('measure.distance'), formatLength(s.distance, ctx.units()));
     if (at) ctx.viewport.showMarker(at.point, at.kind);
-    else ctx.viewport.showMarker(s.origin.clone().addScaledVector(s.normal, s.distance), 'face');
+    else ctx.viewport.showMarker(s.origin.clone().addScaledVector(s.normal, s.distance / s.toLocal), 'face');
   };
 
   const push = (faceId: string, distance: number) => {
@@ -122,7 +124,9 @@ export function createPushPullTool(ctx: ToolContext): Tool {
       const normal = h && ctx.viewport.normalOf(h.faceId);
       if (!h || !normal) return;
       ctx.selection.hovered = null;
-      state = { faceId: h.faceId, origin: h.point, normal, startY: e.clientY, distance: 0 };
+      const frame = ctx.viewport.frame;
+      const toLocal = toVector(frame.dirToLocal(normal)).dot(toVector(frame.normalToLocal(normal)));
+      state = { faceId: h.faceId, origin: h.point, normal, startY: e.clientY, distance: 0, toLocal };
       // Inference skips the face being pushed and its edges.
       const m = definitionModel(ctx.session.doc, ctx.viewport.frame.definitionId)!;
       ctx.viewport.setExcluded({ faces: new Set([h.faceId]), edges: new Set(faceEdges(m, h.faceId)), instances: new Set() });
@@ -133,7 +137,7 @@ export function createPushPullTool(ctx: ToolContext): Tool {
     move(e) {
       if (state) {
         const r = pointerDistance(state, e);
-        preview(state, r.distance, r.at);
+        preview(state, r.distance * state.toLocal, r.at);
         return;
       }
       const h = ctx.viewport.pickFace();

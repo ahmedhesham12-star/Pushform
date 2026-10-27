@@ -52,7 +52,7 @@ describe('offsetting a face', () => {
     if (!c.ok) throw new Error(c.error);
     const r = done(offset(c.topology, c.faceIds[0]!, [], 100));
     expect(r.topology.curves.size).toBe(2);
-    const fresh = [...r.topology.curves.values()].find((x) => x.radius < 500)!;
+    const fresh = [...r.topology.curves.values()].find((x) => x.radius! < 500)!;
     expect(fresh.kind).toBe('circle');
     expect(fresh.segments).toBe(24);
     expect(fresh.edges).toHaveLength(24);
@@ -65,7 +65,7 @@ describe('offsetting a face', () => {
     const c = drawRegularPolygon(emptyTopology(), { kind: 'polygon', faceId: null, center: [0, 0, 0], radius: 500, segments: 6 });
     if (!c.ok) throw new Error(c.error);
     const r = done(offset(c.topology, c.faceIds[0]!, [], -50));
-    const fresh = [...r.topology.curves.values()].find((x) => x.radius > 500)!;
+    const fresh = [...r.topology.curves.values()].find((x) => x.radius! > 500)!;
     expect([fresh.kind, fresh.segments, fresh.edges.length]).toEqual(['polygon', 6, 6]);
   });
 
@@ -106,7 +106,7 @@ describe('offsetting a face with a round hole', () => {
     if (!c.ok) throw new Error(c.error);
     const ring = [...c.topology.faces].find(([, f]) => f.holes.length)![0];
     const r = done(offset(c.topology, ring, [], 100));
-    const grown = [...r.topology.curves.values()].filter((x) => x.radius > 300);
+    const grown = [...r.topology.curves.values()].filter((x) => x.radius! > 300);
     expect(grown.map((x) => [x.kind, x.segments, x.edges.length])).toEqual([['circle', 24, 24]]);
     expect(grown[0]!.radius).toBeCloseTo(300 + 100 / Math.cos(Math.PI / 24), 4);
   });

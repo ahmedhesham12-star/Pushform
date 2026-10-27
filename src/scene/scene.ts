@@ -11,7 +11,7 @@
 import { bounds, type Bounds, type Model } from '../kernel';
 import type { Annotation, AnnotationId } from './annotations';
 import type { Guide, GuideId } from './guides';
-import { applyPoint, compose, IDENTITY, type Transform } from './transform';
+import { AFFINE_IDENTITY, applyPoint, multiply, type Affine, type AnyTransform, type Transform } from './transform';
 
 export type DefinitionId = string;
 export type InstanceId = string;
@@ -96,17 +96,17 @@ export interface PlacedInstance {
   /** Instance ids from the root down to this instance. */
   readonly path: readonly InstanceId[];
   readonly instance: Instance;
-  /** Local space of the instance's definition to world space. */
-  readonly world: Transform;
+  /** Local space of the instance's definition to world space (skewed when scales and turns nest). */
+  readonly world: Affine;
 }
 
 /** Every instance reachable from a definition (the root by default), depth first, with world transforms. */
-export function placedInstances(s: Scene, from: DefinitionId = s.rootId, base: Transform = IDENTITY, path: readonly InstanceId[] = []): PlacedInstance[] {
+export function placedInstances(s: Scene, from: DefinitionId = s.rootId, base: Affine = AFFINE_IDENTITY, path: readonly InstanceId[] = []): PlacedInstance[] {
   const out: PlacedInstance[] = [];
   const d = s.definitions.get(from);
   if (!d) return out;
   for (const instance of d.instances.values()) {
-    const world = compose(base, instance.transform);
+    const world = multiply(base, instance.transform);
     const p = [...path, instance.id];
     out.push({ path: p, instance, world });
     out.push(...placedInstances(s, instance.definitionId, world, p));
@@ -115,13 +115,13 @@ export function placedInstances(s: Scene, from: DefinitionId = s.rootId, base: T
 }
 
 /** The world transform of the local space at the end of an instance path ([] is the root). */
-export function pathTransform(s: Scene, path: readonly InstanceId[]): Transform {
-  let t = IDENTITY;
+export function pathTransform(s: Scene, path: readonly InstanceId[]): Affine {
+  let t = AFFINE_IDENTITY;
   let parent = s.rootId;
   for (const id of path) {
     const i = s.definitions.get(parent)?.instances.get(id);
     if (!i) break;
-    t = compose(t, i.transform);
+    t = multiply(t, i.transform);
     parent = i.definitionId;
   }
   return t;
@@ -221,7 +221,7 @@ export function definitionBounds(s: Scene, id: DefinitionId): Bounds | null {
 }
 
 /** The axis-aligned box around a box placed with a transform. */
-export function transformBounds(t: Transform, b: Bounds | null): Bounds | null {
+export function transformBounds(t: AnyTransform, b: Bounds | null): Bounds | null {
   if (!b) return null;
   let out: Bounds | null = null;
   for (const x of [b.min[0], b.max[0]])

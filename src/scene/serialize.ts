@@ -86,14 +86,16 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'obj
 const numbers = (v: unknown, n: number): v is number[] =>
   Array.isArray(v) && v.length === n && v.every((x) => typeof x === 'number' && Number.isFinite(x));
 const KINDS: readonly DefinitionKind[] = ['root', 'group', 'component'];
+/** Smaller scales (in size) would flatten an instance. */
+const MIN_SCALE = 1e-6;
 
 function transform(v: unknown): Transform | null {
   if (!isObject(v) || !numbers(v.rotation, 4) || !numbers(v.translation, 3) || !numbers(v.scale, 3)) return null;
-  // Scale arrives with Flip and Scale in milestone 4; until then only [1, 1, 1] is valid.
-  if (!v.scale.every((x) => x === 1)) return null;
+  // Any scale but zero: negative is a mirror, unequal is a stretch along the instance's own axes.
+  if (v.scale.some((x) => Math.abs(x) < MIN_SCALE)) return null;
   const q = v.rotation;
   if (Math.abs(Math.hypot(q[0]!, q[1]!, q[2]!, q[3]!) - 1) > 1e-6) return null;
-  return { rotation: q as unknown as Quat, translation: v.translation as unknown as Transform['translation'], scale: [1, 1, 1] };
+  return { rotation: q as unknown as Quat, translation: v.translation as unknown as Transform['translation'], scale: [v.scale[0]!, v.scale[1]!, v.scale[2]!] };
 }
 
 function guide(v: unknown): Guide | null {

@@ -1,10 +1,12 @@
 /**
- * Instance transforms: rotation (unit quaternion), translation (mm) and scale.
- * Scale is part of the format so Flip and Scale (milestone 4) need no format
- * change; until then it is always [1, 1, 1].
- *
- * A transform maps a point p in the instance's local space to its parent as
+ * Instance transforms: rotation (unit quaternion), translation (mm) and scale
+ * along the instance's own axes, which may be non-uniform or negative (a
+ * mirror). A transform maps a point p in the instance's local space to its
+ * parent as
  *   rotation * (scale * p) + translation.
+ *
+ * Placing a scaled instance inside a turned one can skew, which no Transform
+ * holds: world placements are general affine maps (Affine).
  */
 import { snapLength, type Vec3 } from '../kernel';
 
@@ -52,31 +54,152 @@ export function quatRotate(q: Quat, v: Vec3): Vec3 {
   return [v[0] + w * tx + (y * tz - z * ty), v[1] + w * ty + (z * tx - x * tz), v[2] + w * tz + (x * ty - y * tx)];
 }
 
+/**
+ * A general affine map p -> m p + t: `m` is the 3x3 linear part, column by
+ * column. It may scale, mirror and skew.
+ */
+export interface Affine {
+  readonly m: readonly [number, number, number, number, number, number, number, number, number];
+  readonly t: Vec3;
+}
+
+export type AnyTransform = Transform | Affine;
+
+export const AFFINE_IDENTITY: Affine = { m: [1, 0, 0, 0, 1, 0, 0, 0, 1], t: [0, 0, 0] };
+
+const isAffine = (x: AnyTransform): x is Affine => 'm' in x;
+
+/** The affine map of a transform (or the map itself). */
+export function affineOf(x: AnyTransform): Affine {
+  if (isAffine(x)) return x;
+  const c = (axis: Vec3, s: number) => quatRotate(x.rotation, [axis[0] * s, axis[1] * s, axis[2] * s]);
+  const [a, b, d] = [c([1, 0, 0], x.scale[0]), c([0, 1, 0], x.scale[1]), c([0, 0, 1], x.scale[2])];
+  return { m: [a[0], a[1], a[2], b[0], b[1], b[2], d[0], d[1], d[2]], t: x.translation };
+}
+
+const linear = (m: Affine['m'], v: Vec3): Vec3 => [
+  m[0] * v[0] + m[3] * v[1] + m[6] * v[2],
+  m[1] * v[0] + m[4] * v[1] + m[7] * v[2],
+  m[2] * v[0] + m[5] * v[1] + m[8] * v[2],
+];
+
 /** A point in local space, in the parent's space. */
-export function applyPoint(t: Transform, p: Vec3): Vec3 {
-  const r = quatRotate(t.rotation, [p[0] * t.scale[0], p[1] * t.scale[1], p[2] * t.scale[2]]);
-  return [r[0] + t.translation[0], r[1] + t.translation[1], r[2] + t.translation[2]];
+export function applyPoint(x: AnyTransform, p: Vec3): Vec3 {
+  if (isAffine(x)) {
+    const r = linear(x.m, p);
+    return [r[0] + x.t[0], r[1] + x.t[1], r[2] + x.t[2]];
+  }
+  const r = quatRotate(x.rotation, [p[0] * x.scale[0], p[1] * x.scale[1], p[2] * x.scale[2]]);
+  return [r[0] + x.translation[0], r[1] + x.translation[1], r[2] + x.translation[2]];
 }
 
-/** A direction in local space, in the parent's space (no translation). */
-export function applyVector(t: Transform, v: Vec3): Vec3 {
-  return quatRotate(t.rotation, [v[0] * t.scale[0], v[1] * t.scale[1], v[2] * t.scale[2]]);
+/** A direction in local space, in the parent's space (no translation; lengths scale). */
+export function applyVector(x: AnyTransform, v: Vec3): Vec3 {
+  if (isAffine(x)) return linear(x.m, v);
+  return quatRotate(x.rotation, [v[0] * x.scale[0], v[1] * x.scale[1], v[2] * x.scale[2]]);
 }
 
-/** `child` then `parent`: maps the child's local space through the parent's transform. Assumes unit scale (see isUnitScale). */
+export function determinant(x: AnyTransform): number {
+  if (!isAffine(x)) return x.scale[0] * x.scale[1] * x.scale[2];
+  const m = x.m;
+  return m[0] * (m[4] * m[8] - m[7] * m[5]) - m[3] * (m[1] * m[8] - m[7] * m[2]) + m[6] * (m[1] * m[5] - m[4] * m[2]);
+}
+
+/** `b` then `a`: a general product, skewed when a non-uniform scale meets a turn. */
+export function multiply(a: AnyTransform, b: AnyTransform): Affine {
+  const A = affineOf(a);
+  const B = affineOf(b);
+  const col = (i: number) => linear(A.m, [B.m[i * 3]!, B.m[i * 3 + 1]!, B.m[i * 3 + 2]!]);
+  const [c0, c1, c2] = [col(0), col(1), col(2)];
+  return { m: [...c0, ...c1, ...c2], t: applyPoint(A, B.t) };
+}
+
+/** The inverse map. A transform's scale is never zero, so it always exists. */
+export function invert(x: AnyTransform): Affine {
+  const { m, t } = affineOf(x);
+  const det = determinant({ m, t });
+  // The inverse is the adjugate over the determinant; written column by column.
+  const inv: Affine['m'] = [
+    (m[4] * m[8] - m[7] * m[5]) / det,
+    (m[7] * m[2] - m[1] * m[8]) / det,
+    (m[1] * m[5] - m[4] * m[2]) / det,
+    (m[6] * m[5] - m[3] * m[8]) / det,
+    (m[0] * m[8] - m[6] * m[2]) / det,
+    (m[3] * m[2] - m[0] * m[5]) / det,
+    (m[3] * m[7] - m[6] * m[4]) / det,
+    (m[6] * m[1] - m[0] * m[7]) / det,
+    (m[0] * m[4] - m[3] * m[1]) / det,
+  ];
+  const r = linear(inv, t);
+  return { m: inv, t: [-r[0] + 0, -r[1] + 0, -r[2] + 0] };
+}
+
+/**
+ * A face normal in local space, in the parent's space: through the inverse
+ * transpose, which keeps it square to the face under a scale, and unit
+ * length. It still points out of the same side of the face under a mirror.
+ */
+export function applyNormal(x: AnyTransform, n: Vec3): Vec3 {
+  const inv = invert(x).m;
+  const v: Vec3 = [inv[0] * n[0] + inv[1] * n[1] + inv[2] * n[2], inv[3] * n[0] + inv[4] * n[1] + inv[5] * n[2], inv[6] * n[0] + inv[7] * n[1] + inv[8] * n[2]];
+  const l = Math.hypot(v[0], v[1], v[2]) || 1;
+  return [v[0] / l, v[1] / l, v[2] / l];
+}
+
+/**
+ * The transform of an affine map without skew: its columns square to each
+ * other. Null when it is skewed. A mirror shows as a negative scale on red.
+ */
+export function decompose(a: Affine): Transform | null {
+  const cols: Vec3[] = [0, 1, 2].map((i) => [a.m[i * 3]!, a.m[i * 3 + 1]!, a.m[i * 3 + 2]!]);
+  const len = cols.map((c) => Math.hypot(c[0], c[1], c[2]));
+  if (len.some((l) => l < 1e-12)) return null;
+  for (const [i, j] of [
+    [0, 1],
+    [0, 2],
+    [1, 2],
+  ] as const) {
+    const d = cols[i]![0] * cols[j]![0] + cols[i]![1] * cols[j]![1] + cols[i]![2] * cols[j]![2];
+    if (Math.abs(d) > 1e-9 * len[i]! * len[j]!) return null;
+  }
+  const scale: [number, number, number] = [len[0]!, len[1]!, len[2]!];
+  if (determinant(a) < 0) scale[0] = -scale[0];
+  const r = cols.map((c, i) => c.map((v) => v / scale[i]!) as unknown as Vec3);
+  return { rotation: quatFromColumns(r[0]!, r[1]!, r[2]!), translation: a.t, scale };
+}
+
+/** The rotation whose matrix has these unit, square columns (Shepperd's method). */
+function quatFromColumns(x: Vec3, y: Vec3, z: Vec3): Quat {
+  const [m00, m10, m20, m01, m11, m21, m02, m12, m22] = [x[0], x[1], x[2], y[0], y[1], y[2], z[0], z[1], z[2]];
+  const trace = m00 + m11 + m22;
+  let q: Quat;
+  if (trace > 0) {
+    const s = Math.sqrt(trace + 1) * 2;
+    q = [(m21 - m12) / s, (m02 - m20) / s, (m10 - m01) / s, s / 4];
+  } else if (m00 > m11 && m00 > m22) {
+    const s = Math.sqrt(1 + m00 - m11 - m22) * 2;
+    q = [s / 4, (m01 + m10) / s, (m02 + m20) / s, (m21 - m12) / s];
+  } else if (m11 > m22) {
+    const s = Math.sqrt(1 + m11 - m00 - m22) * 2;
+    q = [(m01 + m10) / s, s / 4, (m12 + m21) / s, (m02 - m20) / s];
+  } else {
+    const s = Math.sqrt(1 + m22 - m00 - m11) * 2;
+    q = [(m02 + m20) / s, (m12 + m21) / s, s / 4, (m10 - m01) / s];
+  }
+  return quatNormalize(q);
+}
+
+/**
+ * `child` then `parent`, as a transform. Exact for the moves and turns tools
+ * make; only valid when the parent's scale is uniform (a non-uniform parent
+ * can skew the child: use multiply and decompose).
+ */
 export function compose(parent: Transform, child: Transform): Transform {
   return {
     rotation: quatNormalize(quatMultiply(parent.rotation, child.rotation)),
     translation: applyPoint(parent, child.translation),
     scale: [parent.scale[0] * child.scale[0], parent.scale[1] * child.scale[1], parent.scale[2] * child.scale[2]],
   };
-}
-
-/** The inverse of a transform with unit scale. */
-export function inverse(t: Transform): Transform {
-  const rotation = quatConjugate(t.rotation);
-  const tr = quatRotate(rotation, t.translation);
-  return { rotation, translation: [-tr[0] + 0, -tr[1] + 0, -tr[2] + 0], scale: [1, 1, 1] };
 }
 
 export const translation = (v: Vec3): Transform => ({ ...IDENTITY, translation: v });
@@ -113,7 +236,15 @@ export function snapTransform(t: Transform): Transform {
 }
 
 /** Column-major 4x4 matrix, as three.js and glTF use. */
-export function toMatrix(t: Transform): number[] {
+export function toMatrix(x: AnyTransform): number[] {
+  if (isAffine(x)) {
+    const m = x.m;
+    return [m[0], m[1], m[2], 0, m[3], m[4], m[5], 0, m[6], m[7], m[8], 0, x.t[0], x.t[1], x.t[2], 1];
+  }
+  return trsMatrix(x);
+}
+
+function trsMatrix(t: Transform): number[] {
   const [x, y, z, w] = t.rotation;
   const [sx, sy, sz] = t.scale;
   return [

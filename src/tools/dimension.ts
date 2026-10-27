@@ -64,7 +64,7 @@ export function createDimensionTool(ctx: ToolContext): Tool {
     const end = s.end!;
     const [a, b] = [s.start.clone().add(s.offset), end.clone().add(s.offset)];
     vp().showGuides([{ points: [s.start, a] }, { points: [end, b] }, { points: [a, b] }]);
-    ctx.setMeasurement(t('measure.length'), fmt(s.start.distanceTo(end)));
+    ctx.setMeasurement(t('measure.length'), fmt(vp().frame.localDistance(s.start, end)));
   };
 
   const setEnd = (s: Measuring, end: Vector3) => {
@@ -82,7 +82,7 @@ export function createDimensionTool(ctx: ToolContext): Tool {
     const frame = vp().frame;
     const start = frame.toLocal(s.start);
     const tip = frame.toLocal(s.start.clone().add(s.offset));
-    const length = s.start.distanceTo(s.end);
+    const length = frame.localDistance(s.start, s.end);
     const input = {
       definitionId: frame.definitionId,
       start,
@@ -138,7 +138,7 @@ export function createDimensionTool(ctx: ToolContext): Tool {
       if (!hit) return;
       vp().showMarker(hit.point, hit.kind);
       vp().showLinePreview(state.start, hit.point, hit.axis);
-      ctx.setMeasurement(t('measure.length'), fmt(state.start.distanceTo(hit.point)));
+      ctx.setMeasurement(t('measure.length'), fmt(vp().frame.localDistance(state.start, hit.point)));
     },
 
     dragEnd() {

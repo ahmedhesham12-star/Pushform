@@ -5,7 +5,7 @@
  */
 import { cleanNormal, snapPoint, type Point3, type Vec3 } from '../kernel';
 import { newId, type DefinitionId, type Scene } from './scene';
-import { applyPoint, applyVector, type Transform } from './transform';
+import { applyPoint, applyVector, type AnyTransform } from './transform';
 
 export type GuideId = string;
 
@@ -24,7 +24,7 @@ export function guideLine(point: Point3, direction: Vec3): Guide | null {
 export const guidePoint = (point: Point3): Guide => ({ kind: 'point', point: snapPoint(point) });
 
 /** A guide placed with a transform (into a parent's space, or the world). */
-export function transformGuide(t: Transform, g: Guide): Guide {
+export function transformGuide(t: AnyTransform, g: Guide): Guide {
   if (g.kind === 'point') return guidePoint(applyPoint(t, g.point));
   return guideLine(applyPoint(t, g.point), applyVector(t, g.direction)) ?? g;
 }

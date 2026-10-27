@@ -53,8 +53,12 @@ export interface Curve {
   readonly segments: number;
   readonly center: Point3;
   readonly normal: Vec3;
-  readonly radius: number;
+  /** Absent once a non-uniform scale has made a circle or arc an ellipse. */
+  readonly radius?: number;
 }
+
+/** A curve's radius field, left out when it has none. */
+export const withRadius = (radius: number | undefined): { radius?: number } => (radius === undefined ? {} : { radius });
 
 export interface Topology {
   readonly vertices: ReadonlyMap<VertexId, Vertex>;

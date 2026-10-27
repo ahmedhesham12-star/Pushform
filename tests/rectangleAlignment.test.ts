@@ -2,7 +2,7 @@ import { Vector3 } from 'three';
 import { describe, expect, test } from 'vitest';
 import { createSession, definitionModel } from '../src/commands';
 import { checkModel, listFaces, previewRectangle, rectangleAxes, type Vec3 } from '../src/kernel';
-import { compose, findInstance, rotationAbout, translation, type Transform } from '../src/scene';
+import { affineOf, compose, findInstance, rotationAbout, translation, type Transform } from '../src/scene';
 import { alignment, misaligned, rectangleInput } from '../src/tools/rectangleGeometry';
 import { Frame } from '../src/viewport/frame';
 
@@ -15,7 +15,7 @@ const deg = (d: number) => (d * Math.PI) / 180;
 describe('inside a turned group, drawing follows the group axes', () => {
   // A group turned 30 degrees about blue and moved: its red axis points along (cos 30, 0, -sin 30) in the world.
   const world: Transform = compose(translation([2000, 0, 500]), rotationAbout([0, 0, 0], [0, 1, 0], deg(30)));
-  const frame = new Frame('d2', world);
+  const frame = new Frame('d2', affineOf(world));
   const red = frame.dirToWorld([1, 0, 0]);
   const green = frame.dirToWorld([0, 0, 1]);
 

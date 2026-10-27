@@ -13,11 +13,11 @@ import {
 } from 'three';
 import { faceMeshes, listEdges, listFaces, type Model, type Vec3 } from '../kernel';
 import {
+  applyNormal,
   applyPoint,
-  applyVector,
-  compose,
   contextRelation,
   definitionBounds,
+  multiply,
   pathDefinition,
   pathTransform,
   placements,
@@ -142,7 +142,7 @@ export class InstancesView {
     if (!data.placement || !data.relation || !data.geometry || hit.faceIndex == null) return null;
     const faceId = data.geometry.triangleFaces[hit.faceIndex];
     const local = (faceId && data.geometry.normals.get(faceId)) || ([0, 1, 0] as Vec3);
-    return { placement: data.placement, relation: data.relation, normal: applyVector(data.placement.world, local), faceId: faceId ?? null };
+    return { placement: data.placement, relation: data.relation, normal: applyNormal(data.placement.world, local), faceId: faceId ?? null };
   }
 
   /** Bounding boxes around instances placed in the open context, in their highlight colors. */
@@ -161,7 +161,7 @@ export class InstancesView {
       const i = def.instances.get(id);
       const b = i && definitionBounds(scene, i.definitionId);
       if (!i || !b) continue;
-      const world = compose(base, i.transform);
+      const world = multiply(base, i.transform);
       const corner = (x: number, y: number, z: number) => applyPoint(world, [x ? b.max[0] : b.min[0], y ? b.max[1] : b.min[1], z ? b.max[2] : b.min[2]]);
       const c = EDGE_COLORS[kind];
       // The twelve edges of the box: along x, y and z from each corner on the low side.

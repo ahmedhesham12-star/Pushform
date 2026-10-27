@@ -153,6 +153,7 @@ export const en = {
   'error.tapeSideFirst': 'Move the pointer to the side of the edge, then type the distance.',
   'error.tapeDirectionFirst': 'Move the pointer the way to measure, then type the distance.',
   'error.dimensionNoTyping': 'A dimension measures the points you click; typed values are not used here.',
+  'error.explodeWouldSkew': 'This group is stretched and holds a turned group or component, which would be skewed. Make it uniform or explode the inner one first.',
   'error.textNoTyping': 'Click where the text goes first; then write it in place.',
   'error.typeDistanceOrArray': 'Type a distance, x5 for 5 copies, or /4 to divide the distance into 4.',
   'error.noSuchInstance': 'That group or component no longer exists.',

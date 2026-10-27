@@ -4,12 +4,12 @@
  * model's geometry into another (exploding, copying loose geometry).
  */
 import { snapPoint } from './precision';
-import { cleanNormal, type Vec3 } from './vec';
+import { cleanNormal, normalize, type Vec3 } from './vec';
 import { Draft } from './draft';
 import { onPlane, planeBasis, planeThrough, pointInPolygon, samePlane, to2, type Plane, type Vec2 } from './geometry';
 import { insertSegment, rebuildPlane, type RegionRule } from './planar';
 import { insertSegment3d } from './lines';
-import type { Curve, CurveId, Edge, EdgeId, Face, FaceId, Point3, Topology, Vertex, VertexId } from './types';
+import { withRadius, type Curve, type CurveId, type Edge, type EdgeId, type Face, type FaceId, type Point3, type Topology, type Vertex, type VertexId } from './types';
 
 export interface ExtractResult {
   /** The source without the extracted geometry (edges still used by its faces stay). */
@@ -55,11 +55,31 @@ export function extract(t: Topology, faceIds: readonly FaceId[], edgeIds: readon
  * Apply a rigid motion to a whole model: points through mapPoint, directions
  * (normals) through mapVector. Coordinates are rounded to the stored precision.
  */
-export function transformTopology(t: Topology, mapPoint: (p: Point3) => Point3, mapVector: (v: Vec3) => Vec3): Topology {
+export interface PlaceOptions {
+  /** The map turns space inside out (a mirror): face loops are reversed so faces keep facing the same way. */
+  readonly mirror?: boolean;
+  /** Curve radii are multiplied by this; null drops them (a non-uniform scale makes circles ellipses). */
+  readonly radiusScale?: number | null;
+}
+
+/**
+ * A copy of a topology placed with an affine map: points through mapPoint,
+ * face and curve normals through mapNormal (normalized here).
+ */
+export function transformTopology(t: Topology, mapPoint: (p: Point3) => Point3, mapNormal: (v: Vec3) => Vec3, options: PlaceOptions = {}): Topology {
+  const unit = (v: Vec3) => cleanNormal(normalize(mapNormal(v)));
+  const reversed = (loop: readonly VertexId[]) => (options.mirror ? [...loop].reverse() : loop);
   const vertices = new Map<VertexId, Vertex>([...t.vertices].map(([id, v]) => [id, { p: snapPoint(mapPoint(v.p)) }]));
-  const faces = new Map<FaceId, Face>([...t.faces].map(([id, f]) => [id, { ...f, normal: cleanNormal(mapVector(f.normal)) }]));
+  const faces = new Map<FaceId, Face>(
+    [...t.faces].map(([id, f]) => [id, { normal: unit(f.normal), outer: reversed(f.outer), holes: f.holes.map(reversed) }]),
+  );
+  const scale = options.radiusScale === undefined ? 1 : options.radiusScale;
   const curves = new Map<CurveId, Curve>(
-    [...t.curves].map(([id, c]) => [id, { ...c, center: snapPoint(mapPoint(c.center)), normal: cleanNormal(mapVector(c.normal)) }]),
+    [...t.curves].map(([id, c]) => {
+      const { radius, ...rest } = c;
+      const placed = { ...rest, center: snapPoint(mapPoint(c.center)), normal: unit(c.normal) };
+      return [id, scale === null || radius === undefined ? placed : { ...placed, radius: radius * Math.abs(scale) }];
+    }),
   );
   return { vertices, edges: t.edges, faces, curves, next: t.next };
 }
@@ -97,7 +117,7 @@ export function merge(target: Topology, source: Topology): MergeResult {
 
   // New curves for the source's curves.
   const curveMap = new Map<CurveId, CurveId>();
-  for (const [id, c] of source.curves) curveMap.set(id, d.addCurve({ kind: c.kind, segments: c.segments, center: c.center, normal: c.normal, radius: c.radius }));
+  for (const [id, c] of source.curves) curveMap.set(id, d.addCurve({ kind: c.kind, segments: c.segments, center: c.center, normal: c.normal, ...withRadius(c.radius) }));
 
   // Insert every source edge into a plane that contains it (a source face's plane first), or into open space.
   const inserted: EdgeId[] = [];

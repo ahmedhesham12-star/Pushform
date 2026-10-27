@@ -1,7 +1,7 @@
 import { dot } from './vec';
 import { Draft } from './draft';
 import { parallel } from './geometry';
-import { emptyTopology, type Curve, type CurveKind, type Edge, type Face, type Point3, type Topology, type Vertex } from './types';
+import { emptyTopology, withRadius, type Curve, type CurveKind, type Edge, type Face, type Point3, type Topology, type Vertex } from './types';
 
 /** On-disk form of the topology. Bump the version on any breaking change. */
 export interface SerializedTopology {
@@ -11,7 +11,7 @@ export interface SerializedTopology {
   vertices: Record<string, number[]>;
   edges: Record<string, { v: [string, string]; soft?: true; curve?: string }>;
   faces: Record<string, { normal: number[]; outer: string[]; holes: string[][] }>;
-  curves: Record<string, { kind: CurveKind; edges: string[]; segments: number; center: number[]; normal: number[]; radius: number }>;
+  curves: Record<string, { kind: CurveKind; edges: string[]; segments: number; center: number[]; normal: number[]; radius?: number }>;
 }
 
 export function serializeTopology(t: Topology): SerializedTopology {
@@ -22,7 +22,7 @@ export function serializeTopology(t: Topology): SerializedTopology {
   }
   for (const [id, f] of t.faces) out.faces[id] = { normal: [...f.normal], outer: [...f.outer], holes: f.holes.map((h) => [...h]) };
   for (const [id, c] of t.curves) {
-    out.curves[id] = { kind: c.kind, edges: [...c.edges], segments: c.segments, center: [...c.center], normal: [...c.normal], radius: c.radius };
+    out.curves[id] = { kind: c.kind, edges: [...c.edges], segments: c.segments, center: [...c.center], normal: [...c.normal], ...withRadius(c.radius) };
   }
   return out;
 }
@@ -66,8 +66,8 @@ export function deserializeTopology(data: unknown): Topology | null {
   const cs = new Map<string, Curve>();
   for (const [id, c] of Object.entries(curves)) {
     if (!isObject(c) || !CURVE_KINDS.includes(c.kind as CurveKind) || !isIds(c.edges) || !c.edges.every((e) => es.has(e))) return null;
-    if (typeof c.segments !== 'number' || !isPoint(c.center) || !isPoint(c.normal) || typeof c.radius !== 'number') return null;
-    cs.set(id, { kind: c.kind as CurveKind, edges: c.edges, segments: c.segments, center: c.center, normal: c.normal, radius: c.radius });
+    if (typeof c.segments !== 'number' || !isPoint(c.center) || !isPoint(c.normal) || (c.radius !== undefined && typeof c.radius !== 'number')) return null;
+    cs.set(id, { kind: c.kind as CurveKind, edges: c.edges, segments: c.segments, center: c.center, normal: c.normal, ...withRadius(c.radius) });
   }
   return { vertices: vs, edges: es, faces: fs, curves: cs, next: data.next as number };
 }

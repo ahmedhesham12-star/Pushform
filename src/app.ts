@@ -30,8 +30,9 @@ import {
 } from './kernel';
 import {
   applyPoint,
-  compose,
+  multiply,
   definitionBounds,
+  determinant,
   dimensionLength,
   getDefinition,
   instanceCount,
@@ -89,6 +90,7 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
   offsetTooLarge: 'error.offsetTooLarge',
   offsetNotChain: 'error.offsetNotChain',
   moveCrosses: 'error.moveCrosses',
+  explodeWouldSkew: 'error.explodeWouldSkew',
 };
 
 export class App {
@@ -348,7 +350,9 @@ export class App {
       const def = i && doc.scene.definitions.get(i.definitionId);
       if (instances.size === 1 && !faces.size && !edges.size && !guides.size && !annotations.size && i && def && def.kind !== 'root') {
         // Volume is only shown for geometry without nested groups or components.
-        const volume = def.instances.size ? null : solidVolume(def.model);
+        // A scaled instance holds that much more (or less): the volume grows with the scale's determinant.
+        const local = def.instances.size ? null : solidVolume(def.model);
+        const volume = local === null ? null : local * Math.abs(determinant(i.transform));
         return {
           kind: 'instance',
           type: def.kind,
@@ -662,7 +666,7 @@ export class App {
     }
     for (const id of this.selection.instances) {
       const i = placed.get(id);
-      if (i) b = union(b, transformBounds(compose(frame.world, i.transform), definitionBounds(scene, i.definitionId)));
+      if (i) b = union(b, transformBounds(multiply(frame.world, i.transform), definitionBounds(scene, i.definitionId)));
     }
     return b;
   }

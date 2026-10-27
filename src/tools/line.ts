@@ -51,7 +51,7 @@ export function createLineTool(ctx: ToolContext): Tool {
   const preview = (c: Chain) => {
     if (!c.end) return;
     ctx.viewport.showLinePreview(c.start, c.end, c.axis);
-    ctx.setMeasurement(t('measure.length'), fmt(c.end.distanceTo(c.start)));
+    ctx.setMeasurement(t('measure.length'), fmt(ctx.viewport.frame.localDistance(c.start, c.end)));
   };
 
   /** Draw the segment from the chain start to `end`. */

@@ -84,7 +84,7 @@ function buildCabinet() {
 function layout(scene: Scene) {
   return placedInstances(scene).map((p) => {
     const def = scene.definitions.get(p.instance.definitionId)!;
-    return { name: p.instance.name || def.name || def.kind, t: p.world.translation, bounds: definitionBounds(scene, def.id) };
+    return { name: p.instance.name || def.name || def.kind, t: p.world.t, bounds: definitionBounds(scene, def.id) };
   });
 }
 

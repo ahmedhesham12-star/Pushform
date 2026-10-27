@@ -6,7 +6,7 @@ import { resolveEdgeCrossings, vertexAt3d } from './lines';
 import { insertSegment, rebuildPlane, type RegionRule } from './planar';
 import { faceTriangles } from './triangulate';
 import { planeProblems } from './validate';
-import type { CurveId, EdgeId, FaceId, Point3, Topology, VertexId } from './types';
+import { withRadius, type CurveId, type EdgeId, type FaceId, type Point3, type Topology, type VertexId } from './types';
 
 export interface PushPullResult {
   topology: Topology;
@@ -185,7 +185,7 @@ function push(t: Topology, faceId: FaceId, requested: number, stretch: boolean):
     let copy = curveCopies.get(c);
     if (!copy) {
       const src = d.curves.get(c)!;
-      copy = d.addCurve({ kind: src.kind, segments: src.segments, center: add(src.center, off), normal: src.normal, radius: src.radius });
+      copy = d.addCurve({ kind: src.kind, segments: src.segments, center: add(src.center, off), normal: src.normal, ...withRadius(src.radius) });
       curveCopies.set(c, copy);
     }
     return copy;

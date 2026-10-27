@@ -57,7 +57,7 @@ export function createRadialTool(ctx: ToolContext, kind: RadialKind): Tool {
   let state: DrawState | null = null;
 
   const countText = () => t('measure.count', { count: formatNumber(count) });
-  const radiusOf = (s: DrawState) => (s.edge ? s.edge.distanceTo(s.center) : 0);
+  const radiusOf = (s: DrawState) => (s.edge ? ctx.viewport.frame.localDistance(s.center, s.edge) : 0);
   const show = () => {
     if (!state) return ctx.setMeasurement(t(kind.label), countText());
     ctx.setMeasurement(t(kind.label), `${formatLength(radiusOf(state), ctx.units())}${t('measure.listSeparator')}${countText()}`);

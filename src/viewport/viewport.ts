@@ -353,7 +353,7 @@ export class Viewport {
     let plane: { point: Vector3; normal: Vector3 } | null = null;
     const faceId = h.object.userData.faceId as string | undefined;
     const f = faceId && this.contextModel ? getFace(this.contextModel, faceId) : undefined;
-    if (f) plane = { point: this.frameValue.toWorld(f.outer[0]!), normal: this.frameValue.dirToWorld(f.normal) };
+    if (f) plane = { point: this.frameValue.toWorld(f.outer[0]!), normal: this.frameValue.normalToWorld(f.normal) };
     const placed = faceId ? null : this.instancesView.placementOf(h);
     const g = placed?.faceId ? getFace(placed.placement.definition.model, placed.faceId) : undefined;
     if (placed && g) plane = { point: toVector(applyPoint(placed.placement.world, g.outer[0]!)), normal: toVector(placed.normal) };
@@ -671,12 +671,12 @@ export class Viewport {
   /** World normal of a face of the editing context. */
   normalOf(faceId: string): Vector3 | undefined {
     const n = this.modelView.normalOf(faceId);
-    return n && this.frameValue.dirToWorld([n.x, n.y, n.z]);
+    return n && this.frameValue.normalToWorld([n.x, n.y, n.z]);
   }
 
   /** Normal of the editing context's ground plane (its local Y), in world coordinates. */
   groundNormal(): Vector3 {
-    return this.frameValue.dirToWorld([0, 1, 0]);
+    return this.frameValue.normalToWorld([0, 1, 0]);
   }
 
   /** Where the pointer ray meets the editing context's ground plane, if it does. */

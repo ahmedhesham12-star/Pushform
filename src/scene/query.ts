@@ -7,19 +7,19 @@ import { listEdges, snapPoints, type Model, type Point3, type SnapKind } from '.
 import { dimensionLength, transformAnnotation, type Annotation, type AnnotationId } from './annotations';
 import { transformGuide, type Guide, type GuideId } from './guides';
 import { placedInstances, rootDefinition, type Definition, type InstanceId, type Scene } from './scene';
-import { applyPoint, IDENTITY, type Transform } from './transform';
+import { AFFINE_IDENTITY, applyPoint, type Affine } from './transform';
 
 export interface Placement {
   /** Instance path from the root to this placement ([] for the root's own geometry). */
   readonly path: readonly InstanceId[];
   readonly definition: Definition;
   /** Local space of the definition to world space. */
-  readonly world: Transform;
+  readonly world: Affine;
 }
 
 /** The root's geometry, then every instance's geometry, depth first. */
 export function placements(s: Scene): Placement[] {
-  const out: Placement[] = [{ path: [], definition: rootDefinition(s), world: IDENTITY }];
+  const out: Placement[] = [{ path: [], definition: rootDefinition(s), world: AFFINE_IDENTITY }];
   for (const p of placedInstances(s)) out.push({ path: p.path, definition: s.definitions.get(p.instance.definitionId)!, world: p.world });
   return out;
 }

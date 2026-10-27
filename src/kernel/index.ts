@@ -10,7 +10,7 @@
  * extractGeometry, transformGeometry, mergeGeometry, moveGeometry, transformSelection, offset, deserialize) are for
  * src/commands only; everything else is read-only and may be used anywhere.
  */
-import { extract as extractTopology, merge as mergeTopology, transformTopology } from './assembly';
+import { extract as extractTopology, merge as mergeTopology, transformTopology, type PlaceOptions } from './assembly';
 import { erase as eraseTopology } from './erase';
 import { offset as offsetTopology, offsetDistance as offsetDistanceTo, offsetPath as findOffsetPath, type OffsetError, type OffsetPath } from './offset';
 import { moveGeometry as moveTopology, transformSelection as transformTopologySelection, type MoveError } from './move';
@@ -42,7 +42,7 @@ const wrap = (t: Topology) => t as unknown as Model;
 export type { Vec3 } from './vec';
 export type { Point3, FaceId, EdgeId, CurveId, CurveKind } from './types';
 export type { FaceView, EdgeView, SnapPoint, SnapKind, Bounds } from './query';
-export type { MoveError, OffsetError, OffsetPath };
+export type { MoveError, OffsetError, OffsetPath, PlaceOptions };
 export type { DrawError, RectangleSpec, RegularPolygonSpec, SerializedTopology, FaceMesh, Triangle };
 export { cleanNormal, planeAxes } from './vec';
 export { GROUND_NORMAL, MAX_SEGMENTS } from './shapes';
@@ -144,9 +144,14 @@ export function extractGeometry(m: Model, faceIds: readonly string[], edgeIds: r
   return { remaining: wrap(r.remaining), extracted: wrap(r.extracted) };
 }
 
-/** A copy of the model moved rigidly: points through mapPoint, normals through mapVector. */
-export function transformGeometry(m: Model, mapPoint: (p: Point3) => Point3, mapVector: (v: Vec3) => Vec3): Model {
-  return wrap(transformTopology(data(m), mapPoint, mapVector));
+/**
+ * A copy of the model placed with an affine map: points through mapPoint,
+ * face normals through mapNormal (the inverse transpose, for a scale). A
+ * mirroring map needs `mirror`, so faces keep facing outward; a scale
+ * passes `radiusScale` for curve radii (null when it is not uniform).
+ */
+export function transformGeometry(m: Model, mapPoint: (p: Point3) => Point3, mapNormal: (v: Vec3) => Vec3, options: PlaceOptions = {}): Model {
+  return wrap(transformTopology(data(m), mapPoint, mapNormal, options));
 }
 
 /**

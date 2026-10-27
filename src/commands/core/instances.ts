@@ -9,15 +9,19 @@ import {
   mergeGeometry,
   snapPoint,
   transformGeometry,
+  type Model,
   type Point3,
 } from '../../kernel';
 import {
   addDefinition,
   addAnnotation,
   addGuide,
+  applyNormal,
   applyPoint,
-  applyVector,
+  decompose,
+  determinant,
   compose,
+  multiply,
   definitionBounds,
   duplicateDefinition,
   findInstance,
@@ -42,6 +46,7 @@ import {
   type Instance,
   type InstanceId,
   type Scene,
+  type Transform,
 } from '../../scene';
 import type { PushformDocument } from '../document';
 import type { CommandDef, RunResult } from '../types';
@@ -181,6 +186,17 @@ export const makeComponent: CommandDef<MakeComponentInput, MakeInstanceOutput> =
 
 /* ---------- explode ---------- */
 
+/**
+ * A definition's geometry placed with a transform, scaled and mirrored too:
+ * normals through the inverse transpose, loops reversed under a mirror so
+ * faces keep facing outward, curve radii scaled (dropped by a stretch).
+ */
+export function placedModel(model: Model, T: Transform): Model {
+  const [sx, sy, sz] = T.scale.map(Math.abs) as [number, number, number];
+  const uniform = Math.abs(sx - sy) <= 1e-12 * sx && Math.abs(sx - sz) <= 1e-12 * sx;
+  return transformGeometry(model, (p) => applyPoint(T, p), (n) => applyNormal(T, n), { mirror: determinant(T) < 0, radiusScale: uniform ? sx : null });
+}
+
 export const explodeInput = z.strictObject({ instanceIds: z.array(instanceId).min(1) });
 export type ExplodeInput = z.infer<typeof explodeInput>;
 export interface ExplodeOutput {
@@ -193,7 +209,9 @@ export interface ExplodeOutput {
 /**
  * Replace instances by their contents: the geometry merges into the parent's
  * geometry (coplanar faces join, crossing edges split), and nested instances
- * guides and dimensions move up to the parent. Definitions no longer used are removed.
+ * guides and dimensions move up to the parent, scaled and mirrored as the
+ * instance was. Refused (`explodeWouldSkew`) when a stretched instance holds
+ * a turned one, which no transform could keep. Definitions no longer used are removed.
  */
 export const explode: CommandDef<ExplodeInput, ExplodeOutput> = {
   id: 'core.explode',
@@ -211,13 +229,19 @@ export const explode: CommandDef<ExplodeInput, ExplodeOutput> = {
       const { instance, parent } = found;
       const def = getDefinition(scene, instance.definitionId)!;
       const T = instance.transform;
-      const placed = transformGeometry(def.model, (p) => applyPoint(T, p), (v) => applyVector(T, v));
-      const merged = mergeGeometry(parent.model, placed);
+      // Nested instances keep their own transform only when the stretch does not skew them.
+      const nested: [Instance, Transform][] = [];
+      for (const j of def.instances.values()) {
+        const placed = decompose(multiply(T, j.transform));
+        if (!placed) return { ok: false, error: { code: 'explodeWouldSkew', detail: j.id } };
+        nested.push([j, placed]);
+      }
+      const merged = mergeGeometry(parent.model, placedModel(def.model, T));
       scene = removeInstance(setModel(scene, parent.id, merged.model), parent.id, id);
       for (const f of merged.faceIds) created.push({ parent: parent.id, face: f });
-      for (const j of def.instances.values()) {
+      for (const [j, placed] of nested) {
         let nid: InstanceId;
-        [nid, scene] = placeCopy(scene, parent.id, j, compose(T, j.transform));
+        [nid, scene] = placeCopy(scene, parent.id, j, placed);
         instanceIds.push(nid);
       }
       for (const g of def.guides.values()) [, scene] = addGuide(scene, parent.id, transformGuide(T, g));

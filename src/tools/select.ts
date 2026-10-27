@@ -13,7 +13,7 @@ import {
   type Model,
   type Point3,
 } from '../kernel';
-import { applyPoint, compose, definitionBounds, pathDefinition, transformAnnotation, worldEdges, type InstanceId } from '../scene';
+import { applyPoint, definitionBounds, multiply, pathDefinition, transformAnnotation, worldEdges, type InstanceId } from '../scene';
 import { formatArea, formatLength } from '../units';
 import { annotationSegment, type Picked } from '../viewport';
 import { isMac, selectionMode, type SelectionMode } from './shortcuts';
@@ -195,7 +195,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
     for (const i of pathDefinition(scene, context)?.instances.values() ?? []) {
       const b = definitionBounds(scene, i.definitionId);
       if (!b) continue;
-      const world = compose(frame.world, i.transform);
+      const world = multiply(frame.world, i.transform);
       const points: ScreenPoint[] = [];
       for (const x of [b.min[0], b.max[0]]) for (const y of [b.min[1], b.max[1]]) for (const z of [b.min[2], b.max[2]]) points.push(screen(new Vector3(...applyPoint(world, [x, y, z]))));
       const prefix = [...context, i.id];

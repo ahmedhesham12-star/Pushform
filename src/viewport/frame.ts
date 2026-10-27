@@ -1,6 +1,6 @@
 import { Matrix4, Vector3 } from 'three';
 import { cleanNormal, snapPoint, type Vec3 } from '../kernel';
-import { applyPoint, applyVector, IDENTITY, inverse, toMatrix, type DefinitionId, type Transform } from '../scene';
+import { AFFINE_IDENTITY, applyNormal, applyPoint, applyVector, invert, toMatrix, type Affine, type DefinitionId } from '../scene';
 
 /** A point or direction as command inputs take it. */
 export type Tuple3 = [number, number, number];
@@ -12,17 +12,17 @@ const tuple = (v: Vec3): Tuple3 => [v[0], v[1], v[2]];
  * coordinates. Tools convert with toLocal and toWorld.
  */
 export class Frame {
-  static readonly ROOT = new Frame(undefined, IDENTITY);
-  private readonly inv: Transform;
+  static readonly ROOT = new Frame(undefined, AFFINE_IDENTITY);
+  private readonly inv: Affine;
   readonly matrix: Matrix4;
 
   constructor(
     /** The context's definition, or undefined for the root (as commands take it). */
     readonly definitionId: DefinitionId | undefined,
-    /** Local space of the context to world space. */
-    readonly world: Transform,
+    /** Local space of the context to world space; it scales inside a scaled group or component. */
+    readonly world: Affine,
   ) {
-    this.inv = inverse(world);
+    this.inv = invert(world);
     this.matrix = new Matrix4().fromArray(toMatrix(world));
   }
 
@@ -31,14 +31,25 @@ export class Frame {
     return tuple(snapPoint(applyPoint(this.inv, [p.x, p.y, p.z])));
   }
 
-  /** A world direction in local coordinates. */
+  /** A world direction in local coordinates (lengths in the context's own mm). */
   dirToLocal(v: Vector3): Tuple3 {
     return tuple(applyVector(this.inv, [v.x, v.y, v.z]));
   }
 
   /** A world unit normal in local coordinates, exact on the axes. */
   normalToLocal(n: Vector3): Tuple3 {
-    return tuple(cleanNormal(applyVector(this.inv, [n.x, n.y, n.z])));
+    return tuple(cleanNormal(applyNormal(this.inv, [n.x, n.y, n.z])));
+  }
+
+  /** A local face normal in world coordinates, unit length. */
+  normalToWorld(n: Vec3): Vector3 {
+    const w = applyNormal(this.world, n);
+    return new Vector3(w[0], w[1], w[2]);
+  }
+
+  /** How far apart two world points are in the context's own mm (different inside a scaled group). */
+  localDistance(a: Vector3, b: Vector3): number {
+    return Math.hypot(...this.dirToLocal(b.clone().sub(a)));
   }
 
   toWorld(p: Vec3): Vector3 {

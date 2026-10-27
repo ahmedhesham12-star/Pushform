@@ -40,7 +40,7 @@ export function createTextTool(ctx: ToolContext): Tool {
       const [x, y, z] = frame.toLocal(hit.point);
       return t('text.point', { x: fmt(x), y: fmt(-z + 0), z: fmt(y) });
     }
-    if (hit.kind === 'edge' && hit.edge) return fmt(hit.edge.a.distanceTo(hit.edge.b));
+    if (hit.kind === 'edge' && hit.edge) return fmt(frame.localDistance(hit.edge.a, hit.edge.b));
     const picked = vp().pick();
     if (picked?.kind === 'face') return formatArea(faceArea(definitionModel(ctx.session.doc, frame.definitionId)!, picked.id), ctx.units());
     if (picked?.kind === 'instance') {

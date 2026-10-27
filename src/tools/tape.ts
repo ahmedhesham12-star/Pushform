@@ -41,7 +41,12 @@ export function createTapeTool(ctx: ToolContext): Tool {
     const v = p.clone().sub(s.start);
     return v.addScaledVector(s.along!, -v.dot(s.along!));
   };
-  const measured = (s: Measuring) => (!s.end ? 0 : s.along ? across(s, s.end.point).length() : s.end.point.distanceTo(s.start));
+  /** The distance shown and made into a guide, in the context's own mm. */
+  const measured = (s: Measuring) => {
+    if (!s.end) return 0;
+    const frame = ctx.viewport.frame;
+    return s.along ? Math.hypot(...frame.dirToLocal(across(s, s.end.point))) : frame.localDistance(s.start, s.end.point);
+  };
 
   const preview = (s: Measuring) => {
     if (!s.end) return;

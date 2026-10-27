@@ -26,6 +26,8 @@ import {
   newId,
   pruneDefinitions,
   putInstance,
+  rehomeAnnotations,
+  removeAnnotations,
   removeInstance,
   setModel,
   snapTransform,
@@ -70,6 +72,10 @@ export function placeCopy(s: Scene, parent: DefinitionId, i: Instance, transform
 
 /* ---------- make group, make component ---------- */
 
+type Ids = string[] | undefined;
+const selected = (v: { faceIds?: Ids; edgeIds?: Ids; instanceIds?: Ids; annotationIds?: Ids }) =>
+  (v.faceIds?.length ?? 0) + (v.edgeIds?.length ?? 0) + (v.instanceIds?.length ?? 0) + (v.annotationIds?.length ?? 0) > 0;
+
 export const makeGroupInput = z
   .strictObject({
     /** The editing context the selection is in (the root when omitted). */
@@ -77,10 +83,10 @@ export const makeGroupInput = z
     faceIds: z.array(faceId).optional(),
     edgeIds: z.array(z.string().min(1)).optional(),
     instanceIds: z.array(instanceId).optional(),
+    /** Dimensions and text of the context, which move into the new definition. */
+    annotationIds: z.array(z.string().min(1)).optional(),
   })
-  .refine((v) => (v.faceIds?.length ?? 0) + (v.edgeIds?.length ?? 0) + (v.instanceIds?.length ?? 0) > 0, {
-    message: 'nothing selected',
-  });
+  .refine(selected, { message: 'nothing selected' });
 export type MakeGroupInput = z.infer<typeof makeGroupInput>;
 
 export const makeComponentInput = z
@@ -89,12 +95,11 @@ export const makeComponentInput = z
     faceIds: z.array(faceId).optional(),
     edgeIds: z.array(z.string().min(1)).optional(),
     instanceIds: z.array(instanceId).optional(),
+    annotationIds: z.array(z.string().min(1)).optional(),
     /** Definition name; "Component#n" when omitted. */
     name: name.min(1).optional(),
   })
-  .refine((v) => (v.faceIds?.length ?? 0) + (v.edgeIds?.length ?? 0) + (v.instanceIds?.length ?? 0) > 0, {
-    message: 'nothing selected',
-  });
+  .refine(selected, { message: 'nothing selected' });
 export type MakeComponentInput = z.infer<typeof makeComponentInput>;
 
 export interface MakeInstanceOutput {
@@ -104,7 +109,7 @@ export interface MakeInstanceOutput {
 }
 
 /**
- * Move the selected geometry and instances of a context into a new definition
+ * Move the selected geometry, instances, dimensions and text of a context into a new definition
  * and place one instance of it in the context. The new definition's origin is
  * the minimum corner of the selection's bounding box, with axes aligned to the
  * context. Edges shared with geometry left behind are copied.
@@ -122,7 +127,8 @@ function encapsulate(
   const faces = (input.faceIds ?? []).filter((f) => hasFace(target.model, f));
   const edges = (input.edgeIds ?? []).filter((e) => hasEdge(target.model, e));
   const instances = [...new Set(input.instanceIds ?? [])].filter((i) => context.instances.has(i));
-  if (!faces.length && !edges.length && !instances.length) {
+  const annotationIds = [...new Set(input.annotationIds ?? [])].filter((a) => context.annotations.has(a));
+  if (!faces.length && !edges.length && !instances.length && !annotationIds.length) {
     return { ok: false, error: { code: 'nothingSelected', detail: JSON.stringify(input) } };
   }
 
@@ -146,6 +152,11 @@ function encapsulate(
   const defName = kind === 'component' ? (definitionName ?? uniqueName(scene, t('scene.component'))) : '';
   let defId: DefinitionId;
   [defId, scene] = addDefinition(scene, { kind, name: defName, model, instances: moved });
+  if (annotationIds.length) {
+    const taken = new Map(annotationIds.map((id) => [id, context.annotations.get(id)!]));
+    const annotations = rehomeAnnotations(taken, contextId, defId, model, translation([-origin[0], -origin[1], -origin[2]]));
+    scene = updateDefinition(removeAnnotations(scene, contextId, annotationIds), defId, { annotations });
+  }
   let instId: InstanceId;
   [instId, scene] = newId(scene, 'i');
   scene = putInstance(scene, contextId, { id: instId, definitionId: defId, name: '', transform: translation(origin) });

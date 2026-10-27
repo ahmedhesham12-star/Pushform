@@ -43,6 +43,7 @@ export function createRotateTool(ctx: ToolContext): Tool {
       faceIds: s.faceIds,
       edgeIds: s.edgeIds,
       instanceIds: s.instanceIds,
+      ...(s.annotationIds?.length ? { annotationIds: s.annotationIds } : {}),
       center: frame.toLocal(s.center),
       axis: frame.dirToLocal(s.normal),
       angle,

@@ -6,7 +6,7 @@
  * they follow when that geometry moves. Like guides, they never split or
  * join geometry.
  */
-import { edgeThrough, snapPoint, VERTEX_TOLERANCE, vertexAt, vertexPoint, type Point3, type Vec3 } from '../kernel';
+import { edgeThrough, snapPoint, VERTEX_TOLERANCE, vertexAt, vertexPoint, type Model, type Point3, type Vec3 } from '../kernel';
 import { newId, placedInstances, type Definition, type DefinitionId, type InstanceId, type Scene } from './scene';
 import { applyPoint, applyVector, compose, IDENTITY, inverse, type Transform } from './transform';
 
@@ -200,4 +200,76 @@ export function removeAnnotations(s: Scene, definitionId: DefinitionId, ids: Ite
   for (const id of ids) annotations.delete(id);
   if (annotations.size === d.annotations.size) return s;
   return { ...s, definitions: new Map(s.definitions).set(d.id, { ...d, annotations }) };
+}
+
+const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const plus = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+/** The part of v square to the line from a to b. */
+function across(v: Vec3, a: Vec3, b: Vec3): Vec3 {
+  const d = sub(b, a);
+  const l2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+  const k = l2 ? (v[0] * d[0] + v[1] * d[1] + v[2] * d[2]) / l2 : 0;
+  return [v[0] - d[0] * k, v[1] - d[1] * k, v[2] - d[2] * k];
+}
+
+/**
+ * Move or turn annotations of a definition with a rigid transform, after
+ * the geometry the same command changed. Attached ends go where their
+ * geometry went and free ends go with the transform. The text and the
+ * dimension line go with the transform, and the leader or offset is
+ * measured again from where the ends are now: a dimension moved on its own
+ * slides square to its measured line, and one moved with its geometry keeps
+ * its offset. Screen text does not move. The scene returned has every
+ * anchor followed.
+ */
+export function transformAnnotations(s: Scene, definitionId: DefinitionId, ids: Iterable<AnnotationId>, t: Transform): Scene {
+  const followed = followAnchors(s);
+  const before = s.definitions.get(definitionId);
+  const d = followed.definitions.get(definitionId);
+  if (!before || !d) return followed;
+  const moved = (a0: Anchor, a1: Anchor): Anchor => (a1.ref ? a1 : { point: snapPoint(applyPoint(t, a0.point)) });
+  let annotations: Map<AnnotationId, Annotation> | null = null;
+  for (const id of ids) {
+    const a0 = before.annotations.get(id);
+    const a1 = d.annotations.get(id);
+    if (!a0 || !a1 || a0.kind === 'screenText' || a1.kind === 'screenText') continue;
+    let next: Annotation;
+    if (a0.kind === 'text' && a1.kind === 'text') {
+      const anchor = moved(a0.anchor, a1.anchor);
+      next = { ...a1, anchor, leader: sub(applyPoint(t, plus(a0.anchor.point, a0.leader)), anchor.point) };
+    } else if (a0.kind === 'dimension' && a1.kind === 'dimension') {
+      const [start, end] = [moved(a0.start, a1.start), moved(a0.end, a1.end)];
+      const line = applyPoint(t, plus(a0.start.point, across(a0.offset, a0.start.point, a0.end.point)));
+      next = { ...a1, start, end, offset: across(sub(line, start.point), start.point, end.point) };
+    } else continue;
+    annotations ??= new Map(d.annotations);
+    annotations.set(id, next);
+  }
+  if (!annotations) return followed;
+  return { ...followed, definitions: new Map(followed.definitions).set(d.id, { ...d, annotations }) };
+}
+
+/**
+ * Annotations moved into a new definition (Make Group, Make Component),
+ * with `toLocal` taking points there. References to the parent's own
+ * geometry now name the new definition when it holds those vertices (the
+ * geometry went with them, keeping its ids); others attach again by position
+ * or come loose when the session follows them.
+ */
+export function rehomeAnnotations(
+  annotations: ReadonlyMap<AnnotationId, Annotation>,
+  from: DefinitionId,
+  to: DefinitionId,
+  model: Model,
+  toLocal: Transform,
+): Map<AnnotationId, Annotation> {
+  const out = new Map<AnnotationId, Annotation>();
+  const rehome = (x: Anchor): Anchor => {
+    const r = x.ref;
+    if (!r || r.path.length || r.definitionId !== from) return x;
+    if (!vertexPoint(model, r.a) || (r.b !== undefined && !vertexPoint(model, r.b))) return x;
+    return { ...x, ref: { ...r, definitionId: to } };
+  };
+  for (const [id, a] of annotations) out.set(id, transformAnnotation(toLocal, withAnchors(a, rehome)));
+  return out;
 }

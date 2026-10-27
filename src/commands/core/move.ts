@@ -9,6 +9,7 @@ import {
   putInstance,
   rotationAbout,
   snapTransform,
+  transformAnnotations,
   translation,
   type InstanceId,
   type Scene,
@@ -29,6 +30,8 @@ const selection = {
   faceIds: z.array(faceId).optional(),
   edgeIds: z.array(z.string().min(1)).optional(),
   instanceIds: z.array(z.string().min(1)).optional(),
+  /** Dimensions and text of the context; moved and turned, not copied. */
+  annotationIds: z.array(z.string().min(1)).optional(),
 };
 const array = {
   /** How many copies; with `divide`, how many equal steps the distance or angle is split into. */
@@ -54,8 +57,9 @@ const rotateFields = {
   /** Angle in degrees, counter-clockwise looking against the axis, so typing a new angle amends it. */
   angle: z.number(),
 };
-const anything = (v: { faceIds?: string[] | undefined; edgeIds?: string[] | undefined; instanceIds?: string[] | undefined; vertexIds?: string[] | undefined }) =>
-  (v.faceIds?.length ?? 0) + (v.edgeIds?.length ?? 0) + (v.instanceIds?.length ?? 0) + (v.vertexIds?.length ?? 0) > 0;
+type Ids = string[] | undefined;
+const anything = (v: { faceIds?: Ids; edgeIds?: Ids; instanceIds?: Ids; vertexIds?: Ids; annotationIds?: Ids }) =>
+  (v.faceIds?.length ?? 0) + (v.edgeIds?.length ?? 0) + (v.instanceIds?.length ?? 0) + (v.vertexIds?.length ?? 0) + (v.annotationIds?.length ?? 0) > 0;
 const nothingSelected = { message: 'nothing selected' };
 
 export const moveInput = z.strictObject({ ...moveFields, vertexIds }).refine(anything, nothingSelected);
@@ -68,28 +72,31 @@ export const rotateCopiesInput = z.strictObject({ ...rotateFields, ...array }).r
 export type RotateCopiesInput = z.infer<typeof rotateCopiesInput>;
 
 export interface MoveOutput {
-  /** The moved (or copied) faces, edges and instances, for the selection afterwards. */
+  /** The moved (or copied) faces, edges, instances and annotations, for the selection afterwards. */
   faceIds: string[];
   edgeIds: string[];
   instanceIds: InstanceId[];
+  annotationIds: string[];
 }
 
 type Selection = z.infer<z.ZodObject<typeof selection>> & { vertexIds?: string[] | undefined };
-type Prepared = { ok: true; model: Model; faces: string[]; edges: string[]; vertices: string[]; instances: InstanceId[] };
+type Prepared = { ok: true; model: Model; faces: string[]; edges: string[]; vertices: string[]; instances: InstanceId[]; annotations: string[] };
 
 /** The existing selection of a context that exists, or an error. */
 function prepare(doc: PushformDocument, input: Selection): Prepared | { ok: false; error: CommandError } {
   const target = targetModel(doc, input.definitionId);
   if (!target.ok) return target;
-  const placed = getDefinition(doc.scene, input.definitionId ?? doc.scene.rootId)!.instances;
+  const context = getDefinition(doc.scene, input.definitionId ?? doc.scene.rootId)!;
+  const placed = context.instances;
   const faces = (input.faceIds ?? []).filter((f) => hasFace(target.model, f));
   const edges = (input.edgeIds ?? []).filter((e) => hasEdge(target.model, e));
   const vertices = (input.vertexIds ?? []).filter((v) => hasVertex(target.model, v));
   const instances = [...new Set(input.instanceIds ?? [])].filter((i) => placed.has(i));
-  if (!faces.length && !edges.length && !vertices.length && !instances.length) {
+  const annotations = [...new Set(input.annotationIds ?? [])].filter((a) => context.annotations.has(a));
+  if (!faces.length && !edges.length && !vertices.length && !instances.length && !annotations.length) {
     return { ok: false, error: { code: 'nothingSelected', detail: JSON.stringify(input) } };
   }
-  return { ok: true, model: target.model, faces, edges, vertices, instances };
+  return { ok: true, model: target.model, faces, edges, vertices, instances, annotations };
 }
 
 /** A non-zero vector made unit length, or null. */
@@ -120,7 +127,9 @@ function transformAll(doc: PushformDocument, input: Selection, p: Prepared, tr: 
     const i = getDefinition(scene, contextId)!.instances.get(id)!;
     scene = putInstance(scene, contextId, { ...i, transform: snapTransform(compose(tr, i.transform)) });
   }
-  return { ok: true, doc: scene === doc.scene ? doc : { ...next, scene }, output: { faceIds, edgeIds, instanceIds: p.instances } };
+  if (p.annotations.length) scene = transformAnnotations(scene, contextId, p.annotations, tr);
+  const output = { faceIds, edgeIds, instanceIds: p.instances, annotationIds: p.annotations };
+  return { ok: true, doc: scene === doc.scene ? doc : { ...next, scene }, output };
 }
 
 /**
@@ -129,8 +138,10 @@ function transformAll(doc: PushformDocument, input: Selection, p: Prepared, tr: 
  * group copies get their own.
  */
 function copyAll(doc: PushformDocument, input: Selection, p: Prepared, count: number, transformAt: (k: number) => Transform): RunResult<MoveOutput> {
+  // Dimensions and text are not copied (a next step), so on their own there is nothing to copy.
+  if (!p.faces.length && !p.edges.length && !p.instances.length) return { ok: false, error: { code: 'nothingSelected', detail: 'nothing to copy' } };
   const contextId = input.definitionId ?? doc.scene.rootId;
-  const out: MoveOutput = { faceIds: [], edgeIds: [], instanceIds: [] };
+  const out: MoveOutput = { faceIds: [], edgeIds: [], instanceIds: [], annotationIds: [] };
   let model: Model = p.model;
   if (p.faces.length || p.edges.length) {
     const piece = extractGeometry(p.model, p.faces, p.edges).extracted;
@@ -177,7 +188,7 @@ export const move: CommandDef<MoveInput, MoveOutput> = {
     if (!p.ok) return p;
     const u = unit(input.direction);
     if (!u) return zeroDirection;
-    if (input.distance === 0) return { ok: true, doc, output: { faceIds: p.faces, edgeIds: p.edges, instanceIds: p.instances } };
+    if (input.distance === 0) return { ok: true, doc, output: { faceIds: p.faces, edgeIds: p.edges, instanceIds: p.instances, annotationIds: p.annotations } };
     return transformAll(doc, input, p, translation(scaled(u, input.distance)));
   },
 };
@@ -220,7 +231,7 @@ export const rotate: CommandDef<RotateInput, MoveOutput> = {
     if (!p.ok) return p;
     const axis = unit(input.axis);
     if (!axis) return zeroDirection;
-    if (input.angle % 360 === 0) return { ok: true, doc, output: { faceIds: p.faces, edgeIds: p.edges, instanceIds: p.instances } };
+    if (input.angle % 360 === 0) return { ok: true, doc, output: { faceIds: p.faces, edgeIds: p.edges, instanceIds: p.instances, annotationIds: p.annotations } };
     return transformAll(doc, input, p, rotationAbout(input.center, axis, radians(input.angle)));
   },
 };

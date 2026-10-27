@@ -51,6 +51,7 @@ export function createMoveTool(ctx: ToolContext): Tool {
     edgeIds: s.edgeIds,
     instanceIds: s.instanceIds,
     ...(s.vertexIds ? { vertexIds: s.vertexIds } : {}),
+    ...(s.annotationIds?.length ? { annotationIds: s.annotationIds } : {}),
     ...m,
   });
   /** A corner moved on its own is never copied. */

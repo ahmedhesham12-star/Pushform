@@ -170,7 +170,7 @@ export function removeInstance(s: Scene, parent: DefinitionId, id: InstanceId): 
   return withDefinition(s, { ...d, instances });
 }
 
-export function updateDefinition(s: Scene, id: DefinitionId, patch: Partial<Pick<Definition, 'name' | 'kind' | 'model'>>): Scene {
+export function updateDefinition(s: Scene, id: DefinitionId, patch: Partial<Pick<Definition, 'name' | 'kind' | 'model' | 'annotations'>>): Scene {
   const d = s.definitions.get(id);
   return d ? withDefinition(s, { ...d, ...patch }) : s;
 }

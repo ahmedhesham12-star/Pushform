@@ -284,3 +284,129 @@ describe('text commands', () => {
     expect(a.anchor.ref).toMatchObject({ path: [] });
   });
 });
+
+describe('moving dimensions and text', () => {
+  const root = (s: CommandSession) => getDefinition(s.doc.scene, s.doc.scene.rootId)!;
+  const everything = (s: CommandSession) => {
+    const m = definitionModel(s.doc)!;
+    return { faceIds: listFaces(m).map((f) => f.id), edgeIds: listEdges(m).map((e) => e.id) };
+  };
+
+  test('a dimension moved on its own slides square to its line; its ends stay attached', () => {
+    const s = createSession();
+    box(s);
+    const { annotationId } = ok(s.execute('core.addDimension', { start: [0, 0, 0], end: [1000, 0, 0], offset: [0, 0, -100] }));
+    ok(s.execute('core.move', { annotationIds: [annotationId], direction: [3, 0, -2], distance: Math.hypot(300, 200) }));
+    const d = dimension(s, annotationId);
+    expect(d.start.point).toEqual([0, 0, 0]);
+    expect(d.end.point).toEqual([1000, 0, 0]);
+    expect(d.start.ref).toBeDefined();
+    expect(d.offset[0]).toBeCloseTo(0, 6);
+    expect(d.offset[2]).toBeCloseTo(-300, 6);
+    // Typing a distance afterwards amends the move.
+    ok(s.amend({ distance: Math.hypot(600, 400) }));
+    expect(dimension(s, annotationId).offset[2]).toBeCloseTo(-500, 6);
+  });
+
+  test('a dimension moved with its geometry keeps its offset', () => {
+    const s = createSession();
+    box(s);
+    const { annotationId } = ok(s.execute('core.addDimension', { start: [0, 0, 0], end: [1000, 0, 0], offset: [0, 0, -100] }));
+    ok(s.execute('core.move', { ...everything(s), annotationIds: [annotationId], direction: [0, 0, -1], distance: 400 }));
+    const d = dimension(s, annotationId);
+    expect(d.start.point).toEqual([0, 0, -400]);
+    expect(d.offset[2]).toBeCloseTo(-100, 6);
+  });
+
+  test('attached text moved on its own: the leader stretches, the point stays', () => {
+    const s = createSession();
+    box(s);
+    const { annotationId } = ok(s.execute('core.addText', { point: [0, 500, 0], leader: [-200, 200, 0], text: 'Corner' }));
+    ok(s.execute('core.move', { annotationIds: [annotationId], direction: [0, 1, 0], distance: 300 }));
+    const a = root(s).annotations.get(annotationId) as LeaderText;
+    expect(a.anchor.point).toEqual([0, 500, 0]);
+    expect(a.anchor.ref).toBeDefined();
+    expect(a.leader[1]).toBeCloseTo(500, 6);
+  });
+
+  test('free text moves whole, alone or with a selection; attached text keeps its leader when its geometry moves too', () => {
+    const s = createSession();
+    box(s);
+    const free = ok(s.execute('core.addText', { point: [3000, 0, 0], leader: [0, 200, 0], text: 'Note' })).annotationId;
+    const attached = ok(s.execute('core.addText', { point: [0, 500, 0], leader: [-200, 200, 0], text: 'Corner' })).annotationId;
+    ok(s.execute('core.move', { annotationIds: [free], direction: [1, 0, 0], distance: 100 }));
+    expect((root(s).annotations.get(free) as LeaderText).anchor.point).toEqual([3100, 0, 0]);
+    ok(s.execute('core.move', { ...everything(s), annotationIds: [free, attached], direction: [0, 0, 1], distance: 250 }));
+    const f = root(s).annotations.get(free) as LeaderText;
+    const a = root(s).annotations.get(attached) as LeaderText;
+    expect(f.anchor.point).toEqual([3100, 0, 250]);
+    expect(f.leader).toEqual([0, 200, 0]);
+    expect(a.anchor.point).toEqual([0, 500, 250]);
+    expect(a.leader[0]).toBeCloseTo(-200, 6);
+    expect(a.leader[1]).toBeCloseTo(200, 6);
+    expect(a.leader[2]).toBeCloseTo(0, 6);
+  });
+
+  test('rotating free text turns it about the axis', () => {
+    const s = createSession();
+    const { annotationId } = ok(s.execute('core.addText', { point: [1000, 0, 0], leader: [100, 0, 0], text: 'Note' }));
+    ok(s.execute('core.rotate', { annotationIds: [annotationId], center: [0, 0, 0], axis: [0, 1, 0], angle: 90 }));
+    const a = root(s).annotations.get(annotationId) as LeaderText;
+    expect(a.anchor.point[0]).toBeCloseTo(0, 6);
+    expect(a.anchor.point[2]).toBeCloseTo(-1000, 6);
+    expect(a.leader[2]).toBeCloseTo(-100, 6);
+  });
+
+  test('screen text does not move; dimensions and text alone make nothing to copy', () => {
+    const s = createSession();
+    const { annotationId } = ok(s.execute('core.addScreenText', { position: [0.1, 0.1], text: 'A' }));
+    const r = s.execute('core.move', { annotationIds: [annotationId], direction: [1, 0, 0], distance: 100 });
+    expect(r.ok && r.changed).toBe(false);
+    const dim = ok(s.execute('core.addDimension', { start: [0, 0, 0], end: [800, 0, 0], offset: [0, 0, -100] })).annotationId;
+    const c = s.execute('core.moveCopies', { annotationIds: [dim], direction: [1, 0, 0], distance: 100, copies: 1, divide: false });
+    expect(c.ok ? null : c.error.code).toBe('nothingSelected');
+  });
+});
+
+describe('dimensions and text in new groups and components', () => {
+  test('Make Group takes selected dimensions and text, still attached inside it; copies carry them', () => {
+    const s = createSession();
+    box(s);
+    const dim = ok(s.execute('core.addDimension', { start: [0, 0, 0], end: [0, 500, 0], offset: [-100, 0, 0] })).annotationId;
+    const note = ok(s.execute('core.addText', { point: [1000, 500, 600], leader: [100, 100, 0], text: 'Back corner' })).annotationId;
+    const m = definitionModel(s.doc)!;
+    const g = ok(
+      s.execute('core.makeGroup', { faceIds: listFaces(m).map((f) => f.id), edgeIds: listEdges(m).map((e) => e.id), annotationIds: [dim, note] }),
+    );
+    expect(getDefinition(s.doc.scene, s.doc.scene.rootId)!.annotations.size).toBe(0);
+    const inside = getDefinition(s.doc.scene, g.definitionId)!.annotations;
+    expect(inside.size).toBe(2);
+    expect((inside.get(dim) as Dimension).start.ref).toMatchObject({ path: [], definitionId: g.definitionId });
+    expect((inside.get(note) as LeaderText).anchor.ref).toMatchObject({ path: [], definitionId: g.definitionId });
+    // Pushing the top inside the group stretches the dimension.
+    const topFace = listFaces(definitionModel(s.doc, g.definitionId)!).find((f) => f.normal[1] > 0.9 && f.outer[0]![1] > 0)!.id;
+    ok(s.execute('core.pushPull', { definitionId: g.definitionId, faceId: topFace, distance: 100 }));
+    expect(dimensionLength(getDefinition(s.doc.scene, g.definitionId)!.annotations.get(dim) as Dimension)).toBe(600);
+    // Undo puts everything back where it was.
+    s.undo();
+    s.undo();
+    expect(getDefinition(s.doc.scene, s.doc.scene.rootId)!.annotations.size).toBe(2);
+    s.redo();
+    const copy = ok(s.execute('core.copyInstances', { instanceIds: [g.instanceId], translation: [3000, 0, 0] }));
+    const inCopy = worldAnnotations(s.doc.scene).filter((w) => w.path[0] === copy.instanceIds[0]);
+    expect(inCopy).toHaveLength(2);
+    expect((inCopy.find((w) => w.annotation.kind === 'dimension')!.annotation as Dimension).start.point).toEqual([3000, 0, 0]);
+  });
+
+  test('a dimension taken into a component without its geometry comes loose', () => {
+    const s = createSession();
+    box(s);
+    const dim = ok(s.execute('core.addDimension', { start: [0, 0, 0], end: [1000, 0, 0], offset: [0, 0, -100] })).annotationId;
+    const text = ok(s.execute('core.addText', { point: [5000, 0, 0], leader: [0, 100, 0], text: 'Alone' })).annotationId;
+    const c = ok(s.execute('core.makeComponent', { annotationIds: [dim, text] }));
+    const inside = getDefinition(s.doc.scene, c.definitionId)!.annotations;
+    expect((inside.get(dim) as Dimension).start.ref).toBeUndefined();
+    expect(dimensionLength(inside.get(dim) as Dimension)).toBe(1000);
+    expect(inside.has(text)).toBe(true);
+  });
+});

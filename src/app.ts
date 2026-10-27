@@ -447,9 +447,10 @@ export class App {
     return faces.size + edges.size + instances.size + guides.size + annotations.size > 0;
   }
 
-  /** Whether faces, edges or instances are selected (what grouping and moving act on). */
-  private hasGeometry(): boolean {
-    return this.selection.faces.size + this.selection.edges.size + this.selection.instances.size > 0;
+  /** Whether faces, edges, instances, dimensions or text are selected (what grouping acts on). */
+  private hasGroupable(): boolean {
+    const { faces, edges, instances, annotations } = this.selection;
+    return faces.size + edges.size + instances.size + annotations.size > 0;
   }
 
   private toolContext(): ToolContext {
@@ -585,6 +586,7 @@ export class App {
       faceIds: [...this.selection.faces],
       edgeIds: [...this.selection.edges],
       instanceIds: [...this.selection.instances],
+      annotationIds: [...this.selection.annotations],
     };
   }
 
@@ -599,7 +601,7 @@ export class App {
 
   /** Make the selection a group or a component, and select the new instance. */
   private makeInstance(kind: 'group' | 'component'): void {
-    if (!this.hasGeometry()) return this.status.flash(t('error.nothingSelected'), true);
+    if (!this.hasGroupable()) return this.status.flash(t('error.nothingSelected'), true);
     this.cancel(true);
     const input = this.selectionInput();
     const r = kind === 'group' ? this.session.execute('core.makeGroup', input) : this.session.execute('core.makeComponent', input);
@@ -691,7 +693,7 @@ export class App {
     const scene = this.session.doc.scene;
     const placed = pathDefinition(scene, this.context)!.instances;
     const any = this.hasSelection();
-    const geometry = this.hasGeometry();
+    const geometry = this.hasGroupable();
     const { instances, faces, edges, guides, annotations } = this.selection;
     const onlyOne = instances.size === 1 && !faces.size && !edges.size && !guides.size && !annotations.size;
     const single = onlyOne ? [...this.selection.instances][0]! : null;

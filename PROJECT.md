@@ -317,6 +317,8 @@ Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] unti
 | 2026-10-27 | The Dimension tool: two points, or a click along an edge for its ends, then the pointer places the line. It lies in the plane of the face under the pointer when that face holds the measured line, otherwise in the axis plane through the line that faces the view. Values are DOM labels over the canvas (file units and precision), hidden behind faces; lines are drawn like edges, with tick marks | A screen-direction rule cannot tell the planes apart (every direction square to the line projects onto the same screen normal); hovering a face is a direct way to choose. |
 | 2026-10-27 | Text: leader text (`core.addText`: a point, which attaches like a dimension end, a leader vector and the text) and screen text (`core.addScreenText`: a position as fractions of the view from its top left corner, held by the open context's definition and shown once however many times it is placed). `core.editText` changes either; writing the same text is no change, so no undo step | Screen text belongs to the open context's definition (approved default). Text is the user's content, so it does not go through `t()`. |
 | 2026-10-27 | The Text tool starts a leader with what it points at: a point's coordinates in red, green, blue (our x, -z, y), an edge's length, a face's area, a group's or component's name; a first click on empty space places screen text. The text is written in place in a field over the canvas: Enter or leaving it finishes, Shift+Enter starts a line, Escape drops it. Double-click with Select writes over a text | SketchUp's defaults as far as we know them (listed under "Not verified"). The field takes the focus after the pointer press, whose default action would otherwise take it away again and finish the text at once. |
+| 2026-10-27 | Move and Rotate take dimensions and text (`annotationIds`). Attached ends go where their geometry goes; free ends go with the move. The text, and a point on the dimension line, go with the move, and the leader or offset is measured again from the ends: a dimension moved on its own slides square to its measured line, one moved with its geometry keeps its offset, and free text in a selection moves with it. Screen text does not move; copies do not copy dimensions or text yet | Product owner, checkpoint (b) feedback. One rule for every rigid move, so Rotate needs nothing of its own. |
+| 2026-10-27 | Make Group and Make Component take the selected dimensions and text into the new definition. References to geometry that went with them name the new definition (extracted geometry keeps its vertex ids); ends on geometry left outside come loose, since a definition's annotations only reach its own geometry and what is nested in it | As in SketchUp (product owner, checkpoint (b) feedback). Copies of the group then carry them, through `duplicateDefinition`. |
 
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
@@ -526,11 +528,13 @@ Decisions approved for milestone 4 (2026-10-26, product owner):
    5. **OBJ and DXF export.**
    6. **Intersecting moved geometry** with what it lands on.
 2. A stretch that lands a point on another point merges the two instead of being refused.
-3. Kernel: intersecting faces of different solids, and confirming the box-against-box result in SketchUp (product owner).
-4. Inference: parallel, perpendicular and "from point", and a reverse-face command.
-5. Arabic locale: catalog, an Arabic-capable font, and an RTL layout pass.
-6. Tooling: ESLint and Prettier, browser end-to-end tests in CI, and code-splitting three.js (the main bundle is about 800 kB).
-7. MCP bridge: expose the command layer to external AI clients (bring-your-own, local).
+3. **Dimension text** (product owner, checkpoint (b) feedback): replace a dimension's value with your own text or add to it, with `<>` standing for the measured length, as in SketchUp.
+4. **Copying dimensions and text** with Move and Rotate copies, as SketchUp does.
+5. Kernel: intersecting faces of different solids, and confirming the box-against-box result in SketchUp (product owner).
+6. Inference: parallel, perpendicular and "from point", and a reverse-face command.
+7. Arabic locale: catalog, an Arabic-capable font, and an RTL layout pass.
+8. Tooling: ESLint and Prettier, browser end-to-end tests in CI, and code-splitting three.js (the main bundle is about 800 kB).
+9. MCP bridge: expose the command layer to external AI clients (bring-your-own, local).
    - Read-only query commands so external callers can find geometry: list faces with id, center, normal, size and area. Today these queries exist only as kernel functions used inside the app.
    - Every face-creating command now returns the ids of the faces it creates, including push/pull walls and bottoms (done in milestone 2).
    - Face ids: kept across the milestone 2 conversion (see document format). Any future change that cannot keep them must bump the document format version.

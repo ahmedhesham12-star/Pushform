@@ -9,6 +9,8 @@ export interface Taken {
   faceIds: string[];
   edgeIds: string[];
   instanceIds: string[];
+  /** Dimensions and text: moved and turned with the rest, not copied. */
+  annotationIds?: string[];
   /** A corner taken on its own (nothing selected, the pointer on an endpoint). */
   vertexIds?: string[];
 }
@@ -24,11 +26,14 @@ export function arrayBeforeCopy(text: string, unit: LengthUnit): string | null {
   return t('error.arrayNeedsCopy', { array: t(a.divide ? 'measure.divide' : 'measure.multiply', { count: formatNumber(a.count) }) });
 }
 
-export const hasSelection = (ctx: ToolContext) => ctx.selection.faces.size + ctx.selection.edges.size + ctx.selection.instances.size > 0;
+export const hasSelection = (ctx: ToolContext) => {
+  const { faces, edges, instances, annotations } = ctx.selection;
+  return faces.size + edges.size + instances.size + annotations.size > 0;
+};
 
 /**
  * The selection to move or rotate: the current one, or with nothing selected
- * the face, edge, group or component under the pointer (which becomes the
+ * the face, edge, group, component, dimension or text under the pointer (which becomes the
  * selection, as in SketchUp). With `corners` (Move), an endpoint under the
  * pointer moves on its own. Inference skips what was taken from now on, so it
  * cannot snap to itself. Null when there is nothing to take.
@@ -48,16 +53,18 @@ export function takeSelection(ctx: ToolContext, corners = false): Taken | null {
   }
   if (!hasSelection(ctx)) {
     const hit = entityOf(ctx.viewport.pick());
-    if (!hit) return null;
+    // Guides are not moved.
+    if (!hit || hit.kind === 'guide') return null;
     if (hit.kind === 'face') selection.faces.add(hit.id);
     else if (hit.kind === 'edge') for (const e of edgeGroup(m, hit.id)) selection.edges.add(e);
+    else if (hit.kind === 'annotation') selection.annotations.add(hit.id);
     else selection.instances.add(hit.id);
     selection.hovered = null;
     ctx.applyHighlights();
   }
   const edges = new Set([...selection.edges, ...[...selection.faces].flatMap((f) => faceEdges(m, f))]);
   ctx.viewport.setExcluded({ faces: new Set(selection.faces), edges, instances: new Set(selection.instances) });
-  return { faceIds: [...selection.faces], edgeIds: [...selection.edges], instanceIds: [...selection.instances] };
+  return { faceIds: [...selection.faces], edgeIds: [...selection.edges], instanceIds: [...selection.instances], annotationIds: [...selection.annotations] };
 }
 
 /** After the command: what moved (or the copies) is the selection, as in SketchUp. */
@@ -66,6 +73,8 @@ export function selectResult(ctx: ToolContext, out: Taken): void {
   selection.faces.clear();
   selection.edges.clear();
   selection.instances.clear();
+  selection.annotations.clear();
+  for (const a of out.annotationIds ?? []) selection.annotations.add(a);
   for (const f of out.faceIds) selection.faces.add(f);
   for (const e of out.edgeIds) selection.edges.add(e);
   for (const i of out.instanceIds) selection.instances.add(i);
@@ -84,7 +93,8 @@ function cornerUnder(ctx: ToolContext): { vertex: string; point: [number, number
 /** Hover feedback while idle: with nothing selected, highlight what a click would take (nothing for a corner). */
 export function hoverTakeable(ctx: ToolContext, corners = false): void {
   if (hasSelection(ctx)) return;
-  const hovered = corners && cornerUnder(ctx) ? null : entityOf(ctx.viewport.pick());
+  const picked = corners && cornerUnder(ctx) ? null : entityOf(ctx.viewport.pick());
+  const hovered = picked?.kind === 'guide' ? null : picked;
   const h = ctx.selection.hovered;
   if (hovered?.kind !== h?.kind || hovered?.id !== h?.id) {
     ctx.selection.hovered = hovered;

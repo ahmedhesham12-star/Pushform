@@ -26,15 +26,18 @@ import {
   contextRelation,
   pathDefinition,
   pathTransform,
+  worldAnnotations,
   worldEdges,
   worldGuides,
   worldSnapPoints,
   type InstanceId,
   type Scene as PushformScene,
+  type WorldAnnotation,
   type WorldEdge,
   type WorldGuide,
 } from '../scene';
-import { gridStep, isImperial, MM_PER, type UnitSettings } from '../units';
+import { DEFAULT_UNIT_SETTINGS, formatLength, gridStep, isImperial, MM_PER, type UnitSettings } from '../units';
+import { AnnotationsView, dimensionLine } from './annotationsView';
 import { OrbitCamera } from './camera';
 import { toPoint, toVector } from './convert';
 import { Frame } from './frame';
@@ -113,7 +116,7 @@ export interface EdgeHit {
  * geometry outside the context (faded; `path` says where it belongs).
  */
 export type Picked =
-  | { kind: 'face' | 'edge' | 'guide'; id: string; point: Vector3 }
+  | { kind: 'face' | 'edge' | 'guide' | 'annotation'; id: string; point: Vector3 }
   | { kind: 'instance'; id: InstanceId; point: Vector3 }
   | { kind: 'outside'; path: readonly InstanceId[]; point: Vector3 };
 
@@ -136,6 +139,16 @@ export interface GuideHit {
   direction?: Vector3;
   path: readonly InstanceId[];
   relation: 'context' | 'inside' | 'outside';
+}
+
+/** A dimension near the pointer: on its label, or close to its lines. */
+export interface AnnotationHit {
+  annotationId: string;
+  /** The middle of its dimension line (world). */
+  point: Vector3;
+  path: readonly InstanceId[];
+  relation: 'context' | 'inside' | 'outside';
+  onLabel: boolean;
 }
 
 /** Entities of the editing context that picking and inference skip (the selection being moved). */
@@ -162,6 +175,9 @@ export class Viewport {
   private readonly guidesView = new GuidesView();
   private guideList: WorldGuide[] = [];
   private guidesOn = true;
+  private readonly annotationsView = new AnnotationsView();
+  private annotationList: WorldAnnotation[] = [];
+  private units: UnitSettings = DEFAULT_UNIT_SETTINGS;
   private frameValue = Frame.ROOT;
   private context: readonly InstanceId[] = [];
   private shown: PushformScene | null = null;
@@ -189,7 +205,7 @@ export class Viewport {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.canvas = this.renderer.domElement;
     container.prepend(this.canvas);
-    container.append(this.marker.element);
+    container.append(this.annotationsView.labels, this.marker.element);
     this.selectionBox.className = 'selection-box';
     container.append(this.selectionBox);
 
@@ -206,7 +222,7 @@ export class Viewport {
       axis(AXIS_COLOR.z, new Vector3(0, 0, -1)),
       axis(AXIS_COLOR.y, new Vector3(0, 1, 0)),
     );
-    this.scene.add(this.modelView.group, this.instancesView.group, this.previewModel.group, this.previewInstances.group, this.guidesView.group, this.preview);
+    this.scene.add(this.modelView.group, this.instancesView.group, this.previewModel.group, this.previewInstances.group, this.guidesView.group, this.annotationsView.group, this.preview);
     this.showPreviewMeshes(false);
 
     new ResizeObserver(() => this.resize()).observe(container);
@@ -224,6 +240,12 @@ export class Viewport {
     requestAnimationFrame(() => {
       this.pending = false;
       this.guidesView.update(this.camera.camera, this.camera.target);
+      this.annotationsView.update(
+        this.camera.camera,
+        this.camera.target,
+        (p) => this.picker.toScreen(p),
+        (p) => !this.hidden(p),
+      );
       this.renderer.render(this.scene, this.camera.camera);
     });
   }
@@ -244,6 +266,7 @@ export class Viewport {
     this.modelView.build(def.model, this.frameValue.matrix);
     this.instancesView.build(scene, context);
     this.showGuideList();
+    this.showAnnotations(this.annotationList);
     this.showPreviewMeshes(false);
     this.requestRender();
   }
@@ -257,6 +280,8 @@ export class Viewport {
     const def = pathDefinition(scene, this.context) ?? pathDefinition(scene, [])!;
     this.previewModel.build(def.model, this.frameValue.matrix);
     this.previewInstances.build(scene, this.context);
+    // Dimensions follow the geometry in the preview too.
+    this.showAnnotations(worldAnnotations(scene));
     this.showPreviewMeshes(true);
     this.requestRender();
   }
@@ -264,6 +289,7 @@ export class Viewport {
   hidePreview(): void {
     if (!this.previewing) return;
     this.showPreviewMeshes(false);
+    this.showAnnotations(this.annotationList);
     this.requestRender();
   }
 
@@ -348,6 +374,60 @@ export class Viewport {
     this.worldEdgeList = worldEdges(scene);
     this.guideList = worldGuides(scene);
     this.showGuideList();
+    this.annotationList = worldAnnotations(scene);
+    this.showAnnotations(this.annotationList);
+  }
+
+  private showAnnotations(list: readonly WorldAnnotation[]): void {
+    this.annotationsView.show(
+      list.map((a) => ({
+        id: a.annotationId,
+        path: a.path,
+        faded: contextRelation(a.path, this.context) === 'outside',
+        annotation: a.annotation,
+        text: formatLength(a.length, this.units),
+      })),
+    );
+    this.requestRender();
+  }
+
+  /** Dimensions of the editing context in highlight colors. */
+  highlightAnnotations(annotations: ReadonlyMap<string, EdgeHighlight>): void {
+    this.annotationsView.highlight(annotations);
+    this.requestRender();
+  }
+
+  /**
+   * The dimension under the pointer: its label, or its lines within
+   * EDGE_PICK_PX. Scope 'context' looks only at the editing context's.
+   */
+  pickAnnotation(scope: 'context' | 'all' = 'context'): AnnotationHit | null {
+    const { x, y } = this.picker.mouse;
+    const boxes = this.annotationsView.labelBoxes();
+    let best: { px: number; hit: AnnotationHit } | null = null;
+    for (const a of this.annotationList) {
+      const relation = contextRelation(a.path, this.context);
+      if (scope === 'context' && relation !== 'context') continue;
+      const { from, to } = dimensionLine(a.annotation);
+      const point = from.clone().lerp(to, 0.5);
+      const box = boxes.get(a.annotationId);
+      const hit = (px: number, onLabel: boolean) => {
+        if (!best || px < best.px) best = { px, hit: { annotationId: a.annotationId, point, path: a.path, relation, onLabel } };
+      };
+      if (box && Math.abs(x - box.x) <= box.width / 2 && Math.abs(y - box.y) <= box.height / 2) {
+        hit(0, true);
+        continue;
+      }
+      const s = this.picker.toScreen(from);
+      const e = this.picker.toScreen(to);
+      if (s.z > 1 || e.z > 1) continue;
+      const [dx, dy] = [e.x - s.x, e.y - s.y];
+      const len2 = dx * dx + dy * dy;
+      const t = len2 ? Math.max(0, Math.min(1, ((x - s.x) * dx + (y - s.y) * dy) / len2)) : 0;
+      const px = Math.hypot(s.x + t * dx - x, s.y + t * dy - y);
+      if (px < EDGE_PICK_PX && !this.hidden(from.clone().lerp(to, t))) hit(px, false);
+    }
+    return (best as { hit: AnnotationHit } | null)?.hit ?? null;
   }
 
   /** Show or hide guides; hidden guides are not drawn, picked or snapped to. */
@@ -389,6 +469,10 @@ export class Viewport {
 
   setUnits(units: UnitSettings): void {
     this.snapStep = gridStep(units);
+    if (units.unit !== this.units.unit || units.precision !== this.units.precision) {
+      this.units = units;
+      this.showAnnotations(this.annotationList);
+    }
     const imperial = isImperial(units.unit);
     if (imperial !== this.imperialGrid) {
       this.imperialGrid = imperial;
@@ -529,14 +613,17 @@ export class Viewport {
   }
 
   /**
-   * The entity under the pointer: an edge of the context when one is close,
-   * then a guide of the context, otherwise whatever face is in front: the
+   * The entity under the pointer: a dimension's label, an edge of the context
+   * when one is close, a dimension's lines, then a guide of the context, otherwise whatever face is in front: the
    * context's, an instance in it, or geometry outside it. Edges of instances
    * count when no face is hit.
    */
   pick(): Picked | null {
+    const a = this.pickAnnotation('context');
+    if (a?.onLabel) return { kind: 'annotation', id: a.annotationId, point: a.point };
     const e = this.pickEdge('all');
     if (e?.relation === 'context') return { kind: 'edge', id: e.edgeId, point: e.point };
+    if (a) return { kind: 'annotation', id: a.annotationId, point: a.point };
     const g = this.pickGuide('context');
     if (g) return { kind: 'guide', id: g.guideId, point: g.point };
     const hit = this.hits()[0];

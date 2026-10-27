@@ -13,9 +13,9 @@ import {
   type Model,
   type Point3,
 } from '../kernel';
-import { applyPoint, compose, definitionBounds, pathDefinition, worldEdges, type InstanceId } from '../scene';
+import { applyPoint, compose, definitionBounds, pathDefinition, transformAnnotation, worldEdges, type InstanceId } from '../scene';
 import { formatArea, formatLength } from '../units';
-import type { Picked } from '../viewport';
+import { dimensionLine, type Picked } from '../viewport';
 import { isMac, selectionMode, type SelectionMode } from './shortcuts';
 import { entityOf, sameEntity, type Selection, type Tool, type ToolContext } from './tool';
 import { dragRect, windowHits, type ScreenPoint, type WindowItem } from './windowSelect';
@@ -28,6 +28,7 @@ export interface SelectionItems {
   edges?: Iterable<string>;
   instances?: Iterable<InstanceId>;
   guides?: Iterable<string>;
+  annotations?: Iterable<string>;
 }
 
 /**
@@ -41,6 +42,7 @@ export function applySelection(selection: Selection, mode: SelectionMode, items:
     selection.edges.clear();
     selection.instances.clear();
     selection.guides.clear();
+    selection.annotations.clear();
   }
   const change = (set: Set<string>, ids: Iterable<string> | undefined) => {
     for (const id of ids ?? []) {
@@ -53,6 +55,7 @@ export function applySelection(selection: Selection, mode: SelectionMode, items:
   change(selection.edges, items.edges);
   change(selection.instances, items.instances);
   change(selection.guides, items.guides);
+  change(selection.annotations, items.annotations);
 }
 
 /** Edges with the rest of their curves, so the selection always holds whole curves. */
@@ -60,8 +63,8 @@ const withCurves = (m: Model, edges: Iterable<string>) => new Set([...edges].fla
 
 /**
  * The Select tool, with SketchUp's methods:
- * - click selects a face, an edge (a whole curve), a guide, or a group or
- *   component;
+ * - click selects a face, an edge (a whole curve), a guide, a dimension, or
+ *   a group or component;
  * - double-click a face for the face and its edges, an edge for the edge and
  *   its faces, a group or component to edit it;
  * - triple-click for everything connected to the face or edge;
@@ -79,7 +82,8 @@ export function createSelectTool(ctx: ToolContext): Tool {
   /** Total area of the selected faces, or total length of the selected edges. */
   const showSize = () => {
     const m = model();
-    const only = (n: number) => n > 0 && n === selection.faces.size + selection.edges.size + selection.instances.size + selection.guides.size;
+    const only = (n: number) =>
+      n > 0 && n === selection.faces.size + selection.edges.size + selection.instances.size + selection.guides.size + selection.annotations.size;
     if (only(selection.faces.size)) {
       const area = [...selection.faces].reduce((s, f) => s + faceArea(m, f), 0);
       ctx.setMeasurement(t('measure.area'), formatArea(area, ctx.units()));
@@ -113,6 +117,8 @@ export function createSelectTool(ctx: ToolContext): Tool {
       applySelection(selection, mode, { instances: [hit.id] }, !selection.instances.has(hit.id));
     } else if (hit.kind === 'guide') {
       applySelection(selection, mode, { guides: [hit.id] }, !selection.guides.has(hit.id));
+    } else if (hit.kind === 'annotation') {
+      applySelection(selection, mode, { annotations: [hit.id] }, !selection.annotations.has(hit.id));
     } else if (hit.kind === 'face') {
       applySelection(selection, mode, { faces: [hit.id] }, !selection.faces.has(hit.id));
     } else {
@@ -122,7 +128,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
 
   /** Double click: a face with its edges, an edge with its faces; a group or component opens. */
   const doubleClick = (hit: Picked | null, mode: SelectionMode) => {
-    if (!hit || hit.kind === 'outside' || hit.kind === 'guide') return click(hit, mode);
+    if (!hit || hit.kind === 'outside' || hit.kind === 'guide' || hit.kind === 'annotation') return click(hit, mode);
     if (hit.kind === 'instance') return ctx.openContext(hit.id);
     const m = model();
     // The first click already toggled the entity, so a toggle adds here.
@@ -137,15 +143,15 @@ export function createSelectTool(ctx: ToolContext): Tool {
 
   /** Triple click: everything connected to the face or edge. */
   const tripleClick = (hit: Picked | null, mode: SelectionMode) => {
-    if (!hit || hit.kind === 'outside' || hit.kind === 'guide') return click(hit, mode);
+    if (!hit || hit.kind === 'outside' || hit.kind === 'guide' || hit.kind === 'annotation') return click(hit, mode);
     if (hit.kind === 'instance') return click(hit, mode);
     const m = model();
     const all = connectedGeometry(m, hit.kind === 'face' ? [hit.id] : [], hit.kind === 'edge' ? [hit.id] : []);
     applySelection(selection, mode === 'toggle' ? 'add' : mode, { faces: all.faceIds, edges: withCurves(m, all.edgeIds) });
   };
 
-  /** Faces, edges, instances and guides of the open context, as seen on screen. */
-  const windowItems = (): { faces: WindowItem[]; edges: WindowItem[]; instances: WindowItem[]; guides: WindowItem[] } => {
+  /** Faces, edges, instances, guides and dimensions of the open context, as seen on screen. */
+  const windowItems = (): { faces: WindowItem[]; edges: WindowItem[]; instances: WindowItem[]; guides: WindowItem[]; annotations: WindowItem[] } => {
     const vp = ctx.viewport;
     const frame = vp.frame;
     const screen = (p: Vector3): ScreenPoint => {
@@ -195,7 +201,14 @@ export function createSelectTool(ctx: ToolContext): Tool {
         guides.push({ id, points: [a, b], segments: [[a, b] as const] });
       }
     }
-    return { faces, edges, instances, guides };
+    // A dimension is its dimension line.
+    const annotations: WindowItem[] = [];
+    for (const [id, a] of pathDefinition(scene, context)?.annotations ?? []) {
+      const { from, to } = dimensionLine(transformAnnotation(frame.world, a));
+      const [p, q] = [screen(from), screen(to)];
+      annotations.push({ id, points: [p, q], segments: [[p, q] as const] });
+    }
+    return { faces, edges, instances, guides, annotations };
   };
 
   const windowSelect = (end: { x: number; y: number }) => {
@@ -211,6 +224,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
       edges,
       instances: windowHits(items.instances, rect, crossing),
       guides: windowHits(items.guides, rect, crossing),
+      annotations: windowHits(items.annotations, rect, crossing),
     });
   };
 
@@ -220,7 +234,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
     keepsSelection: true,
     hint: () => {
       const add = t(isMac() ? 'key.option' : 'key.ctrl');
-      const any = selection.faces.size || selection.edges.size || selection.instances.size || selection.guides.size;
+      const any = selection.faces.size || selection.edges.size || selection.instances.size || selection.guides.size || selection.annotations.size;
       return t(any ? 'status.select.selected' : 'status.select.idle', { add });
     },
     measurementLabel: () => t('measure.area'),

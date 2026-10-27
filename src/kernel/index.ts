@@ -196,6 +196,12 @@ export const hasEdge = (m: Model, id: string): boolean => data(m).edges.has(id);
 
 /** Whether the model has a vertex with this id. */
 export const hasVertex = (m: Model, id: string): boolean => data(m).vertices.has(id);
+/** Where a vertex is, or undefined when there is no such vertex. */
+export const vertexPoint = (m: Model, id: string) => q.vertexPoint(data(m), id);
+/** The vertex nearest p within tol, or null. */
+export const vertexAt = (m: Model, p: Point3, tol: number) => q.vertexAt(data(m), p, tol);
+/** An edge through p (within tol), as its vertices and the fraction of the way along it, or null. */
+export const edgeThrough = (m: Model, p: Point3, tol: number) => q.edgeThrough(data(m), p, tol);
 export const edgeCount = (m: Model) => data(m).edges.size;
 export const edgeLength = (m: Model, id: string) => q.edgeLength(data(m), id);
 /** An edge's whole curve, or just the edge: what selecting or erasing it affects. */

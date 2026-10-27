@@ -1,7 +1,7 @@
 import { applyAmendValues, type AmendValues } from './amend';
-import type { PushformDocument } from './document';
+import { followDocument, type PushformDocument } from './document';
 import type { CommandRegistry } from './registry';
-import type { AmendableField, CommandError, CommandId, InputOf, OutputOf } from './types';
+import type { AmendableField, CommandError, CommandId, InputOf, OutputOf, RunResult } from './types';
 
 export type Outcome<O> = { ok: true; output: O; changed: boolean } | { ok: false; error: CommandError };
 export type PreviewOutcome<O> = { ok: true; doc: PushformDocument; output: O } | { ok: false; error: CommandError };
@@ -110,7 +110,7 @@ export class CommandSession {
     if (!next.ok) return next;
     const parsed = def.input.safeParse(next.input);
     if (!parsed.success) return { ok: false, error: { code: 'invalidInput', detail: parsed.error.message } };
-    const r = def.run(entry.before, parsed.data);
+    const r = this.follow(def.run(entry.before, parsed.data), entry.before);
     if (!r.ok) return r;
     if (r.doc === entry.before) return { ok: false, error: { code: 'amendValueInvalid', detail: 'no change' } };
 
@@ -192,8 +192,13 @@ export class CommandSession {
     if (!def) return { ok: false, error: { code: 'unknownCommand', detail: id } };
     const parsed = def.input.safeParse(input);
     if (!parsed.success) return { ok: false, error: { code: 'invalidInput', detail: parsed.error.message } };
-    const r = def.run(this.current, parsed.data);
+    const r = this.follow(def.run(this.current, parsed.data), this.current);
     return r.ok ? { ...r, input: parsed.data } : r;
+  }
+
+  /** A command's result with dimensions following the geometry it changed, so undo snapshots hold both. */
+  private follow<R extends RunResult<unknown>>(r: R, before: PushformDocument): R {
+    return r.ok && r.doc !== before ? { ...r, doc: followDocument(r.doc) } : r;
   }
 
   private emit(event: ChangeEvent): void {

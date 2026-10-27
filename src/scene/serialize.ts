@@ -1,4 +1,5 @@
 import { deserialize, serialize, type Model, type SerializedTopology } from '../kernel';
+import type { Anchor, AnchorRef, Annotation } from './annotations';
 import { guideLine, guidePoint, type Guide } from './guides';
 import { contains, createScene, type Definition, type DefinitionKind, type Instance, type Scene } from './scene';
 import type { Quat, Transform } from './transform';
@@ -11,10 +12,21 @@ export interface SerializedTransform {
 
 export type SerializedGuide = { kind: 'line'; point: number[]; direction: number[] } | { kind: 'point'; point: number[] };
 
+export interface SerializedAnchor {
+  point: number[];
+  ref?: { path: string[]; definition: string; a: string; b?: string; t?: number };
+}
+export interface SerializedAnnotation {
+  kind: 'dimension';
+  start: SerializedAnchor;
+  end: SerializedAnchor;
+  offset: number[];
+}
+
 /**
  * The scene of a version 3 or 4 document: definitions, each with its topology
- * and the instances inside it. Version 4 (milestone 4) adds guides, left out
- * when a definition has none.
+ * and the instances inside it. Version 4 (milestone 4) adds guides and
+ * annotations, each left out when a definition has none.
  */
 export interface SerializedScene {
   root: string;
@@ -27,6 +39,7 @@ export interface SerializedScene {
       model: SerializedTopology;
       instances: Record<string, { definition: string; name: string; transform: SerializedTransform }>;
       guides?: Record<string, SerializedGuide>;
+      annotations?: Record<string, SerializedAnnotation>;
     }
   >;
 }
@@ -50,8 +63,19 @@ export function serializeScene(s: Scene): SerializedScene {
       }
       definitions[id].guides = guides;
     }
+    if (d.annotations.size) {
+      const annotations: Record<string, SerializedAnnotation> = {};
+      for (const [aid, a] of d.annotations) annotations[aid] = { kind: a.kind, start: saveAnchor(a.start), end: saveAnchor(a.end), offset: [...a.offset] };
+      definitions[id].annotations = annotations;
+    }
   }
   return { root: s.rootId, next: s.next, definitions };
+}
+
+function saveAnchor(a: Anchor): SerializedAnchor {
+  if (!a.ref) return { point: [...a.point] };
+  const { path, definitionId, a: va, b, t } = a.ref;
+  return { point: [...a.point], ref: { path: [...path], definition: definitionId, a: va, ...(b === undefined ? {} : { b, t: t ?? 0.5 }) } };
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
@@ -74,6 +98,25 @@ function guide(v: unknown): Guide | null {
   if (v.kind === 'point') return guidePoint(point);
   if (v.kind === 'line' && numbers(v.direction, 3)) return guideLine(point, v.direction as unknown as [number, number, number]);
   return null;
+}
+
+function anchor(v: unknown): Anchor | null {
+  if (!isObject(v) || !numbers(v.point, 3)) return null;
+  const point = v.point as unknown as [number, number, number];
+  if (v.ref === undefined) return { point };
+  const r = v.ref;
+  if (!isObject(r) || !Array.isArray(r.path) || !r.path.every((x) => typeof x === 'string') || typeof r.definition !== 'string' || typeof r.a !== 'string') return null;
+  const ref: AnchorRef = { path: r.path as string[], definitionId: r.definition, a: r.a };
+  if (r.b === undefined) return { point, ref };
+  if (typeof r.b !== 'string' || typeof r.t !== 'number' || !(r.t > 0 && r.t < 1)) return null;
+  return { point, ref: { ...ref, b: r.b, t: r.t } };
+}
+
+function annotation(v: unknown): Annotation | null {
+  if (!isObject(v) || v.kind !== 'dimension' || !numbers(v.offset, 3)) return null;
+  const start = anchor(v.start);
+  const end = anchor(v.end);
+  return start && end ? { kind: 'dimension', start, end, offset: v.offset as unknown as [number, number, number] } : null;
 }
 
 /** Validate and load a version 3 or 4 scene. Returns null for invalid data. */
@@ -100,7 +143,16 @@ export function deserializeScene(data: unknown): Scene | null {
         guides.set(gid, g);
       }
     }
-    definitions.set(id, { id, kind: raw.kind as DefinitionKind, name: raw.name, model, instances, guides });
+    const annotations = new Map<string, Annotation>();
+    if (raw.annotations !== undefined) {
+      if (!isObject(raw.annotations)) return null;
+      for (const [aid, ra] of Object.entries(raw.annotations)) {
+        const a = annotation(ra);
+        if (!a) return null;
+        annotations.set(aid, a);
+      }
+    }
+    definitions.set(id, { id, kind: raw.kind as DefinitionKind, name: raw.name, model, instances, guides, annotations });
   }
   const root = definitions.get(data.root);
   if (!root || root.kind !== 'root') return null;

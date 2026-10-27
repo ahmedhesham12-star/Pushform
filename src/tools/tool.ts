@@ -16,16 +16,17 @@ export type ToolId =
   | 'erase'
   | 'tape'
   | 'protractor'
+  | 'dimension'
   | 'orbit'
   | 'pan';
 
 export interface EntityRef {
-  kind: 'face' | 'edge' | 'instance' | 'guide';
+  kind: 'face' | 'edge' | 'instance' | 'guide' | 'annotation';
   id: string;
 }
 
 /**
- * Selected faces, edges, instances and guides of the editing context, and the
+ * Selected faces, edges, instances, guides and dimensions of the editing context, and the
  * entity under the pointer. Not part of the document, so not undoable. Selecting one
  * edge of a curve selects the whole curve, so `edges` always holds complete
  * curves.
@@ -35,6 +36,7 @@ export interface Selection {
   readonly edges: Set<string>;
   readonly instances: Set<InstanceId>;
   readonly guides: Set<string>;
+  readonly annotations: Set<string>;
   hovered: EntityRef | null;
 }
 

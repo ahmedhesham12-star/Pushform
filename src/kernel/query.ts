@@ -204,3 +204,39 @@ export function bounds(t: Topology): Bounds | null {
   }
   return { min: min as unknown as Point3, max: max as unknown as Point3 };
 }
+
+/** Where a vertex is, or undefined when the model has no such vertex. */
+export function vertexPoint(t: Topology, id: VertexId): Point3 | undefined {
+  return t.vertices.get(id)?.p;
+}
+
+/** The vertex nearest p within tol, or null. */
+export function vertexAt(t: Topology, p: Point3, tol: number): VertexId | null {
+  let best: VertexId | null = null;
+  let bestD = tol;
+  for (const [id, v] of t.vertices) {
+    const d = length(sub(v.p, p));
+    if (d <= bestD) {
+      bestD = d;
+      best = id;
+    }
+  }
+  return best;
+}
+
+/**
+ * An edge passing within tol of p, as its two vertices and the fraction of
+ * the way from the first to the second (strictly between them), or null.
+ */
+export function edgeThrough(t: Topology, p: Point3, tol: number): { a: VertexId; b: VertexId; t: number } | null {
+  for (const e of t.edges.values()) {
+    const a = t.vertices.get(e.v[0])!.p;
+    const ab = sub(t.vertices.get(e.v[1])!.p, a);
+    const len2 = dot(ab, ab);
+    if (!len2) continue;
+    const s = dot(sub(p, a), ab) / len2;
+    if (s <= 0 || s >= 1) continue;
+    if (length(sub(p, [a[0] + ab[0] * s, a[1] + ab[1] * s, a[2] + ab[2] * s])) <= tol) return { a: e.v[0], b: e.v[1], t: s };
+  }
+  return null;
+}

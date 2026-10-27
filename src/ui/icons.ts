@@ -46,6 +46,10 @@ export const ICONS = {
     '<path d="M3.5 17.5a8.5 8.5 0 0 1 17 0z"/><path d="M12 17.5 17.5 9.5"/><circle cx="12" cy="17.5" r="1.3" fill="currentColor"/>',
     'stroke-linejoin="round" stroke-linecap="round"',
   ),
+  dimension: svg(
+    '<path d="M4 9v9M20 9v9M4 13.5h16"/><path d="m5.5 15 3-3M15.5 15l3-3"/><path d="M9 7.5h6" stroke-dasharray="1.6 1.4"/>',
+    'stroke-linecap="round"',
+  ),
   orbit: svg(
     '<ellipse cx="12" cy="12" rx="9" ry="4"/><path d="M12 3a4 9 0 0 1 0 18"/><path d="m18.5 6.2 2 2.4-3 .6"/>',
     'stroke-linecap="round" stroke-linejoin="round"',

@@ -282,6 +282,39 @@ input {
   color: var(--ink);
 }
 
+/* Physical position on purpose: dimension values sit on canvas pixels, like the snap marker. */
+.annotation-labels {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+.annotation-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  padding: 0 4px;
+  white-space: nowrap;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  background: var(--canvas);
+}
+.annotation-label.faded {
+  opacity: 0.35;
+}
+.annotation-label.hover {
+  color: var(--accent);
+}
+.annotation-label.selected {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+.annotation-label.erase {
+  color: var(--accent-ink);
+  background: var(--err);
+}
+
 /* Physical position and size on purpose: the selection rectangle follows canvas pixels. */
 .selection-box {
   position: absolute;

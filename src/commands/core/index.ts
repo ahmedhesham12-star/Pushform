@@ -1,4 +1,5 @@
 import type { CommandRegistry } from '../registry';
+import { addDimension, type AddDimensionInput, type AnnotationOutput } from './annotations';
 import { clearModel, type ClearModelInput } from './clearModel';
 import { drawLine, type DrawLineInput, type DrawLineOutput } from './drawLine';
 import { drawRectangle, type DrawRectangleInput, type DrawRectangleOutput } from './drawRectangle';
@@ -85,6 +86,7 @@ declare module '../types' {
     'core.addGuidePoint': { input: AddGuidePointInput; output: GuideOutput };
     'core.addGuideAngle': { input: AddGuideAngleInput; output: GuideOutput };
     'core.deleteGuides': { input: DeleteGuidesInput; output: { count: number } };
+    'core.addDimension': { input: AddDimensionInput; output: AnnotationOutput };
   }
 }
 
@@ -114,9 +116,12 @@ export function registerCoreCommands(registry: CommandRegistry): void {
   registry.register(addGuidePoint);
   registry.register(addGuideAngle);
   registry.register(deleteGuides);
+  registry.register(addDimension);
 }
 
 export type {
+  AddDimensionInput,
+  AnnotationOutput,
   AddGuideAngleInput,
   AddGuideLineInput,
   AddGuideOffsetInput,

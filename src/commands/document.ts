@@ -2,6 +2,7 @@ import { createModel, deserialize, type Model } from '../kernel';
 import {
   createScene,
   deserializeScene,
+  followAnchors,
   getDefinition,
   rootDefinition,
   sceneFromModel,
@@ -23,7 +24,7 @@ export interface PushformDocument {
 
 /**
  * Version 4 (milestone 4) holds a scene of definitions and instances, with
- * guides. Version 3 (milestone 3) is the same without guides. Version 2
+ * guides and dimensions. Version 3 (milestone 3) is the same without guides. Version 2
  * (milestone 2) held one topology model and version 1 (milestone 1) a
  * face-loop model; both are converted when loaded, becoming the root
  * definition.
@@ -52,6 +53,12 @@ export function definitionModel(doc: PushformDocument, id?: DefinitionId): Model
 /** The document with a definition's geometry replaced; the same document when nothing changed. */
 export function withDefinitionModel(doc: PushformDocument, id: DefinitionId | undefined, model: Model): PushformDocument {
   const scene = setModel(doc.scene, id ?? doc.scene.rootId, model);
+  return scene === doc.scene ? doc : { ...doc, scene };
+}
+
+/** The document with every dimension following its geometry; the same document when none moved. */
+export function followDocument(doc: PushformDocument): PushformDocument {
+  const scene = followAnchors(doc.scene);
   return scene === doc.scene ? doc : { ...doc, scene };
 }
 

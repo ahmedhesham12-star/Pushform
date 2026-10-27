@@ -32,6 +32,7 @@ import {
   applyPoint,
   compose,
   definitionBounds,
+  dimensionLength,
   getDefinition,
   instanceCount,
   pathDefinition,
@@ -92,7 +93,14 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
 export class App {
   readonly session: CommandSession;
   readonly viewport: Viewport;
-  private readonly selection: Selection = { faces: new Set(), edges: new Set(), instances: new Set(), guides: new Set(), hovered: null };
+  private readonly selection: Selection = {
+    faces: new Set(),
+    edges: new Set(),
+    instances: new Set(),
+    guides: new Set(),
+    annotations: new Set(),
+    hovered: null,
+  };
   /** The open editing context: instance ids from the root down ([] is the root). */
   private context: readonly InstanceId[] = [];
   private readonly tools: Record<ToolId, Tool>;
@@ -176,6 +184,7 @@ export class App {
       { id: 'rotate', label: 'tool.rotate', icon: 'rotate', ...key('rotate') },
       { id: 'tape', label: 'tool.tape', icon: 'tape', ...key('tape'), group: true },
       { id: 'protractor', label: 'tool.protractor', icon: 'protractor', ...key('protractor') },
+      { id: 'dimension', label: 'tool.dimension', icon: 'dimension', ...key('dimension') },
       { id: 'orbit', label: 'tool.orbit', icon: 'orbit', ...key('orbit'), group: true },
       { id: 'pan', label: 'tool.pan', icon: 'pan', ...key('pan') },
     ];
@@ -261,15 +270,15 @@ export class App {
     this.viewport.showScene(doc.scene, this.context);
     this.viewport.setSnapTargets(doc.scene);
     const m = this.contextModel();
-    const { instances: placed, guides } = pathDefinition(doc.scene, this.context)!;
+    const { instances: placed, guides, annotations } = pathDefinition(doc.scene, this.context)!;
     const s = this.selection;
     for (const f of s.faces) if (!hasFace(m, f)) s.faces.delete(f);
     for (const e of s.edges) if (!hasEdge(m, e)) s.edges.delete(e);
     for (const i of s.instances) if (!placed.has(i)) s.instances.delete(i);
     for (const g of s.guides) if (!guides.has(g)) s.guides.delete(g);
+    for (const a of s.annotations) if (!annotations.has(a)) s.annotations.delete(a);
     const h = s.hovered;
-    const exists =
-      h && (h.kind === 'face' ? hasFace(m, h.id) : h.kind === 'edge' ? hasEdge(m, h.id) : h.kind === 'guide' ? guides.has(h.id) : placed.has(h.id));
+    const exists = h && { face: () => hasFace(m, h.id), edge: () => hasEdge(m, h.id), guide: () => guides.has(h.id), annotation: () => annotations.has(h.id), instance: () => placed.has(h.id) }[h.kind]();
     if (h && !exists) s.hovered = null;
     this.applyHighlights();
     this.intro.setVisible(this.isEmpty());
@@ -304,6 +313,10 @@ export class App {
     for (const g of this.selection.guides) guides.set(g, 'selected');
     if (hovered?.kind === 'guide' && !guides.has(hovered.id)) guides.set(hovered.id, kind === 'erase' ? 'erase' : 'hover');
     this.viewport.highlightGuides(guides);
+    const dims = new Map<string, EdgeHighlight>();
+    for (const a of this.selection.annotations) dims.set(a, 'selected');
+    if (hovered?.kind === 'annotation' && !dims.has(hovered.id)) dims.set(hovered.id, kind === 'erase' ? 'erase' : 'hover');
+    this.viewport.highlightAnnotations(dims);
     // Every selection change ends here, so the panels follow it.
     this.entityInfo.show(this.entityInfoData());
     this.outliner.sync();
@@ -316,15 +329,19 @@ export class App {
 
   /** What Entity Info shows for the current selection. */
   private entityInfoData(): EntityInfoData {
-    const { faces, edges, instances, guides } = this.selection;
-    if (!faces.size && !edges.size && !instances.size && !guides.size) return { kind: 'none' };
+    const { faces, edges, instances, guides, annotations } = this.selection;
+    if (!faces.size && !edges.size && !instances.size && !guides.size && !annotations.size) return { kind: 'none' };
     const doc = this.session.doc;
     const count = (n: number) => formatNumber(n);
+    if (annotations.size === 1 && !faces.size && !edges.size && !instances.size && !guides.size) {
+      const a = pathDefinition(doc.scene, this.context)?.annotations.get([...annotations][0]!);
+      if (a) return { kind: 'dimension', length: formatLength(dimensionLength(a), doc.units) };
+    }
     if (instances.size) {
       const id = [...instances][0]!;
       const i = pathDefinition(doc.scene, this.context)?.instances.get(id);
       const def = i && doc.scene.definitions.get(i.definitionId);
-      if (instances.size === 1 && !faces.size && !edges.size && !guides.size && i && def && def.kind !== 'root') {
+      if (instances.size === 1 && !faces.size && !edges.size && !guides.size && !annotations.size && i && def && def.kind !== 'root') {
         // Volume is only shown for geometry without nested groups or components.
         const volume = def.instances.size ? null : solidVolume(def.model);
         return {
@@ -350,13 +367,14 @@ export class App {
       { label: t('info.faces'), count: faces.size },
       { label: t('info.edges'), count: edges.size },
       { label: t('info.guides'), count: guides.size },
+      { label: t('info.dimensions'), count: annotations.size },
     ]
       .filter((c) => c.count > 0)
       .map((c) => ({ label: c.label, count: count(c.count) }));
     const m = this.contextModel();
     const area = faces.size ? formatArea([...faces].reduce((s, f) => s + faceArea(m, f), 0), doc.units) : null;
     const length = edges.size ? formatLength([...edges].reduce((s, e) => s + edgeLength(m, e), 0), doc.units) : null;
-    return { kind: 'selection', total: count(faces.size + edges.size + instances.size + guides.size), counts, area, length };
+    return { kind: 'selection', total: count(faces.size + edges.size + instances.size + guides.size + annotations.size), counts, area, length };
   }
 
   /** Ctrl+A: everything in the open context (switching to the Select tool). */
@@ -369,6 +387,7 @@ export class App {
     const context = pathDefinition(this.session.doc.scene, this.context)!;
     for (const i of context.instances.keys()) this.selection.instances.add(i);
     if (this.viewport.guidesVisible) for (const g of context.guides.keys()) this.selection.guides.add(g);
+    for (const a of context.annotations.keys()) this.selection.annotations.add(a);
     this.applyHighlights();
     this.measure.set(this.tool.measurementLabel(), '');
     this.status.hint();
@@ -414,11 +433,13 @@ export class App {
     this.selection.edges.clear();
     this.selection.instances.clear();
     this.selection.guides.clear();
+    this.selection.annotations.clear();
     this.selection.hovered = null;
   }
 
   private hasSelection(): boolean {
-    return this.selection.faces.size + this.selection.edges.size + this.selection.instances.size + this.selection.guides.size > 0;
+    const { faces, edges, instances, guides, annotations } = this.selection;
+    return faces.size + edges.size + instances.size + guides.size + annotations.size > 0;
   }
 
   /** Whether faces, edges or instances are selected (what grouping and moving act on). */
@@ -523,21 +544,23 @@ export class App {
   }
 
   private clear(): void {
-    if (this.isEmpty() && !rootDefinition(this.session.doc.scene).guides.size) return;
+    const root = rootDefinition(this.session.doc.scene);
+    if (this.isEmpty() && !root.guides.size && !root.annotations.size) return;
     this.cancel(true);
     this.clearSelection();
     if (this.session.execute('core.clearModel', {}).ok) this.status.flash(t('message.cleared'));
   }
 
-  /** Erase the selected faces, edges, instances and guides in one step. */
+  /** Erase the selected faces, edges, instances, guides and dimensions in one step. */
   private deleteSelected(): void {
     const faceIds = [...this.selection.faces];
     const edgeIds = [...this.selection.edges];
     const instanceIds = [...this.selection.instances];
     const guideIds = [...this.selection.guides];
-    if (!faceIds.length && !edgeIds.length && !instanceIds.length && !guideIds.length) return;
+    const annotationIds = [...this.selection.annotations];
+    if (!this.hasSelection()) return;
     this.clearSelection();
-    const r = this.session.execute('core.erase', { definitionId: this.viewport.frame.definitionId, faceIds, edgeIds, instanceIds, guideIds });
+    const r = this.session.execute('core.erase', { definitionId: this.viewport.frame.definitionId, faceIds, edgeIds, instanceIds, guideIds, annotationIds });
     if (r.ok) this.status.flash(t('message.erased'));
     else this.flashError(r.error);
   }
@@ -644,7 +667,8 @@ export class App {
     this.viewport.setPointer(e);
     const hit = this.viewport.pick();
     if (hit && hit.kind !== 'outside') {
-      const sets = { edge: this.selection.edges, face: this.selection.faces, instance: this.selection.instances, guide: this.selection.guides };
+      const { edges, faces, instances, guides, annotations } = this.selection;
+      const sets = { edge: edges, face: faces, instance: instances, guide: guides, annotation: annotations };
       const set = sets[hit.kind];
       if (!set.has(hit.id)) {
         this.clearSelection();
@@ -662,7 +686,8 @@ export class App {
     const placed = pathDefinition(scene, this.context)!.instances;
     const any = this.hasSelection();
     const geometry = this.hasGeometry();
-    const onlyOne = this.selection.instances.size === 1 && !this.selection.faces.size && !this.selection.edges.size && !this.selection.guides.size;
+    const { instances, faces, edges, guides, annotations } = this.selection;
+    const onlyOne = instances.size === 1 && !faces.size && !edges.size && !guides.size && !annotations.size;
     const single = onlyOne ? [...this.selection.instances][0]! : null;
     const singleKind = single ? scene.definitions.get(placed.get(single)?.definitionId ?? '')?.kind : undefined;
     const contextKind = this.context.length ? pathDefinition(scene, this.context)!.kind : undefined;

@@ -193,7 +193,7 @@ Plugins call `registry.register(def)` and extend the typed `CommandMap` through 
 - New tools get it by declaring their fields.
 
 ### Document format
-`.pushform` files are this JSON, version 4 (milestone 4): a scene of definitions, each holding a version 2 topology model, the instances placed in them and its guides. Version 3 (milestone 3) is the same without guides and still opens.
+`.pushform` files are this JSON, version 4 (milestone 4): a scene of definitions, each holding a version 2 topology model, the instances placed in them, its guides and its dimensions. Version 3 (milestone 3) is the same without guides and dimensions and still opens.
 ```
 { format: 'pushform', version: 4, units: { unit, precision },
   scene: { root: definition id, next,
@@ -203,7 +203,12 @@ Plugins call `registry.register(def)` and extend the typed `CommandMap` through 
                                   transform: { rotation: [x, y, z, w], translation: [x, y, z],
                                                scale: [1, 1, 1] } } },
                                 guides?: { id: { kind: 'line', point, direction }
-                                              | { kind: 'point', point } } } } } }
+                                              | { kind: 'point', point } },
+                                annotations?: { id: { kind: 'dimension', start: anchor, end: anchor,
+                                                      offset: [x, y, z] } } } } } }
+
+anchor: { point: [x, y, z],
+          ref?: { path: [instance ids], definition, a: vertex id, b?: vertex id, t?: 0..1 } }
 
 model: { kind: 'topology', version: 2, next,
          vertices: { id: [x, y, z] },
@@ -211,7 +216,7 @@ model: { kind: 'topology', version: 2, next,
          faces: { id: { normal, outer: [vertex ids], holes: [[vertex ids]] } },
          curves: { id: { kind, edges, segments, center, normal, radius } } }
 ```
-Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] until Flip and Scale arrive in milestone 4, instances only of existing non-root definitions, no nesting cycles, guide lines with a non-zero direction (stored as a unit vector). **Version 2 documents** (milestone 2) load as the root definition; the conversion is tested against a milestone 2 autosave (`tests/fixtures/milestone2-autosave.json`).
+Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] until Flip and Scale arrive in milestone 4, instances only of existing non-root definitions, no nesting cycles, guide lines with a non-zero direction (stored as a unit vector), dimension anchors with a point and, when attached, a reference whose fraction lies strictly between 0 and 1. **Version 2 documents** (milestone 2) load as the root definition; the conversion is tested against a milestone 2 autosave (`tests/fixtures/milestone2-autosave.json`).
 
 **Version 1 documents** (milestone 1 autosaves, face-loop models) are converted on load:
 - Corners at the same position become one shared vertex, and every loop side becomes a shared edge.
@@ -304,6 +309,10 @@ Every level is validated on load: unit quaternions, scale exactly [1, 1, 1] unti
 | 2026-10-26 | Tape Measure (T): guides by default, Ctrl (Option) for measuring only; from an edge or guide line a parallel guide, from a point to a point a guide line through both, from a point to anywhere a guide point; a typed distance places the guide and typing again amends it | Product owner (milestone 4 plan), following SketchUp. |
 | 2026-10-26 | Protractor (no shortcut, as in SketchUp): center, a point on the base line, then the angle, giving an angled guide line through the center; 15 degree snapping, exact angles on points, edges and guides, typed angles and amend. It shares the protractor with Rotate (`src/tools/protractorGeometry.ts`) | Product owner (milestone 4). Rotate now also takes exact angles from guides. |
 | 2026-10-26 | Hiding guides (View menu) is a setting of this device, not of the file; hidden guides are not drawn, picked or snapped to. Delete All Guides acts on the open editing context | The product owner approved these defaults with the milestone 4 plan. |
+| 2026-10-27 | Dimensions are annotations of a definition, in its local mm. Each end is an anchor: its point, and a reference to a vertex, or to a fraction of the way between two vertices (an edge's midpoint), through an instance path from that definition | Vertex ids are never reused within a model, so a reference stays right while the vertex lives; two vertices instead of an edge id survive edges being split. |
+| 2026-10-27 | The command session brings every anchor up to date after each command that changes the document (previews and amends too), so dimensions follow geometry and undo snapshots hold both. A reference that no longer resolves (made into a group, exploded, rebuilt) attaches again by position, first to a vertex then to an edge; with nothing there the dimension stays where it was, detached | SketchUp 2023 keeps a dimension whose geometry is erased, detached, with its last value (see "Verified in SketchUp"). References name the definition at the end of their path, because ids only mean something within one model. |
+| 2026-10-27 | `core.addDimension` takes two points and an offset; each end attaches to the vertex or edge at its point (the context's own geometry first, then nested groups and components). `core.erase` takes `annotationIds`; exploding moves a group's dimensions up | Tools, plugins and MCP clients pass points, not ids; the command finds what they touch. |
+| 2026-10-27 | The Dimension tool: two points, or a click along an edge for its ends, then the pointer places the line. It lies in the plane of the face under the pointer when that face holds the measured line, otherwise in the axis plane through the line that faces the view. Values are DOM labels over the canvas (file units and precision), hidden behind faces; lines are drawn like edges, with tick marks | A screen-direction rule cannot tell the planes apart (every direction square to the line projects onto the same screen normal); hovering a face is a direct way to choose. |
 
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
@@ -391,12 +400,14 @@ Checked on 2026-10-26 in SketchUp 2023 (Windows), by scripts run through the Rub
 - **A box's top edge moved straight up** gives a sloped top with no fold.
 - **Fold edges are plain** (not soft, smooth or hidden), except in a smooth surface: when a cylinder's side walls (between soft edges) fold, the new edges are soft and smooth.
 - Moving one vertex of a circle through the API moves the whole circle; folds inside curves appear once the curve is exploded.
+- **Dimensions** (checked 2026-10-27, `add_dimension_linear` on box vertices): ends attach to vertices and follow them when the geometry moves (the value updates). Erasing the geometry keeps the dimension, detached, with its last value.
 
 **Not verified** (interactive tool behavior the Ruby API cannot drive); these follow our best knowledge of SketchUp and are for the product owner to check:
 - Tape Measure details: what a point-to-point measure creates, and how guide points are made.
 - The scope of Delete Guides (the open context or the whole model).
 - Leader text defaults (coordinates on a point, length on an edge, area on a face, name on a group or component).
 - Arc tangency colors.
+- Which plane the Dimension tool places a dimension line in as the pointer moves.
 - What a length typed on a Scale corner grip scales.
 
 ## Differences from the prototype

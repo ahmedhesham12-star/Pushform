@@ -17,6 +17,7 @@ export type EntityInfoData =
       /** Formatted volume, "not a solid", or null when it does not apply (nested groups). */
       volume: string | null;
     }
+  | { kind: 'dimension'; length: string }
   | {
       kind: 'selection';
       /** How many items are selected. */
@@ -66,6 +67,10 @@ export class EntityInfo {
         }
         this.input(t('info.instance'), data.instanceName, (name) => this.host.renameInstance(data.instanceId, name), true);
         if (data.volume) this.row(t('info.volume'), data.volume);
+        break;
+      case 'dimension':
+        this.row(t('info.type'), t('info.dimension'));
+        this.row(t('info.length'), data.length);
         break;
       case 'selection':
         this.row(t('info.selected'), data.total);

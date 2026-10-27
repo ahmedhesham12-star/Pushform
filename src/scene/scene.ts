@@ -9,6 +9,7 @@
  * a new scene that shares everything unchanged, including Model objects.
  */
 import { bounds, type Bounds, type Model } from '../kernel';
+import type { Annotation, AnnotationId } from './annotations';
 import type { Guide, GuideId } from './guides';
 import { applyPoint, compose, IDENTITY, type Transform } from './transform';
 
@@ -33,20 +34,25 @@ export interface Definition {
   readonly instances: ReadonlyMap<InstanceId, Instance>;
   /** Guide lines and points, in its local space. */
   readonly guides: ReadonlyMap<GuideId, Guide>;
+  /** Dimensions, in its local space. */
+  readonly annotations: ReadonlyMap<AnnotationId, Annotation>;
 }
 
-/** What a new definition needs; guides start empty unless given. */
-export type NewDefinition = Omit<Definition, 'id' | 'guides'> & { readonly guides?: ReadonlyMap<GuideId, Guide> };
+/** What a new definition needs; guides and annotations start empty unless given. */
+export type NewDefinition = Omit<Definition, 'id' | 'guides' | 'annotations'> & {
+  readonly guides?: ReadonlyMap<GuideId, Guide>;
+  readonly annotations?: ReadonlyMap<AnnotationId, Annotation>;
+};
 
 export interface Scene {
   readonly rootId: DefinitionId;
   readonly definitions: ReadonlyMap<DefinitionId, Definition>;
-  /** Next id number for definitions, instances and guides. */
+  /** Next id number for definitions, instances, guides and annotations. */
   readonly next: number;
 }
 
 export function createScene(rootModel: Model): Scene {
-  const root: Definition = { id: 'd1', kind: 'root', name: '', model: rootModel, instances: new Map(), guides: new Map() };
+  const root: Definition = { id: 'd1', kind: 'root', name: '', model: rootModel, instances: new Map(), guides: new Map(), annotations: new Map() };
   return { rootId: root.id, definitions: new Map([[root.id, root]]), next: 2 };
 }
 
@@ -145,11 +151,11 @@ export function setModel(s: Scene, id: DefinitionId, model: Model): Scene {
   return withDefinition(s, { ...d, model });
 }
 
-export const newId = (s: Scene, prefix: 'd' | 'i' | 'g'): [string, Scene] => [`${prefix}${s.next}`, { ...s, next: s.next + 1 }];
+export const newId = (s: Scene, prefix: 'd' | 'i' | 'g' | 'a'): [string, Scene] => [`${prefix}${s.next}`, { ...s, next: s.next + 1 }];
 
 export function addDefinition(s: Scene, def: NewDefinition): [DefinitionId, Scene] {
   const [id, next] = newId(s, 'd');
-  return [id, withDefinition(next, { guides: new Map(), ...def, id })];
+  return [id, withDefinition(next, { guides: new Map(), annotations: new Map(), ...def, id })];
 }
 
 export function putInstance(s: Scene, parent: DefinitionId, instance: Instance): Scene {
@@ -185,10 +191,11 @@ export function pruneDefinitions(s: Scene): Scene {
 }
 
 /**
- * A copy of a definition under a new id, sharing its Model and guides (both
- * immutable, so the copy only diverges when one of them is edited). Nested
- * group definitions are copied too, so each group keeps a single instance;
- * nested components stay shared. Nested instances get new ids.
+ * A copy of a definition under a new id, sharing its Model, guides and
+ * annotations (all immutable, so the copy only diverges when one of them is
+ * edited). Nested group definitions are copied too, so each group keeps a
+ * single instance; nested components stay shared. Nested instances get new
+ * ids, so the copied annotations attach again by position.
  */
 export function duplicateDefinition(s: Scene, id: DefinitionId, patch: Partial<Pick<Definition, 'name' | 'kind'>> = {}): [DefinitionId, Scene] {
   const d = s.definitions.get(id)!;
@@ -201,7 +208,7 @@ export function duplicateDefinition(s: Scene, id: DefinitionId, patch: Partial<P
     [iid, next] = newId(next, 'i');
     instances.set(iid, { ...i, id: iid, definitionId });
   }
-  return addDefinition(next, { kind: d.kind, name: d.name, model: d.model, instances, guides: d.guides, ...patch });
+  return addDefinition(next, { kind: d.kind, name: d.name, model: d.model, instances, guides: d.guides, annotations: d.annotations, ...patch });
 }
 
 /** Bounds of a definition's geometry and nested instances in its local space, or null when it is empty. */

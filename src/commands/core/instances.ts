@@ -13,6 +13,7 @@ import {
 } from '../../kernel';
 import {
   addDefinition,
+  addAnnotation,
   addGuide,
   applyPoint,
   applyVector,
@@ -29,6 +30,7 @@ import {
   setModel,
   snapTransform,
   transformBounds,
+  transformAnnotation,
   transformGuide,
   translation,
   union,
@@ -180,7 +182,7 @@ export interface ExplodeOutput {
 /**
  * Replace instances by their contents: the geometry merges into the parent's
  * geometry (coplanar faces join, crossing edges split), and nested instances
- * and guides move up to the parent. Definitions no longer used are removed.
+ * guides and dimensions move up to the parent. Definitions no longer used are removed.
  */
 export const explode: CommandDef<ExplodeInput, ExplodeOutput> = {
   id: 'core.explode',
@@ -208,6 +210,8 @@ export const explode: CommandDef<ExplodeInput, ExplodeOutput> = {
         instanceIds.push(nid);
       }
       for (const g of def.guides.values()) [, scene] = addGuide(scene, parent.id, transformGuide(T, g));
+      // Their references name the exploded definition, so they attach again in the parent by position.
+      for (const a of def.annotations.values()) [, scene] = addAnnotation(scene, parent.id, transformAnnotation(T, a));
     }
     if (!exploded) return { ok: false, error: { code: 'noSuchInstance', detail: input.instanceIds.join(', ') } };
     scene = pruneDefinitions(scene);

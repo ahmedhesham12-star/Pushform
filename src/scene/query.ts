@@ -4,6 +4,7 @@
  * to everything visible, inside the editing context or not.
  */
 import { listEdges, snapPoints, type Model, type Point3, type SnapKind } from '../kernel';
+import { dimensionLength, transformAnnotation, type Annotation, type AnnotationId } from './annotations';
 import { transformGuide, type Guide, type GuideId } from './guides';
 import { placedInstances, rootDefinition, type Definition, type InstanceId, type Scene } from './scene';
 import { applyPoint, IDENTITY, type Transform } from './transform';
@@ -84,6 +85,26 @@ export function worldGuides(s: Scene): WorldGuide[] {
   const out: WorldGuide[] = [];
   for (const p of placements(s)) {
     for (const [guideId, g] of p.definition.guides) out.push({ guideId, guide: transformGuide(p.world, g), path: p.path });
+  }
+  return out;
+}
+
+export interface WorldAnnotation {
+  readonly annotationId: AnnotationId;
+  /** The annotation in world coordinates. */
+  readonly annotation: Annotation;
+  /** What a dimension shows: its length in its own definition's mm. */
+  readonly length: number;
+  readonly path: readonly InstanceId[];
+}
+
+/** The annotations of every placement, in world coordinates. */
+export function worldAnnotations(s: Scene): WorldAnnotation[] {
+  const out: WorldAnnotation[] = [];
+  for (const p of placements(s)) {
+    for (const [annotationId, a] of p.definition.annotations) {
+      out.push({ annotationId, annotation: transformAnnotation(p.world, a), length: dimensionLength(a), path: p.path });
+    }
   }
   return out;
 }

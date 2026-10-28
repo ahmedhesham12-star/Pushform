@@ -15,6 +15,8 @@ import {
   LinearSRGBColorSpace,
   Mesh,
   MeshBasicMaterial,
+  Points,
+  PointsMaterial,
   Raycaster,
   Scene,
   Vector3,
@@ -84,6 +86,11 @@ const AXIS_LINE: Record<Axis, LineBasicMaterial> = {
   y: new LineBasicMaterial({ color: AXIS_COLOR.y }),
   z: new LineBasicMaterial({ color: AXIS_COLOR.z }),
 };
+/** Scale grips: green squares of a fixed size in pixels; the active one red, as in SketchUp. */
+const GRIP_PX = 7;
+const ACTIVE_GRIP_PX = 10;
+const gripMaterial = new PointsMaterial({ color: AXIS_COLOR.z, size: GRIP_PX, sizeAttenuation: false, depthTest: false });
+const activeGripMaterial = new PointsMaterial({ color: AXIS_COLOR.x, size: ACTIVE_GRIP_PX, sizeAttenuation: false, depthTest: false });
 /** How close (pixels) the pointer must be to an axis line through the start point to lock onto it. */
 const AXIS_PICK_PX = 10;
 
@@ -800,6 +807,20 @@ export class Viewport {
     this.requestRender();
   }
 
+  /**
+   * Scale grips over guide lines: squares of a fixed size on screen, drawn
+   * over everything; the active one (under the pointer, or dragged) larger and red.
+   */
+  showGrips(lines: readonly { points: Vector3[] }[], grips: readonly Vector3[], active: Vector3 | null): void {
+    this.showGuides(lines);
+    const ratio = this.renderer.getPixelRatio();
+    gripMaterial.size = GRIP_PX * ratio;
+    activeGripMaterial.size = ACTIVE_GRIP_PX * ratio;
+    if (grips.length) this.preview.add(new Points(new BufferGeometry().setFromPoints([...grips]), gripMaterial));
+    if (active) this.preview.add(new Points(new BufferGeometry().setFromPoints([active]), activeGripMaterial));
+    this.requestRender();
+  }
+
   /** The point on the infinite line origin + s * dir closest to the pointer ray, or null when they are parallel. */
   closestOnLine(origin: Vector3, dir: Vector3): Vector3 | null {
     const { origin: o, direction: d } = this.picker.ray;
@@ -862,7 +883,7 @@ export class Viewport {
   clearPreview(): void {
     for (const c of [...this.preview.children]) {
       this.preview.remove(c);
-      if (c instanceof Mesh || c instanceof Line) c.geometry.dispose();
+      if (c instanceof Mesh || c instanceof Line || c instanceof Points) c.geometry.dispose();
     }
     this.requestRender();
   }

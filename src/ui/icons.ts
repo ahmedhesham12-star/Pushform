@@ -29,6 +29,10 @@ export const ICONS = {
     '<path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3"/><path d="M19.8 3.5v3.7h-3.7"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/>',
     'stroke-linejoin="round" stroke-linecap="round"',
   ),
+  scale: svg(
+    '<rect x="3.5" y="9.5" width="11" height="11"/><path d="M3.5 3.5h17v17" stroke-dasharray="2 1.6"/><path d="M11 13 19.5 4.5M14.5 4.5h5v5"/>',
+    'stroke-linejoin="round" stroke-linecap="round"',
+  ),
   pushPull: svg(
     '<path d="M4 15.5 9 13h11l-5 2.5z"/><path d="M4 15.5V20h11v-4.5M20 13v4.5L15 20"/><path d="M12 10.5V3M9 6l3-3 3 3"/>',
     'stroke-linejoin="round" stroke-linecap="round"',

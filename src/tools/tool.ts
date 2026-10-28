@@ -7,6 +7,7 @@ export type ToolId =
   | 'select'
   | 'move'
   | 'rotate'
+  | 'scale'
   | 'line'
   | 'rectangle'
   | 'circle'

@@ -8,6 +8,7 @@ import { createLineTool } from './line';
 import { createMoveTool } from './move';
 import { createOffsetTool } from './offset';
 import { createRotateTool } from './rotate';
+import { createScaleTool } from './scale';
 import { createOrbitTool } from './orbit';
 import { createPanTool } from './pan';
 import { createPushPullTool } from './pushPull';
@@ -38,6 +39,7 @@ export function createTools(ctx: ToolContext): Record<ToolId, Tool> {
     dimension: createDimensionTool(ctx),
     text: createTextTool(ctx),
     rotate: createRotateTool(ctx),
+    scale: createScaleTool(ctx),
     line: createLineTool(ctx),
     rectangle: createRectangleTool(ctx),
     circle: createCircleTool(ctx),

@@ -188,6 +188,7 @@ export class App {
       { id: 'offset', label: 'tool.offset', icon: 'offset', ...key('offset') },
       { id: 'move', label: 'tool.move', icon: 'move', ...key('move') },
       { id: 'rotate', label: 'tool.rotate', icon: 'rotate', ...key('rotate') },
+      { id: 'scale', label: 'tool.scale', icon: 'scale', ...key('scale') },
       { id: 'tape', label: 'tool.tape', icon: 'tape', ...key('tape'), group: true },
       { id: 'protractor', label: 'tool.protractor', icon: 'protractor', ...key('protractor') },
       { id: 'dimension', label: 'tool.dimension', icon: 'dimension', ...key('dimension') },
@@ -909,7 +910,7 @@ export class App {
         const field = target.fields[i]!;
         if (field.kind === 'count') return t('measure.count', { count: formatNumber(Math.abs(v)) });
         if (field.kind === 'angle') return formatAngle(v);
-        if (field.kind === 'factor') return formatNumber(v);
+        if (field.kind === 'factor') return formatNumber(v, 2);
         if (field.kind === 'array') {
           const divide = field.flag !== undefined && target.input[field.flag] === true;
           return t(divide ? 'measure.divide' : 'measure.multiply', { count: formatNumber(Math.abs(v)) });

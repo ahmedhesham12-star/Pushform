@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { createSession, definitionModel, matchTypedValues, type CommandSession } from '../src/commands';
 import { checkModel, listFaces, serialize, solidVolume, type Model } from '../src/kernel';
 import { decompose, determinant, findInstance, planeScale, quatFromAxisAngle, scaling, worldAnnotations } from '../src/scene';
+import { boxGrips, gripFactors, type ScaleBox } from '../src/tools/scale';
 import { parseTypedValues } from '../src/units';
 
 /* Scale and mirror (milestone 4, step 8): the kernel's affine transformSelection and core.scale. Sizes in mm. */
@@ -218,5 +219,32 @@ describe('typing after a scale', () => {
   test('plain numbers are told apart from lengths with units', () => {
     const r = parseTypedValues('2, -0.5, 600mm, 2"', 'mm');
     expect(r.ok && r.plain).toEqual([2, -0.5, null, null]);
+  });
+});
+
+describe('scale grips', () => {
+  const box: ScaleBox = { center: [500, 250, 300], axes: [RED, UP, GREEN], half: [500, 250, 300] };
+
+  test('a box has 8 corners, 12 edge middles and 6 side middles; a flat one only its own 8', () => {
+    const grips = boxGrips(box);
+    expect(grips.length).toBe(26);
+    expect(grips.filter((g) => g.corner).length).toBe(8);
+    expect(grips.filter((g) => g.along.length === 2).length).toBe(12);
+    const flat = boxGrips({ ...box, half: [500, 0, 300] });
+    expect(flat.length).toBe(8);
+    expect(flat.filter((g) => g.corner).map((g) => g.along)).toEqual([[0, 2], [0, 2], [0, 2], [0, 2]]);
+  });
+
+  test('a corner scales evenly along its diagonal; a side along its axis; Ctrl about the center', () => {
+    const grips = boxGrips(box);
+    const corner = grips.find((g) => g.signs.join() === '1,1,1')!;
+    expect(corner.opposite).toEqual([0, 0, 0]);
+    expect(gripFactors(box, corner, [2000, 1000, 1200], true, false)).toEqual([2]);
+    expect(gripFactors(box, corner, [2000, 500, 600], false, false)).toEqual([2, 1, 1]);
+    const side = grips.find((g) => g.signs.join() === '0,1,0')!;
+    expect(gripFactors(box, side, [123, 750, 45], false, false)).toEqual([1.5]);
+    expect(gripFactors(box, side, [0, 750, 0], false, true)).toEqual([2]);
+    // Past the fixed grip: a mirror.
+    expect(gripFactors(box, side, [0, -500, 0], false, false)).toEqual([-1]);
   });
 });

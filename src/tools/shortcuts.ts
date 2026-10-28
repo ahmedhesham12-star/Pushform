@@ -9,6 +9,7 @@ export const TOOL_SHORTCUTS: Readonly<Record<string, ToolId>> = {
   ' ': 'select',
   m: 'move',
   q: 'rotate',
+  s: 'scale',
   l: 'line',
   r: 'rectangle',
   c: 'circle',
@@ -25,7 +26,6 @@ export const TOOL_SHORTCUTS: Readonly<Record<string, ToolId>> = {
  * SketchUp meaning when we do. Never assign them to anything else.
  */
 export const RESERVED_SHORTCUTS: Readonly<Record<string, string>> = {
-  s: 'Scale',
   a: '2-point Arc',
   b: 'Paint Bucket',
 };

@@ -325,6 +325,7 @@ Every level is validated on load: unit quaternions, scale with no zero component
 | 2026-10-27 | Inside a scaled group or component, lengths shown and typed are its own: Push/Pull, Line, Tape Measure, Dimension, Text and the circle and polygon radius measure in the context's coordinates (`Frame.localDistance`) | Approved default: a definition's geometry is edited in its own mm; dimensions placed outside show the scaled length. |
 | 2026-10-28 | `core.scale` scales a selection about a point, by one factor in every direction or along one to three axes at right angles. Loose geometry goes through the kernel's `transformSelection` with an affine map: connected geometry stretches and folds as with Move; a negative factor mirrors and reverses the loops of faces that move whole; a circle keeps its radius when its plane scales evenly (scaled by it) and loses it otherwise; an edge shrunk to nothing is refused (`scaleTooSmall`). Instances take `decompose(scale x transform)`, refused when it would skew one (`scaleWouldSkew`) | Plan step 8; the skew refusal is approved decision 2. A cylinder scaled along its axis keeps its circles. |
 | 2026-10-28 | Typing after a scale: a plain number is a factor (2, 0.5, -1 mirrors) that replaces the old one, sign and all; a length with units is divided by the selection's size along that direction (the distance the grip moves along, for a uniform scale). One value per direction scaled. Commands can now give their amendable fields per input | As in SketchUp, where 2 means twice and 2m means two meters. |
+| 2026-10-28 | Scale tool (S): grips on the selection's box in the context's axes, or on a lone instance's own box (so a turned group scales along its own sides without skewing); flat directions get no grips. Dragged factors are rounded to the two decimals shown; a snap to a point gives the exact factor | Plan step 9. A box in the context's axes around a turned group would need a skew, which is refused (`scaleWouldSkew`). |
 
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
@@ -336,6 +337,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 | Space | Select |
 | M | Move (milestone 3) |
 | Q | Rotate (milestone 3) |
+| S | Scale (milestone 4) |
 | F | Offset (milestone 3) |
 | L | Line |
 | R | Rectangle |
@@ -367,7 +369,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - **Context menu items:** Make Component (G), Make Group, Edit Group/Component, Close Group/Component (Esc), Explode, Make Unique, Delete, Zoom to selection.
 - **Clicking outside** the group or component being edited (on faded geometry or empty space) closes it.
 
-**Reserved for later tools** (never assign them to anything else): S Scale, A 2-point Arc, B Paint Bucket.
+**Reserved for later tools** (never assign them to anything else): A 2-point Arc, B Paint Bucket.
 
 - **Move (milestone 3):** with nothing selected, a corner (endpoint) under the pointer moves on its own (milestone 4), and faces bent out of their plane fold. Ctrl (Option on a Mac) toggles copying, tapped during the move or held at the first click. After a copy, typing `x5` makes a multiply array (5 copies at the same spacing; `5x` and `*5` too) and `/4` a divide array (the distance split into 4 equal steps). Arrays and distances are amendable like other operations. Arrow keys lock an axis, as in the Line tool. With nothing selected, Move takes the face, edge, group or component under the pointer.
 
@@ -376,6 +378,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 
 - **Protractor (milestone 4):** the same protractor as Rotate; click the center, a point on the base line and the angle, or type it, for an angled guide line. No shortcut, as in SketchUp.
 - **Rotate (milestone 3):** the protractor lies on the face under the pointer or the ground; arrow keys lock it to the red, green or blue axis before the center is clicked. Click the center, the start of the angle and the end, or type an angle. Angles snap to 15 degree steps near them; points and edges under the pointer give exact angles. Ctrl copies and `x5`, `/4` make arrays, as in Move. A plain number typed after a rotation is an angle in degrees.
+- **Scale (milestone 4):** green grips on the selection's bounding box, in the open context's axes, or a lone group's or component's own box. With nothing selected, a click takes the face, edge, group or component under the pointer. A corner grip scales the same in every direction (along the diagonal), an edge middle along two directions, a side middle along one; Shift switches between even and per-direction scaling, and holding Ctrl (Option on a Mac) scales about the center instead of the opposite grip. The grip under the pointer turns red and the status line says what it does. Click and click, or drag; the factor shows with two decimals and is applied as shown, unless the pointer snaps to a point. Type a factor (2, 0.5, -1 mirrors) or a length with units, one value per direction, during the scale or afterwards to amend it.
 - **Offset (milestone 3):** click a face and move in or out: the new loop follows the pointer; click again or type a distance, and typing afterwards amends it. A face's holes are offset with it: inward they grow, outward they shrink. With connected edges selected (an open chain or a loop in one plane), those are offset. Straight corners stay sharp; circles and polygons offset as curves with the same segment count. Double-clicking a face repeats the last offset.
 - **Axes inside a group or component** are its own axes: arrow-key locks and axis inference follow a turned instance.
 

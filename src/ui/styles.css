@@ -402,6 +402,10 @@ input {
   grid-column: 1 / -1;
   color: var(--ink-2);
 }
+.entity-info .entity-info-warning {
+  grid-column: 1 / -1;
+  color: var(--err);
+}
 .outliner {
   display: flex;
   flex-direction: column;

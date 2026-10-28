@@ -16,6 +16,10 @@ export type EntityInfoData =
       copies: number;
       /** Formatted volume, "not a solid", or null when it does not apply (nested groups). */
       volume: string | null;
+      /** Its scale along its red, green and blue axes, formatted; null when it is not scaled. */
+      scale: string | null;
+      /** Scaled more one way than another, so its parts no longer have their real size. */
+      stretched: boolean;
     }
   | { kind: 'dimension'; length: string }
   | { kind: 'text'; text: string }
@@ -68,6 +72,8 @@ export class EntityInfo {
         }
         this.input(t('info.instance'), data.instanceName, (name) => this.host.renameInstance(data.instanceId, name), true);
         if (data.volume) this.row(t('info.volume'), data.volume);
+        if (data.scale) this.row(t('info.scale'), data.scale);
+        if (data.stretched) this.body.append(el('dd', 'entity-info-warning', t('info.stretched')));
         break;
       case 'dimension':
         this.row(t('info.type'), t('info.dimension'));

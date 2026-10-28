@@ -65,7 +65,8 @@ export function transformSelection(
   }
   for (const e of edgeIds) for (const v of t.edges.get(e)?.v ?? []) moving.add(v);
   const target = new Map([...moving].map((v) => [v, snapPoint(map.mapPoint(t.vertices.get(v)!.p))] as const));
-  if (!moving.size || [...moving].every((v) => length(sub(target.get(v)!, t.vertices.get(v)!.p)) < EPSILON)) {
+  // A mirror changes orientation even when every point stays (a flat face flipped along its normal).
+  if (!moving.size || (!map.mirror && [...moving].every((v) => length(sub(target.get(v)!, t.vertices.get(v)!.p)) < EPSILON))) {
     return { ok: true, topology: t, faceIds: faceIds.filter((f) => t.faces.has(f)), edgeIds: edgeIds.filter((e) => t.edges.has(e)) };
   }
 

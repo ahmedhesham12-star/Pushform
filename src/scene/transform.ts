@@ -184,9 +184,12 @@ export function planeScale(x: AnyTransform, normal: Vec3): number | null {
 
 /**
  * The transform of an affine map without skew: its columns square to each
- * other. Null when it is skewed. A mirror shows as a negative scale on red.
+ * other. Null when it is skewed. Scale signs can trade places with a half
+ * turn; a mirror shows as a negative scale on red, or, given `near`, the
+ * signs are chosen whose rotation is closest to it (a group flipped along
+ * green keeps its rotation and shows -1 on green).
  */
-export function decompose(a: Affine): Transform | null {
+export function decompose(a: Affine, near?: Quat): Transform | null {
   const cols: Vec3[] = [0, 1, 2].map((i) => [a.m[i * 3]!, a.m[i * 3 + 1]!, a.m[i * 3 + 2]!]);
   const len = cols.map((c) => Math.hypot(c[0], c[1], c[2]));
   if (len.some((l) => l < 1e-12)) return null;
@@ -198,10 +201,33 @@ export function decompose(a: Affine): Transform | null {
     const d = cols[i]![0] * cols[j]![0] + cols[i]![1] * cols[j]![1] + cols[i]![2] * cols[j]![2];
     if (Math.abs(d) > 1e-9 * len[i]! * len[j]!) return null;
   }
-  const scale: [number, number, number] = [len[0]!, len[1]!, len[2]!];
-  if (determinant(a) < 0) scale[0] = -scale[0];
-  const r = cols.map((c, i) => c.map((v) => v / scale[i]!) as unknown as Vec3);
-  return { rotation: quatFromColumns(r[0]!, r[1]!, r[2]!), translation: a.t, scale };
+  const signs: [number, number, number][] =
+    determinant(a) < 0
+      ? [
+          [-1, 1, 1],
+          [1, -1, 1],
+          [1, 1, -1],
+          [-1, -1, -1],
+        ]
+      : [
+          [1, 1, 1],
+          [-1, -1, 1],
+          [-1, 1, -1],
+          [1, -1, -1],
+        ];
+  let best: Transform | null = null;
+  let closest = -1;
+  for (const sign of near ? signs : signs.slice(0, 1)) {
+    const scale = sign.map((s, i) => s * len[i]!) as [number, number, number];
+    const r = cols.map((c, i) => c.map((v) => v / scale[i]!) as unknown as Vec3);
+    const rotation = quatFromColumns(r[0]!, r[1]!, r[2]!);
+    const d = near ? Math.abs(rotation[0] * near[0] + rotation[1] * near[1] + rotation[2] * near[2] + rotation[3] * near[3]) : 0;
+    if (d > closest + 1e-12) {
+      best = { rotation, translation: a.t, scale };
+      closest = d;
+    }
+  }
+  return best;
 }
 
 /** The rotation whose matrix has these unit, square columns (Shepperd's method). */

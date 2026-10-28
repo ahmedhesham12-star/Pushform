@@ -139,7 +139,7 @@ export function transformAll(doc: PushformDocument, input: Selection, p: Prepare
   let scene = next.scene;
   for (const id of p.instances) {
     const i = getDefinition(scene, contextId)!.instances.get(id)!;
-    const placed = affine ? decompose(multiply(tr, i.transform)) : compose(tr, i.transform);
+    const placed = affine ? decompose(multiply(tr, i.transform), i.transform.rotation) : compose(tr, i.transform);
     if (!placed) return { ok: false, error: { code: 'scaleWouldSkew', detail: id } };
     scene = putInstance(scene, contextId, { ...i, transform: snapTransform(placed) });
   }

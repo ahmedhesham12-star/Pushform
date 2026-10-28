@@ -356,6 +356,10 @@ export class App {
         // A scaled instance holds that much more (or less): the volume grows with the scale's determinant.
         const local = def.instances.size ? null : solidVolume(def.model);
         const volume = local === null ? null : local * Math.abs(determinant(i.transform));
+        const [sx, sy, sz] = i.transform.scale;
+        const size = (v: number) => formatNumber(v, 2);
+        const scaled = sx !== 1 || sy !== 1 || sz !== 1;
+        const even = (a: number, b: number) => Math.abs(Math.abs(a) - Math.abs(b)) <= 1e-9 * Math.abs(a);
         return {
           kind: 'instance',
           type: def.kind,
@@ -365,6 +369,9 @@ export class App {
           instanceName: i.name,
           copies: instanceCount(doc.scene, def.id),
           volume: def.instances.size ? null : volume === null ? t('info.notSolid') : formatVolume(volume, doc.units),
+          // Red, green and blue are the instance's own x, z and y.
+          scale: scaled ? t('info.scaleValue', { red: size(sx), green: size(sz), blue: size(sy) }) : null,
+          stretched: !even(sx, sy) || !even(sx, sz),
         };
       }
     }
@@ -726,6 +733,8 @@ export class App {
       null,
       { label: t('menu.delete'), shortcut: t('key.delete'), enabled: any, run: () => this.deleteSelected() },
       this.deleteGuidesEntry(),
+      ...this.flipEntries(singleKind),
+      null,
       {
         label: t('menu.zoomSelection'),
         enabled: any,
@@ -736,6 +745,30 @@ export class App {
       },
     ];
     this.menu.open(x, y, entries);
+  }
+
+  /** Flip along red, green or blue: a lone group or component along its own axes, as SketchUp words it. */
+  private flipEntries(lone: string | undefined): MenuEntry[] {
+    const enabled = this.selection.faces.size + this.selection.edges.size + this.selection.instances.size + this.selection.annotations.size > 0;
+    const keys = {
+      group: ['menu.flipGroupRed', 'menu.flipGroupGreen', 'menu.flipGroupBlue'],
+      component: ['menu.flipComponentRed', 'menu.flipComponentGreen', 'menu.flipComponentBlue'],
+    } as const;
+    const labels = lone === 'group' || lone === 'component' ? keys[lone] : (['menu.flipRed', 'menu.flipGreen', 'menu.flipBlue'] as const);
+    return (['red', 'green', 'blue'] as const).map((axis, k) => ({ label: t(labels[k]!), enabled, run: () => this.flipSelected(axis) }));
+  }
+
+  private flipSelected(axis: 'red' | 'green' | 'blue'): void {
+    this.cancel(true);
+    const r = this.session.execute('core.flip', { ...this.selectionInput(), axis });
+    if (!r.ok) return this.flashError(r.error);
+    // Loose geometry can come back with new ids when it lands on other geometry.
+    this.clearSelection();
+    for (const f of r.output.faceIds) this.selection.faces.add(f);
+    for (const e of r.output.edgeIds) this.selection.edges.add(e);
+    for (const i of r.output.instanceIds) this.selection.instances.add(i);
+    for (const a of r.output.annotationIds) this.selection.annotations.add(a);
+    this.applyHighlights();
   }
 
   /* ---------- view ---------- */

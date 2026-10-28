@@ -67,7 +67,7 @@ import {
 } from './move';
 import { offset, type OffsetInput, type OffsetOutput } from './offset';
 import { pushPull, type PushPullInput, type PushPullOutput } from './pushPull';
-import { scale, type ScaleInput } from './scale';
+import { flip, scale, type FlipInput, type ScaleInput } from './scale';
 import { setDisplayUnits, type SetDisplayUnitsInput } from './setDisplayUnits';
 
 declare module '../types' {
@@ -92,6 +92,7 @@ declare module '../types' {
     'core.rotate': { input: RotateInput; output: MoveOutput };
     'core.rotateCopies': { input: RotateCopiesInput; output: MoveOutput };
     'core.scale': { input: ScaleInput; output: MoveOutput };
+    'core.flip': { input: FlipInput; output: MoveOutput };
     'core.offset': { input: OffsetInput; output: OffsetOutput };
     'core.addGuideLine': { input: AddGuideLineInput; output: GuideOutput };
     'core.addGuideOffset': { input: AddGuideOffsetInput; output: GuideOutput };
@@ -126,6 +127,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
   registry.register(rotate);
   registry.register(rotateCopies);
   registry.register(scale);
+  registry.register(flip);
   registry.register(offset);
   registry.register(addGuideLine);
   registry.register(addGuideOffset);
@@ -138,8 +140,12 @@ export function registerCoreCommands(registry: CommandRegistry): void {
   registry.register(editText);
 }
 
+export { selectionBox, type ScaleBox } from './scale';
+
 export type {
   AddDimensionInput,
+  FlipInput,
+  ScaleInput,
   AddScreenTextInput,
   AddTextInput,
   AnnotationOutput,

@@ -1,20 +1,13 @@
 import { Vector3 } from 'three';
-import { definitionModel } from '../commands';
+import { selectionBox, type ScaleBox } from '../commands';
 import { t } from '../i18n';
-import { getEdge, getFace, type Vec3 } from '../kernel';
-import { applyPoint, applyVector, definitionBounds, pathDefinition, scaling, transformBounds } from '../scene';
+import type { Vec3 } from '../kernel';
+import { applyPoint, scaling } from '../scene';
 import { formatNumber, parseTypedValues } from '../units';
 import { inferPoint } from './inference';
 import { isMac } from './shortcuts';
 import type { Tool, ToolContext } from './tool';
 import { hasSelection, hoverTakeable, selectResult, takeSelection, type Taken } from './transformSelection';
-
-/** A box in the editing context's coordinates: a center, axes at right angles and half sizes along them. */
-export interface ScaleBox {
-  center: Vec3;
-  axes: [Vec3, Vec3, Vec3];
-  half: [number, number, number];
-}
 
 /** A grip on the box: -1, 0 or 1 along each axis (not all 0). */
 export interface Grip {
@@ -114,52 +107,15 @@ export function createScaleTool(ctx: ToolContext): Tool {
   const centerKey = () => t(isMac() ? 'key.option' : 'key.ctrl');
 
   /** The box of the selection, in the context's coordinates; null with nothing to scale. */
-  const selectionBox = (): ScaleBox | null => {
-    const doc = ctx.session.doc;
-    const context = pathDefinition(doc.scene, ctx.contextPath());
-    const m = definitionModel(doc, vp().frame.definitionId);
-    if (!context || !m) return null;
+  const box = (): ScaleBox | null => {
     const { faces, edges, instances, annotations } = ctx.selection;
-    const lone = instances.size === 1 && !faces.size && !edges.size && !annotations.size ? context.instances.get([...instances][0]!) : undefined;
-    if (lone) {
-      const b = definitionBounds(doc.scene, lone.definitionId);
-      if (!b) return null;
-      const cols = ([[1, 0, 0], [0, 1, 0], [0, 0, 1]] as Vec3[]).map((e) => applyVector(lone.transform, e));
-      const mid: Vec3 = [(b.min[0] + b.max[0]) / 2, (b.min[1] + b.max[1]) / 2, (b.min[2] + b.max[2]) / 2];
-      return {
-        center: applyPoint(lone.transform, mid),
-        axes: cols.map((c) => c.map((x) => x / norm(c)) as unknown as Vec3) as ScaleBox['axes'],
-        half: cols.map((c, k) => (norm(c) * (b.max[k]! - b.min[k]!)) / 2) as ScaleBox['half'],
-      };
-    }
-    const points: Vec3[] = [];
-    for (const f of faces) points.push(...(getFace(m, f)?.outer ?? []));
-    for (const e of edges) {
-      const v = getEdge(m, e);
-      if (v) points.push(v.a, v.b);
-    }
-    for (const id of instances) {
-      const i = context.instances.get(id);
-      const b = i && transformBounds(i.transform, definitionBounds(doc.scene, i.definitionId));
-      if (b) points.push(b.min, b.max);
-    }
-    for (const id of annotations) {
-      const a = context.annotations.get(id);
-      if (a?.kind === 'dimension') points.push(a.start.point, a.end.point, add(a.start.point, a.offset), add(a.end.point, a.offset));
-      else if (a?.kind === 'text') points.push(a.anchor.point, add(a.anchor.point, a.leader));
-    }
-    if (!points.length) return null;
-    const min = [0, 1, 2].map((k) => Math.min(...points.map((p) => p[k]!)));
-    const max = [0, 1, 2].map((k) => Math.max(...points.map((p) => p[k]!)));
-    return {
-      center: [(min[0]! + max[0]!) / 2, (min[1]! + max[1]!) / 2, (min[2]! + max[2]!) / 2],
-      axes: [
-        [1, 0, 0],
-        [0, 1, 0],
-        [0, 0, 1],
-      ],
-      half: [(max[0]! - min[0]!) / 2, (max[1]! - min[1]!) / 2, (max[2]! - min[2]!) / 2],
-    };
+    return selectionBox(ctx.session.doc, {
+      definitionId: vp().frame.definitionId,
+      faceIds: [...faces],
+      edgeIds: [...edges],
+      instanceIds: [...instances],
+      annotationIds: [...annotations],
+    });
   };
 
   const world = (p: Vec3) => vp().frame.toWorld(p);
@@ -255,17 +211,17 @@ export function createScaleTool(ctx: ToolContext): Tool {
 
   /** With no drag: show the selection's box and grips, the one under the pointer highlighted. */
   const idle = () => {
-    const box = hasSelection(ctx) ? selectionBox() : null;
-    if (!box) {
+    const b = hasSelection(ctx) ? box() : null;
+    if (!b) {
       hover = null;
       return vp().clearPreview();
     }
-    const grips = boxGrips(box);
+    const grips = boxGrips(b);
     const under = gripUnder(grips);
     const changed = (under?.signs.join() ?? '') !== (hover?.signs.join() ?? '');
     hover = under;
     if (changed) ctx.hint();
-    showBox(box, grips, hover);
+    showBox(b, grips, hover);
   };
 
   return {
@@ -292,14 +248,14 @@ export function createScaleTool(ctx: ToolContext): Tool {
         ctx.hint();
         return idle();
       }
-      const box = selectionBox();
-      const grip = box && gripUnder(boxGrips(box));
-      if (!box || !grip) return;
+      const b = box();
+      const grip = b && gripUnder(boxGrips(b));
+      if (!b || !grip) return;
       const taken = takeSelection(ctx);
       if (!taken) return;
       const uniform = grip.corner !== e.shiftKey;
       const centered = isMac() ? e.altKey : e.ctrlKey;
-      drag = { ...taken, box, grip, uniform, centered, factors: uniform ? [1] : grip.along.map(() => 1) };
+      drag = { ...taken, box: b, grip, uniform, centered, factors: uniform ? [1] : grip.along.map(() => 1) };
       vp().hideMarker();
       preview(drag);
       ctx.hint();

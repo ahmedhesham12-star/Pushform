@@ -1,8 +1,9 @@
 import { describe, expect, test } from 'vitest';
 import { createSession, definitionModel, matchTypedValues, type CommandSession } from '../src/commands';
 import { checkModel, listFaces, serialize, solidVolume, type Model } from '../src/kernel';
-import { decompose, determinant, findInstance, planeScale, quatFromAxisAngle, scaling, worldAnnotations } from '../src/scene';
-import { boxGrips, gripFactors, type ScaleBox } from '../src/tools/scale';
+import { decompose, definitionBounds, determinant, findInstance, multiply, planeScale, quatFromAxisAngle, scaling, worldAnnotations, type Transform } from '../src/scene';
+import type { ScaleBox } from '../src/commands';
+import { boxGrips, gripFactors } from '../src/tools/scale';
 import { parseTypedValues } from '../src/units';
 
 /* Scale and mirror (milestone 4, step 8): the kernel's affine transformSelection and core.scale. Sizes in mm. */
@@ -43,6 +44,7 @@ const radii = (m: Model) => Object.values(serialize(m).curves).map((c) => c.radi
 const RED: [number, number, number] = [1, 0, 0];
 const UP: [number, number, number] = [0, 1, 0];
 const GREEN: [number, number, number] = [0, 0, 1];
+const trsOf = (rotation: Transform['rotation'], translation: [number, number, number], scale: [number, number, number]): Transform => ({ rotation, translation, scale });
 
 describe('scale maps', () => {
   test('a scale about a point keeps the point and scales along its axes only', () => {
@@ -246,5 +248,57 @@ describe('scale grips', () => {
     expect(gripFactors(box, side, [0, 750, 0], false, true)).toEqual([2]);
     // Past the fixed grip: a mirror.
     expect(gripFactors(box, side, [0, -500, 0], false, false)).toEqual([-1]);
+  });
+});
+
+describe('flip', () => {
+  test('loose geometry flips about the middle of its box, faces still facing outward', () => {
+    const s = box();
+    const top = listFaces(root(s)).find((f) => f.normal[1] > 0.9)!.id;
+    ok(s.execute('core.drawCircle', { faceId: top, center: [200, 500, 300], radius: 100, direction: null, segments: 12 }));
+    ok(s.execute('core.flip', { faceIds: allFaces(s), axis: 'red' }));
+    valid(s);
+    expect(extent(s)).toEqual([0, 0, 0, 1000, 500, 600]);
+    expect(solidVolume(root(s))).toBeCloseTo(1000 * 600 * 500, 0);
+    const curve = Object.values(serialize(root(s)).curves)[0]!;
+    expect(curve.center).toEqual([800, 500, 300]);
+    expect(curve.radius).toBe(100);
+  });
+
+  test('a lone group flips along its own axis and stays in place; twice gives it back', () => {
+    const s = box();
+    const g = ok(s.execute('core.makeGroup', { faceIds: allFaces(s) }));
+    ok(s.execute('core.rotate', { instanceIds: [g.instanceId], center: [0, 0, 0], axis: UP, angle: 90 }));
+    const before = findInstance(s.doc.scene, g.instanceId)!.instance.transform;
+    const bounds = definitionBounds(s.doc.scene, s.doc.scene.rootId);
+    ok(s.execute('core.flip', { instanceIds: [g.instanceId], axis: 'green' }));
+    const flipped = findInstance(s.doc.scene, g.instanceId)!.instance.transform;
+    expect(flipped.scale).toEqual([1, 1, -1]);
+    expect(flipped.rotation).toEqual(before.rotation);
+    const after = definitionBounds(s.doc.scene, s.doc.scene.rootId)!;
+    [...after.min, ...after.max].forEach((v, i) => expect(v).toBeCloseTo([...bounds!.min, ...bounds!.max][i]!, 9));
+    ok(s.execute('core.flip', { instanceIds: [g.instanceId], axis: 'green' }));
+    expect(findInstance(s.doc.scene, g.instanceId)!.instance.transform).toEqual(before);
+  });
+
+  test('a flat face flipped along its normal turns over', () => {
+    const s = createSession();
+    const r = ok(s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 500, depth: 500 }));
+    const up = listFaces(root(s))[0]!.normal[1];
+    ok(s.execute('core.flip', { faceIds: r.faceIds, axis: 'blue' }));
+    valid(s);
+    expect(listFaces(root(s))[0]!.normal[1]).toBe(-up);
+  });
+
+  test('a mirror keeps the rotation it can, given one to stay near', () => {
+    const q = quatFromAxisAngle(UP, 0.7);
+    // A turned group mirrored along its own green.
+    const m = multiply(trsOf(q, [0, 0, 0], [1, 1, 1]), scaling([0, 0, 0], [GREEN], [-1]));
+    expect(decompose(m)!.scale).toEqual([-1, 1, 1]);
+    const near = decompose(m, q)!;
+    expect(near.scale).toEqual([1, 1, -1]);
+    // q and -q are the same rotation.
+    const sign = Math.sign(near.rotation.reduce((d, v, i) => d + v * q[i]!, 0));
+    near.rotation.forEach((v, i) => expect(v * sign).toBeCloseTo(q[i]!, 12));
   });
 });

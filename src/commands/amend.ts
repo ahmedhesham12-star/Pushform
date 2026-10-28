@@ -27,6 +27,7 @@ export function matchTypedValues(
     bare?: boolean;
     /** For each length, the plain number typed (no unit), or null. */
     plain?: readonly (number | null)[];
+    radii?: readonly number[];
   },
 ): Result<Record<string, number | boolean>> {
   const out: Record<string, number | boolean> = {};
@@ -61,6 +62,7 @@ export function matchTypedValues(
     ['length', lengths],
     ['count', typed.counts],
     ['angle', angles],
+    ['radius', typed.radii ?? []],
   ] as const) {
     const group = fields.filter((f) => kindOf(f) === kind);
     if (!values.length) continue;
@@ -112,6 +114,7 @@ export function applyAmendValues<I>(
     // A factor replaces the old one as typed; other values keep the old direction.
     const direction = kind === 'factor' ? 1 : Math.sign(next[field.key] as number) || 1;
     next[field.key] = direction * value;
+    if (field.clears) delete next[field.clears];
   }
   return { ok: true, input: next as I };
 }

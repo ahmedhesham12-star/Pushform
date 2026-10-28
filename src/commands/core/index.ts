@@ -11,6 +11,7 @@ import {
   type EditTextInput,
 } from './annotations';
 import { clearModel, type ClearModelInput } from './clearModel';
+import { drawArc, drawArcCenter, drawPie, type DrawArcCenterInput, type DrawArcInput, type DrawArcOutput } from './drawArc';
 import { drawLine, type DrawLineInput, type DrawLineOutput } from './drawLine';
 import { drawRectangle, type DrawRectangleInput, type DrawRectangleOutput } from './drawRectangle';
 import {
@@ -76,6 +77,9 @@ declare module '../types' {
     'core.drawLine': { input: DrawLineInput; output: DrawLineOutput };
     'core.drawCircle': { input: DrawCircleInput; output: DrawShapeOutput };
     'core.drawPolygon': { input: DrawPolygonInput; output: DrawShapeOutput };
+    'core.drawArc': { input: DrawArcInput; output: DrawArcOutput };
+    'core.drawArcCenter': { input: DrawArcCenterInput; output: DrawArcOutput };
+    'core.drawPie': { input: DrawArcCenterInput; output: DrawArcOutput };
     'core.pushPull': { input: PushPullInput; output: PushPullOutput };
     'core.erase': { input: EraseInput; output: EraseOutput };
     'core.clearModel': { input: ClearModelInput; output: Record<string, never> };
@@ -111,6 +115,9 @@ export function registerCoreCommands(registry: CommandRegistry): void {
   registry.register(drawLine);
   registry.register(drawCircle);
   registry.register(drawPolygon);
+  registry.register(drawArc);
+  registry.register(drawArcCenter);
+  registry.register(drawPie);
   registry.register(pushPull);
   registry.register(erase);
   registry.register(clearModel);
@@ -143,6 +150,9 @@ export function registerCoreCommands(registry: CommandRegistry): void {
 export { selectionBox, type ScaleBox } from './scale';
 
 export type {
+  DrawArcCenterInput,
+  DrawArcInput,
+  DrawArcOutput,
   AddDimensionInput,
   FlipInput,
   ScaleInput,

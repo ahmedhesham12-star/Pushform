@@ -6,10 +6,11 @@
  * so the representation can change without touching commands, tools or the
  * viewport.
  *
- * Mutations (createModel, drawRectangle, drawRegularPolygon, drawLine, pushPull, erase,
+ * Mutations (createModel, drawRectangle, drawRegularPolygon, drawArc, drawLine, pushPull, erase,
  * extractGeometry, transformGeometry, mergeGeometry, moveGeometry, transformSelection, offset, deserialize) are for
  * src/commands only; everything else is read-only and may be used anywhere.
  */
+import { arcPoints, drawArc as drawTopologyArc, threePointArc, twoPointArc, type ArcGeometry, type ArcSpec } from './arcs';
 import { extract as extractTopology, merge as mergeTopology, transformTopology, type PlaceOptions } from './assembly';
 import { erase as eraseTopology } from './erase';
 import { offset as offsetTopology, offsetDistance as offsetDistanceTo, offsetPath as findOffsetPath, type OffsetError, type OffsetPath } from './offset';
@@ -43,7 +44,7 @@ export type { Vec3 } from './vec';
 export type { Point3, FaceId, EdgeId, CurveId, CurveKind } from './types';
 export type { FaceView, EdgeView, SnapPoint, SnapKind, Bounds } from './query';
 export type { MoveError, OffsetError, OffsetPath, PlaceOptions };
-export type { DrawError, RectangleSpec, RegularPolygonSpec, SerializedTopology, FaceMesh, Triangle };
+export type { ArcGeometry, ArcSpec, DrawError, RectangleSpec, RegularPolygonSpec, SerializedTopology, FaceMesh, Triangle };
 export { cleanNormal, planeAxes } from './vec';
 export { GROUND_NORMAL, MAX_SEGMENTS } from './shapes';
 export { COORDINATE_PRECISION, EPSILON, MIN_RECT_SIDE, snapLength, snapPoint, VERTEX_TOLERANCE } from './precision';
@@ -68,6 +69,16 @@ export function drawRectangle(m: Model, spec: RectangleSpec): DrawResult {
 /** Draw a circle or regular polygon as one curve, on the ground or on a face. */
 export function drawRegularPolygon(m: Model, spec: RegularPolygonSpec): DrawResult {
   const r = drawRegular(data(m), spec);
+  return r.ok ? { ok: true, model: wrap(r.topology), faceIds: r.faceIds } : r;
+}
+
+/**
+ * Draw an arc, or a pie (the arc and its two radii), as one curve on the
+ * ground or on a face: it splits what it crosses, and a pie or an arc closing
+ * a region with existing edges makes a face.
+ */
+export function drawArc(m: Model, spec: ArcSpec): DrawResult {
+  const r = drawTopologyArc(data(m), spec);
   return r.ok ? { ok: true, model: wrap(r.topology), faceIds: r.faceIds } : r;
 }
 
@@ -236,5 +247,9 @@ export const checkModel = (m: Model) => validate(data(m));
 export const previewRectangle = rectangleCorners;
 /** The directions a rectangle's sides follow: the plane's axes, or a given first side (to align to an edge). */
 export { rectangleAxes };
+/** Points of an arc as drawArc would create it (start to end); used for previews. */
+export const previewArc = arcPoints;
+/** The arc between two points with a bulge or a radius, and the arc through three points (for the arc tools and commands). */
+export { threePointArc, twoPointArc };
 /** Corners of a circle or polygon as drawRegularPolygon would create it; used for previews. */
 export const previewRegularPolygon = regularPolygonPoints;

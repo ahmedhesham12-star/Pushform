@@ -250,13 +250,25 @@ export function offset(t: Topology, faceId: FaceId | null, edgeIds: readonly Edg
 
   const to3 = (q: Vec2): Point3 => snapPoint(add(add(scale(basis.u, q[0]), scale(basis.v, q[1])), scale(path.normal, level)));
   const d = new Draft(t);
-  // Each source curve gets one new curve around the same center.
+  // Each source curve gets one new curve around the same center. Its radius is measured at a
+  // point between two of its segments: an arc's ends meet straight edges at a different miter.
+  const inner = new Map<CurveId, Point3>();
+  [path, ...path.holes].forEach((loop, k) => {
+    const points = outs[k]!;
+    const closed = path.closed || k > 0;
+    points.forEach((q, i) => {
+      const c = loop.curves[i];
+      const before = i > 0 ? loop.curves[i - 1] : closed ? loop.curves[points.length - 1] : null;
+      if (c && before === c && !inner.has(c)) inner.set(c, to3(q));
+    });
+  });
   const newCurves = new Map<CurveId, CurveId>();
   const curveFor = (c: CurveId | null, at: Point3): CurveId | null => {
     if (!c) return null;
     const src = t.curves.get(c);
     if (!src) return null;
-    if (!newCurves.has(c)) newCurves.set(c, d.addCurve({ kind: src.kind, segments: src.segments, center: src.center, normal: src.normal, ...withRadius(src.radius === undefined ? undefined : length(sub(at, src.center))) }));
+    const p = inner.get(c) ?? at;
+    if (!newCurves.has(c)) newCurves.set(c, d.addCurve({ kind: src.kind, segments: src.segments, center: src.center, normal: src.normal, ...withRadius(src.radius === undefined ? undefined : length(sub(p, src.center))) }));
     return newCurves.get(c)!;
   };
   const drawn = new Set<EdgeId>();

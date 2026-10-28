@@ -16,6 +16,7 @@ const KERNEL_MUTATIONS = [
   'createModel',
   'drawRectangle',
   'drawRegularPolygon',
+  'drawArc',
   'drawLine',
   'pushPull',
   'erase',

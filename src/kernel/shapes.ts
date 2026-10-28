@@ -40,12 +40,25 @@ export function drawLoop(
   points: readonly Point3[],
   curve: Omit<Curve, 'edges'> | null = null,
 ): { topology: Topology; faceIds: FaceId[]; edgeIds: EdgeId[] } {
+  const segments = points.map((a, i) => ({ a, b: points[(i + 1) % points.length]!, curve: curve !== null }));
+  return drawSegments(t, plane, normal, segments, curve);
+}
+
+/**
+ * Draw segments in a plane, as drawLoop does; those marked `curve` make up
+ * one curve (an arc, with the straight radii of a pie beside it).
+ */
+export function drawSegments(
+  t: Topology,
+  plane: Plane,
+  normal: Vec3,
+  segments: readonly { a: Point3; b: Point3; curve: boolean }[],
+  curve: Omit<Curve, 'edges'> | null = null,
+): { topology: Topology; faceIds: FaceId[]; edgeIds: EdgeId[] } {
   const d = new Draft(t);
   const curveId = curve ? d.addCurve(curve) : null;
   const drawn = new Set<EdgeId>();
-  points.forEach((p, i) => {
-    for (const e of insertSegment(d, plane, p, points[(i + 1) % points.length]!, { curve: curveId })) drawn.add(e);
-  });
+  for (const s of segments) for (const e of insertSegment(d, plane, s.a, s.b, { curve: s.curve ? curveId : null })) drawn.add(e);
   const r = rebuildPlane(d, plane, normal, drawn);
   const created = new Set(r.created);
   // Drawn edges can also lie in the plane of another face (along a wall that crosses the

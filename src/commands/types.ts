@@ -71,13 +71,16 @@ type BooleanKeys<I> = { [K in keyof I]-?: I[K] extends boolean ? K : never }[key
  * `key` and whether it divides to the boolean input named by `flag`; or an
  * angle in degrees (a plain number, or one marked °); or a scale factor: a
  * plain number is the factor itself and replaces the old one, sign and all
- * (-1 mirrors), and a length with units is divided by `reference`.
+ * (-1 mirrors), and a length with units is divided by `reference`; or a
+ * radius, a length typed with an "r" suffix (300mmr). Setting a field
+ * removes the optional input named by `clears` (a typed bulge replaces a radius).
  */
 export interface AmendableField<I> {
   readonly key: NumberKeys<I>;
   readonly mode: 'positive' | 'signed';
-  readonly kind?: 'length' | 'count' | 'array' | 'angle' | 'factor';
+  readonly kind?: 'length' | 'count' | 'array' | 'angle' | 'factor' | 'radius';
   readonly flag?: BooleanKeys<I>;
+  readonly clears?: keyof I & string;
   /** For a factor: the size in mm that a typed length is divided by. */
   readonly reference?: number;
 }

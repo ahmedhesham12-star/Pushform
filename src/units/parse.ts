@@ -94,14 +94,17 @@ export interface TypedArray {
  * true when every length was a plain number, so a command that takes an
  * angle and no length can read them as degrees. `plain` holds, for each
  * length, the plain number typed or null when it had a unit (Scale reads a
- * plain number as a factor).
+ * plain number as a factor). `radii` holds lengths typed with an "r" suffix
+ * (300mmr, 12"r, 300r), for arcs.
  */
 export type TypedValuesResult =
-  | { ok: true; lengths: number[]; counts: number[]; arrays: TypedArray[]; angles: number[]; bare: boolean; plain: (number | null)[] }
+  | { ok: true; lengths: number[]; counts: number[]; arrays: TypedArray[]; angles: number[]; bare: boolean; plain: (number | null)[]; radii: number[] }
   | { ok: false; error: ParseError };
 
 /** A count typed with an "s" suffix, such as 48s for 48 segments or 6s for 6 sides. */
 const COUNT = /^(\d+)\s*s$/;
+/** A radius: a length with an "r" suffix, such as 300mmr or 12"r. */
+const RADIUS = /^(.*\S)\s*r$/;
 /** Arrays as in SketchUp: x5, 5x and *5 multiply; /4 divides. Typed on their own, since x also separates values. */
 const MULTIPLY = /^(?:[x×*]\s*(\d+)|(\d+)\s*[x×*])$/;
 const DIVIDE = /^\/\s*(\d+)$/;
@@ -118,7 +121,7 @@ export function parseAngle(input: string): number | null {
 
 /**
  * Parse what the user typed into the measurements box: lengths (either unit
- * system, see parseLength) and counts with an "s" suffix, in any order and
+ * system, see parseLength), radii with an "r" suffix and counts with an "s" suffix, in any order and
  * separated like parseLengthList. "500mm, 48s" gives one length and one count.
  * An array (x5, 5x, *5 or /4) is typed on its own.
  */
@@ -128,7 +131,7 @@ export function parseTypedValues(input: string, fileUnit: LengthUnit): TypedValu
   const divide = DIVIDE.exec(whole);
   if (multiply || divide) {
     const count = Number(multiply ? (multiply[1] ?? multiply[2]) : divide![1]);
-    return { ok: true, lengths: [], counts: [], arrays: [{ count, divide: !!divide }], angles: [], bare: false, plain: [] };
+    return { ok: true, lengths: [], counts: [], arrays: [{ count, divide: !!divide }], angles: [], bare: false, plain: [], radii: [] };
   }
   const parts = whole
     .split(LIST_SEPARATOR)
@@ -139,11 +142,19 @@ export function parseTypedValues(input: string, fileUnit: LengthUnit): TypedValu
   const counts: number[] = [];
   const angles: number[] = [];
   const plain: (number | null)[] = [];
+  const radii: number[] = [];
   let bare = true;
   for (const part of parts) {
     const count = COUNT.exec(part);
     if (count) {
       counts.push(Number(count[1]));
+      continue;
+    }
+    const radius = RADIUS.exec(part);
+    if (radius) {
+      const r = parseLength(radius[1]!, fileUnit);
+      if (!r.ok) return r;
+      radii.push(r.mm);
       continue;
     }
     const angle = ANGLE.exec(part);
@@ -159,7 +170,7 @@ export function parseTypedValues(input: string, fileUnit: LengthUnit): TypedValu
     lengths.push(r.mm);
     plain.push(angle ? parseAngle(part) : null);
   }
-  return { ok: true, lengths, counts, arrays: [], angles, bare, plain };
+  return { ok: true, lengths, counts, arrays: [], angles, bare, plain, radii };
 }
 
 /** Parse one or more lengths, such as the width and depth of a rectangle. */

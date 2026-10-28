@@ -93,6 +93,7 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
   explodeWouldSkew: 'error.explodeWouldSkew',
   scaleWouldSkew: 'error.scaleWouldSkew',
   scaleTooSmall: 'error.scaleTooSmall',
+  arcRadiusTooSmall: 'error.arcRadiusTooSmall',
 };
 
 export class App {
@@ -939,8 +940,11 @@ export class App {
     if (!target) return '';
     const units = this.session.doc.units;
     return target.values
-      .map((v, i) => {
+      .map((v, i): string | null => {
         const field = target.fields[i]!;
+        // An optional value not given (an arc's radius), or one another value replaces (its bulge).
+        if (v === undefined || (field.clears && target.input[field.clears] !== undefined)) return null;
+        if (field.kind === 'radius') return t('measure.radiusValue', { length: formatLength(Math.abs(v), units) });
         if (field.kind === 'count') return t('measure.count', { count: formatNumber(Math.abs(v)) });
         if (field.kind === 'angle') return formatAngle(v);
         if (field.kind === 'factor') return formatNumber(v, 2);
@@ -950,6 +954,7 @@ export class App {
         }
         return formatLength(field.mode === 'positive' ? Math.abs(v) : v, units);
       })
+      .filter((s) => s !== null)
       .join(t('measure.listSeparator'));
   }
 

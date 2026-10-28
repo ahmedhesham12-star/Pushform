@@ -7,7 +7,7 @@ Browser-based push/pull 3D modeler. TypeScript (strict), Vite, three.js, Vitest,
 - `npm run dev`: dev server (http://localhost:5173)
 - `npm test`: unit and architecture tests (Vitest, run once). The test scripts start Vitest through `scripts/vitest.mjs` from the canonical project path; with a lowercase drive letter (d:\) every test file failed on Windows.
 - `npm run test:watch`: tests in watch mode
-- `npm run test:stress`: slow randomized sweeps in `tests/stress` (about 4 minutes; not part of `npm test`)
+- `npm run test:stress`: slow randomized sweeps in `tests/stress` (about 6 minutes; not part of `npm test`)
 - `npm run build`: type-check (`tsc --noEmit`), then production build into `dist/`
 - `npm run preview`: serve the production build
 - `npm run typecheck`: type-check only
@@ -18,7 +18,7 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 ## Layers (enforced by tests/architecture.test.ts)
 - `src/kernel`: pure geometry in millimeters: a shared topology of vertices, edges, faces and curves. No three.js, no DOM, no imports from other layers; the only package allowed is `earcut`. Import it only through `src/kernel/index.ts`. The `Model` type is opaque. Kernel tests check `validate()` (via `checkModel`) after every operation.
 - `src/scene`: definitions (each with its own kernel Model), instances and their transforms (quaternion, translation in mm, scale along the instance's own axes, which may be negative or non-uniform); world placements are affine maps (`Affine`, `multiply`, `decompose`), skewed where a stretch holds a turn. Pure: imports only the kernel, no three.js or DOM. Scenes are immutable.
-- `src/commands`: the only code that may call kernel mutations (besides `src/scene` loading models) (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawLine`, `pushPull`, `erase`, `extractGeometry`, `transformGeometry`, `mergeGeometry`, `moveGeometry`, `transformSelection`, `offset`, `deserialize`). No three.js or DOM.
+- `src/commands`: the only code that may call kernel mutations (besides `src/scene` loading models) (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawArc`, `drawLine`, `pushPull`, `erase`, `extractGeometry`, `transformGeometry`, `mergeGeometry`, `moveGeometry`, `transformSelection`, `offset`, `deserialize`). No three.js or DOM.
 - `src/units`, `src/i18n`: shared foundations.
 - `src/viewport`: three.js rendering, camera, picking and snapping.
 - `src/tools`: one file per tool. Tools change the model only through `session.execute` or `session.preview`.

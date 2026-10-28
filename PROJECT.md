@@ -93,7 +93,7 @@ Data flow: a tool reads the viewport (picking, snapping) and calls `session.prev
 
 ### Layer rules (checked by `tests/architecture.test.ts`)
 - The kernel imports nothing outside `src/kernel` except the `earcut` package, uses no DOM globals, and is imported only through `src/kernel/index.ts`.
-- Only `src/commands` (and `src/scene`, which loads models) may call kernel mutations (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawLine`, `pushPull`, `erase`, `extractGeometry`, `transformGeometry`, `mergeGeometry`, `deserialize`). Everything else uses the read-only queries, such as `listFaces`, `listEdges`, `edgeGroup`, `faceMeshes`, `snapPoints`, `bounds`, `solidVolume` and the preview helpers.
+- Only `src/commands` (and `src/scene`, which loads models) may call kernel mutations (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawArc`, `drawLine`, `pushPull`, `erase`, `extractGeometry`, `transformGeometry`, `mergeGeometry`, `moveGeometry`, `transformSelection`, `offset`, `deserialize`). Everything else uses the read-only queries, such as `listFaces`, `listEdges`, `edgeGroup`, `faceMeshes`, `snapPoints`, `bounds`, `solidVolume` and the preview helpers.
 - `src/scene` imports only the kernel; `src/export` only the kernel and the scene.
 - `src/kernel`, `src/scene`, `src/commands`, `src/units` and `src/export` use no DOM, so commands and exports can run headless for tests, plugins and MCP.
 
@@ -332,6 +332,7 @@ Every level is validated on load: unit quaternions, scale with no zero component
 | 2026-10-28 | Typing for arcs: a radius is a length ending in r (300mmr, 12"r). After a 2-point arc, a plain length amends the bulge, a radius amends the radius (the bulge then only keeps the side and which arc), and 12s the segments; after a center arc or pie, a plain number is the angle. Amend fields may name an optional input they replace (`clears`) | As SketchUp types radii. |
 | 2026-10-28 | Offset measures a new curve's radius at a point between two of its segments, so an arc's offset gets the same radius rule as a circle's (the circumradius of its segments); its ends meet straight edges at a different miter | Found by the rounded-panel test. |
 | 2026-10-28 | Arc tools: 2-Point Arc (A) with tangent inference at both ends (edges through the start or end point in the drawing plane, continuing an edge that ends there) and half-circle inference, Arc, 3-Point Arc and Pie (no shortcuts, as in SketchUp), in their own tool bar group. The drawing plane is fixed by the first click (a face or the ground). A segment count typed in the tool is shared by the four tools; typed after an arc it amends that arc only | Plan step 12; SketchUp's own default is 12 segments per arc. |
+| 2026-10-28 | A dimension or text end attached again by position takes the exact place of the vertex or edge it attaches to, so following anchors is a fixed point (the random runs check it after every step) | Found by stress sweep 7 (seed 7079, pinned in `npm test`). |
 
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
@@ -431,7 +432,8 @@ Checked on 2026-10-26 in SketchUp 2023 (Windows), by scripts run through the Rub
 - Leader text defaults (coordinates on a point, length on an edge, area on a face, name on a group or component).
 - Arc tangency colors.
 - Which plane the Dimension tool places a dimension line in as the pointer moves.
-- What a length typed on a Scale corner grip scales.
+- What a length typed on a Scale corner grip scales (we scale the diagonal between the grip and the opposite one to it).
+- Whether Scale's Ctrl (about the center) is held or toggled (we read it held, like Shift, as the pointer moves).
 
 ## Differences from the prototype
 - **Bug fix:** pulling a lone face downward built its side walls facing inward. Walls of a lone face now always face outward.
@@ -517,6 +519,8 @@ Checked on 2026-10-26 in SketchUp 2023 (Windows), by scripts run through the Rub
 
 Checkpoints for the product owner's manual testing: (a) after folding, Tape Measure and Protractor; (b) after Dimensions and Text; (c) after Scale, Flip and arcs.
 
+Progress (2026-10-28): ready for checkpoint (c). Done since checkpoint (b): scaled and mirrored instances (step 7), `core.scale` and the affine kernel move (step 8), the Scale tool (step 9), Flip and the Entity Info scale warning (step 10), arcs and pies in the kernel and commands (step 11), the four arc tools (step 12), and the milestone 4 random runs, stress sweep 7 and acceptance test (step 13). 727 unit tests pass and the build succeeds; `npm run test:stress` passes (sweeps 1 to 7, 2890 cases; sweep 7 found one bug, a reattached dimension end left 0.000001 mm off its vertex, now fixed and pinned).
+
 Progress (2026-10-27): checkpoints (a) and (b) passed. Done since: dimensions (step 5), text (step 6), moving and grouping them (checkpoint (b) feedback), scaled and mirrored instances (step 7). 671 unit tests pass and the build succeeds.
 
 Progress (2026-10-26): ready for checkpoint (a). Done: folding (with single corners moved by Move), guides (data, drawing, selection, inference, View menu), Tape Measure and the two-column tool bar, Protractor. 622 unit tests pass and the build succeeds; stress sweeps 5 (1500 seeds, with corners) and 6 pass after folding. The mixed random run gets folding, scale, flip and arcs in step 13.
@@ -535,6 +539,8 @@ Decisions approved for milestone 4 (2026-10-26, product owner):
 - Export covers STL and GLB; OBJ and DXF are next steps. Edges without faces are not exported.
 - A stretch that would land a point on another point is refused rather than merging the two points (an island that lands on a point does merge).
 - While moving loose geometry, its own endpoints and midpoints at the original position are still inference targets (its faces and edges are not).
+- A segment count typed after an arc (or circle) amends that one only; the next one starts from the count typed in the tool.
+- Scale refuses a non-uniform scale that would skew a turned group or component (scale it along its own axes, which a lone selected one gets by default).
 
 ## Next steps (proposed, not yet approved)
 1. **After milestone 4** (out of its scope):

@@ -91,7 +91,10 @@ function resolve(s: Scene, from: DefinitionId, ref: AnchorRef): Point3 | null {
 /**
  * An anchor at a point of a definition: attached to the vertex there, else
  * to the edge through it, looking first at the definition's own geometry and
- * then at nested groups and components; free when there is neither.
+ * then at nested groups and components; free when there is neither. An
+ * attached anchor takes the exact position of what it is attached to (the
+ * point may be off it by up to the vertex tolerance), so following it again
+ * changes nothing.
  */
 export function attachAnchor(s: Scene, definitionId: DefinitionId, point: Point3): Anchor {
   const p = snapPoint(point);
@@ -103,15 +106,17 @@ export function attachAnchor(s: Scene, definitionId: DefinitionId, point: Point3
   for (const place of places) {
     const model = s.definitions.get(place.definitionId)!.model;
     const v = vertexAt(model, local(place.world, p), VERTEX_TOLERANCE);
-    if (v) return { point: p, ref: { path: place.path, definitionId: place.definitionId, a: v } };
+    if (v) return attached(s, definitionId, p, { path: place.path, definitionId: place.definitionId, a: v });
   }
   for (const place of places) {
     const model = s.definitions.get(place.definitionId)!.model;
     const e = edgeThrough(model, local(place.world, p), VERTEX_TOLERANCE);
-    if (e) return { point: p, ref: { path: place.path, definitionId: place.definitionId, a: e.a, b: e.b, t: e.t } };
+    if (e) return attached(s, definitionId, p, { path: place.path, definitionId: place.definitionId, a: e.a, b: e.b, t: e.t });
   }
   return { point: p };
 }
+
+const attached = (s: Scene, definitionId: DefinitionId, p: Point3, ref: AnchorRef): Anchor => ({ point: resolve(s, definitionId, ref) ?? p, ref });
 
 /**
  * An anchor brought up to date: where its geometry is now, or attached again

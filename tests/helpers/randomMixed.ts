@@ -1,11 +1,16 @@
 import { createSession, documentFromText, documentToText, type CommandSession } from '../../src/commands';
-import { checkModel, listFaces } from '../../src/kernel';
-import { findInstance, instanceCount, placedInstances, type Scene } from '../../src/scene';
+import { checkModel, listFaces, snapPoints } from '../../src/kernel';
+import { findInstance, followAnchors, instanceCount, placedInstances, type Scene } from '../../src/scene';
 import { rng } from './randomRun';
 
-/** Problems with a scene: each model's invariants, single-instance groups, nothing orphaned. */
+/**
+ * Problems with a scene: each model's invariants, single-instance groups,
+ * nothing orphaned, and dimensions and text already following their geometry
+ * (the session follows after every command, so following again changes nothing).
+ */
 export function sceneProblems(s: Scene): string[] {
   const out: string[] = [];
+  if (followAnchors(s) !== s) out.push('anchors do not follow their geometry');
   for (const d of s.definitions.values()) {
     for (const p of checkModel(d.model)) out.push(`${d.id}: ${p}`);
     const n = instanceCount(s, d.id);
@@ -30,8 +35,11 @@ const AXES: [number, number, number][] = [
  * explode, make unique and erase; amending the last command; undo and redo.
  * After every step the scene passes sceneProblems and survives the .pushform
  * text unchanged. Returns the session and how many of each command changed it.
+ * With `milestone4`, also: corners moved on their own (folding), scale and
+ * flip of instances and loose geometry, arcs and pies, guides, dimensions and
+ * text. Without it, a seed runs exactly as it did in milestone 3.
  */
-export function randomMixedRun(seed: number, steps: number): { session: CommandSession; counts: Record<string, number> } {
+export function randomMixedRun(seed: number, steps: number, milestone4 = false): { session: CommandSession; counts: Record<string, number> } {
   const r = rng(seed);
   const s = createSession();
   const counts: Record<string, number> = {};
@@ -62,7 +70,7 @@ export function randomMixedRun(seed: number, steps: number): { session: CommandS
 
   for (let step = 0; step < steps; step++) {
     const root = s.doc.scene.definitions.get(s.doc.scene.rootId)!;
-    const op = Math.floor(r() * 16);
+    const op = Math.floor(r() * (milestone4 ? 23 : 16));
     last = '';
     const where = () => `seed ${seed}, step ${step}, op ${op}${last}`;
     if (op <= 1 || !listFaces(root.model).length) {
@@ -115,10 +123,60 @@ export function randomMixedRun(seed: number, steps: number): { session: CommandS
       const target = s.amendTarget();
       if (target) {
         const field = target.fields[0]!;
-        const value = field.kind === 'count' || field.kind === 'array' ? 1 + Math.floor(r() * 4) : field.kind === 'angle' ? pick([15, 60, 120])! : 50 + grid(8);
+        const value =
+          field.kind === 'count' || field.kind === 'array'
+            ? 1 + Math.floor(r() * 4)
+            : field.kind === 'angle'
+              ? pick([15, 60, 120])!
+              : field.kind === 'factor'
+                ? pick([0.5, 2, -1])!
+                : 50 + grid(8);
         const before = s.doc;
         if (s.amend({ [field.key]: value }).ok && s.doc !== before) counts.amend = (counts.amend ?? 0) + 1;
       }
+    } else if (op === 16) {
+      // A corner moved on its own: the faces around it fold.
+      const def = pick([...s.doc.scene.definitions.values()])!;
+      const corner = pick(snapPoints(def.model).filter((p) => p.kind === 'end'));
+      if (corner?.vertex) run('core.move', { definitionId: def.kind === 'root' ? undefined : def.id, vertexIds: [corner.vertex], direction: pick(AXES), distance: 50 + grid(4) });
+    } else if (op === 17) {
+      const sel = r() < 0.5 ? someInstance() : looseFaces();
+      const uniform = r() < 0.5;
+      const axes = uniform ? [] : AXES.slice(0, 3).filter(() => r() < 0.5);
+      const factors = (axes.length ? axes : [0]).map(() => pick([0.5, 1.5, 2, -1])!);
+      const [factor, factor2, factor3] = factors;
+      if (sel && ('instanceIds' in sel || sel.faceIds.length)) {
+        run('core.scale', { ...sel, origin: [grid(16), 0, grid(16)], axes, factor, ...(factor2 === undefined ? {} : { factor2 }), ...(factor3 === undefined ? {} : { factor3 }), sizes: factors.map(() => 100 + grid(4)) });
+      }
+    } else if (op === 18) {
+      const sel = r() < 0.5 ? someInstance() : looseFaces();
+      if (sel && ('instanceIds' in sel || sel.faceIds.length)) run('core.flip', { ...sel, axis: pick(['red', 'green', 'blue'] as const)! });
+    } else if (op === 19) {
+      const def = pick([...s.doc.scene.definitions.values()])!;
+      const definitionId = def.kind === 'root' ? undefined : def.id;
+      const center: [number, number, number] = [grid(16), 0, grid(16)];
+      const plane = { definitionId, faceId: null, normal: [0, 1, 0] };
+      if (r() < 0.4) run('core.drawArc', { ...plane, start: center, end: [center[0] + 50 + grid(6), 0, center[2] + grid(4)], bulge: (r() < 0.5 ? -1 : 1) * (25 + grid(4)), segments: 2 + Math.floor(r() * 12) });
+      else run(r() < 0.5 ? 'core.drawPie' : 'core.drawArcCenter', { ...plane, center, start: [center[0] + 100 + grid(4), 0, center[2]], angle: pick([45, 90, -90, 180, 270])!, segments: 2 + Math.floor(r() * 12) });
+    } else if (op === 20) {
+      const def = pick([...s.doc.scene.definitions.values()])!;
+      const definitionId = def.kind === 'root' ? undefined : def.id;
+      if (r() < 0.5) run('core.addGuideLine', { definitionId, point: [grid(16), grid(4), grid(16)], direction: pick(AXES) });
+      else run('core.addGuidePoint', { definitionId, from: [grid(16), 0, grid(16)], direction: pick(AXES), distance: 50 + grid(4) });
+    } else if (op === 21) {
+      // A dimension between two corners (attached to them), or a text on one.
+      const def = pick([...s.doc.scene.definitions.values()])!;
+      const definitionId = def.kind === 'root' ? undefined : def.id;
+      const corners = snapPoints(def.model).filter((p) => p.kind === 'end');
+      const [a, b] = [pick(corners), pick(corners)];
+      if (a && b && r() < 0.6) run('core.addDimension', { definitionId, start: a.point, end: b.point, offset: [0, 0, 100] });
+      else if (a) run('core.addText', { definitionId, point: a.point, leader: [100, 100, 0], text: 'note' });
+    } else if (op === 22) {
+      // Dimensions and text moved with or without their geometry.
+      const def = pick([...s.doc.scene.definitions.values()])!;
+      const annotationIds = [...def.annotations.keys()].filter(() => r() < 0.5);
+      const faceIds = listFaces(def.model).map((f) => f.id).filter(() => r() < 0.3);
+      if (annotationIds.length) run('core.move', { definitionId: def.kind === 'root' ? undefined : def.id, annotationIds, faceIds, direction: pick(AXES), distance: 50 + grid(4) });
     } else if (s.canUndo) {
       const before = s.doc;
       s.undo();

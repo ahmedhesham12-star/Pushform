@@ -49,3 +49,30 @@ describe('randomized mixed commands', () => {
     }
   });
 });
+
+/*
+ * Milestone 4 joins in: corners moved on their own, scale and flip, arcs and
+ * pies, guides, dimensions and text (moved too), with the same checks, and
+ * dimensions and text following their geometry. More seeds run in stress sweep 7.
+ */
+describe('randomized mixed commands with milestone 4', () => {
+  // A run with arcs and annotations takes a few seconds on a busy machine.
+  test.each([1, 2, 3, 4, 5, 6])('seed %i, 50 steps', { timeout: 30_000 }, (seed) => {
+    randomMixedRun(seed, 50, true);
+  });
+
+  // Found by stress sweep 7: a dimension attached again after an explode, 0.000001 mm off its vertex (7079).
+  test.each([[7079, 41]])('seed %i, %i steps (regression)', (seed, steps) => {
+    randomMixedRun(seed, steps, true);
+  });
+
+  test('the runs exercise every milestone 4 command', { timeout: 30_000 }, () => {
+    const total: Record<string, number> = {};
+    for (let seed = 1; seed <= 6; seed++) {
+      for (const [k, v] of Object.entries(randomMixedRun(seed, 50, true).counts)) total[k] = (total[k] ?? 0) + v;
+    }
+    for (const id of ['core.scale', 'core.flip', 'core.drawArc', 'core.drawArcCenter', 'core.drawPie', 'core.addGuideLine', 'core.addGuidePoint', 'core.addDimension', 'core.addText']) {
+      expect(total[id] ?? 0, id).toBeGreaterThan(0);
+    }
+  });
+});

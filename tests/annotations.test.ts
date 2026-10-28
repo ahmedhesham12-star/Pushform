@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { createSession, definitionModel, documentFromText, documentToText, type CommandSession } from '../src/commands';
 import { listEdges, listFaces, vertexAt, edgeThrough, vertexPoint } from '../src/kernel';
-import { dimensionLength, getDefinition, worldAnnotations, type Dimension, type LeaderText } from '../src/scene';
+import { attachAnchor, dimensionLength, followAnchors, getDefinition, worldAnnotations, type Dimension, type LeaderText } from '../src/scene';
 
 /* Dimensions: anchored to geometry, they follow it through every command. All sizes in mm. */
 
@@ -408,5 +408,18 @@ describe('dimensions and text in new groups and components', () => {
     expect((inside.get(dim) as Dimension).start.ref).toBeUndefined();
     expect(dimensionLength(inside.get(dim) as Dimension)).toBe(1000);
     expect(inside.has(text)).toBe(true);
+  });
+});
+
+describe('attaching by position', () => {
+  test('an anchor attached near a vertex takes its exact place, so following again changes nothing', () => {
+    const s = createSession();
+    ok(s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 500, depth: 500 }));
+    const anchor = attachAnchor(s.doc.scene, s.doc.scene.rootId, [500.000001, 0, 0]);
+    expect(anchor.ref).toBeDefined();
+    expect(anchor.point).toEqual([500, 0, 0]);
+    // Found by stress sweep 7 (seed 7079): an exploded dimension end, attached again 0.000001 mm off.
+    ok(s.execute('core.addDimension', { start: [500.000001, 0, 0], end: [0, 0, 0], offset: [0, 0, -100] }));
+    expect(followAnchors(s.doc.scene)).toBe(s.doc.scene);
   });
 });

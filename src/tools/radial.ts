@@ -2,6 +2,7 @@ import type { Vector3 } from 'three';
 import { t, type MessageKey } from '../i18n';
 import { MAX_SEGMENTS, previewRegularPolygon } from '../kernel';
 import { formatLength, formatNumber, parseTypedValues } from '../units';
+import { planeHolding, startsLoose } from './drawingPlane';
 import { inferOnPlane } from './inference';
 import type { Tool, ToolContext, ToolId } from './tool';
 
@@ -45,6 +46,8 @@ interface DrawState {
   normal: Vector3;
   center: Vector3;
   edge: Vector3 | null;
+  /** Centered on an edge or a corner: the plane is the face under the pointer that holds the center. */
+  loose: boolean;
 }
 
 /**
@@ -108,8 +111,8 @@ export function createRadialTool(ctx: ToolContext, kind: RadialKind): Tool {
       if (state) return commit(radiusOf(state));
       const pl = ctx.viewport.planeUnderCursor();
       if (!pl) return;
-      const center = inferOnPlane(ctx, pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground').point;
-      state = { faceId: pl.faceId, onFace: pl.onFace, normal: pl.normal, center, edge: null };
+      const at = inferOnPlane(ctx, pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground');
+      state = { faceId: pl.faceId, onFace: pl.onFace, normal: pl.normal, center: at.point, edge: null, loose: startsLoose(at) };
       show();
       ctx.hint();
     },
@@ -121,6 +124,8 @@ export function createRadialTool(ctx: ToolContext, kind: RadialKind): Tool {
         else ctx.viewport.hideMarker();
         return;
       }
+      const pl = state.loose ? planeHolding(ctx, [state.center], { point: state.center, normal: state.normal }) : null;
+      if (pl) Object.assign(state, { faceId: pl.faceId, onFace: pl.onFace, normal: pl.normal });
       const raw = ctx.viewport.picker.rayPlane(state.center, state.normal);
       if (!raw) return;
       state.edge = inferOnPlane(ctx, state.center, state.normal, raw, state.onFace ? 'face' : 'ground').point;

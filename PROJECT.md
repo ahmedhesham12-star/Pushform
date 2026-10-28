@@ -333,6 +333,7 @@ Every level is validated on load: unit quaternions, scale with no zero component
 | 2026-10-28 | Offset measures a new curve's radius at a point between two of its segments, so an arc's offset gets the same radius rule as a circle's (the circumradius of its segments); its ends meet straight edges at a different miter | Found by the rounded-panel test. |
 | 2026-10-28 | Arc tools: 2-Point Arc (A) with tangent inference at both ends (edges through the start or end point in the drawing plane, continuing an edge that ends there) and half-circle inference, Arc, 3-Point Arc and Pie (no shortcuts, as in SketchUp), in their own tool bar group. The drawing plane is fixed by the first click (a face or the ground). A segment count typed in the tool is shared by the four tools; typed after an arc it amends that arc only | Plan step 12; SketchUp's own default is 12 segments per arc. |
 | 2026-10-28 | A dimension or text end attached again by position takes the exact place of the vertex or edge it attaches to, so following anchors is a fixed point (the random runs check it after every step) | Found by stress sweep 7 (seed 7079, pinned in `npm test`). |
+| 2026-10-28 | A rectangle, circle, polygon or arc started on an edge, a corner or a guide (not inside a face or on the ground) has no plane yet: it takes the face under the pointer whose plane holds every point placed so far, and keeps its plane while the pointer is over an edge or a point that plane also holds. Started inside a face or on the ground, the first click still fixes the plane. Supersedes "the drawing plane is fixed by the first click" for those starts | Checkpoint (c) bug: an arc from a box's top edge to the same edge was drawn on the side face the pick ray happened to hit first, so the top was never split and pushing the region did not cut through. A rectangle notch started on the edge had the same fault. |
 
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
@@ -434,6 +435,7 @@ Checked on 2026-10-26 in SketchUp 2023 (Windows), by scripts run through the Rub
 - Which plane the Dimension tool places a dimension line in as the pointer moves.
 - What a length typed on a Scale corner grip scales (we scale the diagonal between the grip and the opposite one to it).
 - Whether Scale's Ctrl (about the center) is held or toggled (we read it held, like Shift, as the pointer moves).
+- Which plane a shape started on an edge takes (we take the face the pointer moves over that holds the points placed so far).
 
 ## Differences from the prototype
 - **Bug fix:** pulling a lone face downward built its side walls facing inward. Walls of a lone face now always face outward.
@@ -518,6 +520,8 @@ Checked on 2026-10-26 in SketchUp 2023 (Windows), by scripts run through the Rub
    - Rounded corner workflow: draw a rectangle, draw tangent arcs at its corners, erase the corner edges, and get one face that push/pulls into a rounded panel.
 
 Checkpoints for the product owner's manual testing: (a) after folding, Tape Measure and Protractor; (b) after Dimensions and Text; (c) after Scale, Flip and arcs.
+
+Progress (2026-10-28, later): checkpoint (c) bug fixed: arcs and rectangles started on a box's top edge were drawn on the side face, so their regions did not cut through when pushed (tests in `tests/arcThrough.test.ts`).
 
 Progress (2026-10-28): ready for checkpoint (c). Done since checkpoint (b): scaled and mirrored instances (step 7), `core.scale` and the affine kernel move (step 8), the Scale tool (step 9), Flip and the Entity Info scale warning (step 10), arcs and pies in the kernel and commands (step 11), the four arc tools (step 12), and the milestone 4 random runs, stress sweep 7 and acceptance test (step 13). 727 unit tests pass and the build succeeds; `npm run test:stress` passes (sweeps 1 to 7, 2890 cases; sweep 7 found one bug, a reattached dimension end left 0.000001 mm off its vertex, now fixed and pinned).
 

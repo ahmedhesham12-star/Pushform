@@ -1,6 +1,9 @@
+import type { Vector3 } from 'three';
 import { t } from '../i18n';
 import { previewRectangle } from '../kernel';
 import { formatLength, parseLengthList } from '../units';
+import type { PlaneHit } from '../viewport';
+import { planeHolding, startsLoose } from './drawingPlane';
 import { inferOnPlane } from './inference';
 import { alignment, rectangleInput, type RectangleDrag } from './rectangleGeometry';
 import type { Tool, ToolContext } from './tool';
@@ -12,6 +15,10 @@ const MIN_PREVIEW = 0.1;
 interface DrawState extends RectangleDrag {
   faceId: string | null;
   onFace: boolean;
+  /** Started on an edge or a corner: the plane is the face under the pointer that holds the start. */
+  loose: boolean;
+  /** The edge the first click was on, to align to. */
+  edge: { a: Vector3; b: Vector3 } | null;
 }
 
 /**
@@ -25,6 +32,18 @@ export function createRectangleTool(ctx: ToolContext): Tool {
 
   const fmt = (mm: number) => formatLength(Math.abs(mm), ctx.units());
   const sizes = (a: number, b: number) => `${fmt(a)}${t('measure.listSeparator')}${fmt(b)}`;
+
+  /** The direction to align to on a plane (world), or null for the context's axes. */
+  const axisFor = (pl: PlaneHit, start: Vector3, edge: DrawState['edge']) => {
+    const frame = ctx.viewport.frame;
+    const dir = alignment(
+      frame.normalToLocal(pl.normal),
+      frame.toLocal(start),
+      edge ? [frame.toLocal(edge.a), frame.toLocal(edge.b)] : null,
+      pl.outline ? pl.outline.map((p) => frame.toLocal(p)) : null,
+    );
+    return dir ? frame.dirToWorld(dir) : null;
+  };
 
   const preview = (s: DrawState) => {
     ctx.viewport.clearPreview();
@@ -67,15 +86,8 @@ export function createRectangleTool(ctx: ToolContext): Tool {
       const pl = ctx.viewport.planeUnderCursor();
       if (!pl) return;
       const at = inferOnPlane(ctx, pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground');
-      const frame = ctx.viewport.frame;
-      const dir = alignment(
-        frame.normalToLocal(pl.normal),
-        frame.toLocal(at.point),
-        at.edge ? [frame.toLocal(at.edge.a), frame.toLocal(at.edge.b)] : null,
-        pl.outline ? pl.outline.map((p) => frame.toLocal(p)) : null,
-      );
-      const axis = dir ? frame.dirToWorld(dir) : null;
-      state = { faceId: pl.faceId, onFace: pl.onFace, normal: pl.normal, start: at.point, current: at.point.clone(), axis };
+      const edge = at.edge ?? null;
+      state = { faceId: pl.faceId, onFace: pl.onFace, normal: pl.normal, start: at.point, current: at.point.clone(), axis: axisFor(pl, at.point, edge), loose: startsLoose(at), edge };
       ctx.setMeasurement(t('measure.dimensions'), sizes(0, 0));
       ctx.hint();
     },
@@ -87,6 +99,8 @@ export function createRectangleTool(ctx: ToolContext): Tool {
         else ctx.viewport.hideMarker();
         return;
       }
+      const pl = state.loose ? planeHolding(ctx, [state.start], { point: state.start, normal: state.normal }) : null;
+      if (pl) Object.assign(state, { faceId: pl.faceId, onFace: pl.onFace, normal: pl.normal, axis: axisFor(pl, state.start, state.edge) });
       const raw = ctx.viewport.picker.rayPlane(state.start, state.normal);
       if (!raw) return;
       state.current = inferOnPlane(ctx, state.start, state.normal, raw, state.onFace ? 'face' : 'ground').point;

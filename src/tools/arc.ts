@@ -4,6 +4,7 @@ import { t, type MessageKey } from '../i18n';
 import { listEdges, MAX_SEGMENTS, previewArc, threePointArc, twoPointArc, type Vec3 } from '../kernel';
 import { determinant } from '../scene';
 import { formatAngle, formatLength, formatNumber, parseTypedValues } from '../units';
+import { planeHolding, startsLoose } from './drawingPlane';
 import { inferOnPlane, type Inferred } from './inference';
 import { aim, snappedAngle } from './protractorGeometry';
 import type { Tool, ToolContext, ToolId } from './tool';
@@ -32,12 +33,13 @@ const unit = (a: Vec3): Vec3 => {
   return l ? [a[0] / l, a[1] / l, a[2] / l] : [0, 0, 0];
 };
 
-/** The drawing plane, fixed by the first click (world). */
+/** The drawing plane (world): fixed by the first click inside a face or on the ground, else found as the pointer moves. */
 interface Plane {
   faceId: string | null;
   onFace: boolean;
   origin: Vector3;
   normal: Vector3;
+  loose: boolean;
 }
 
 /** Shared by the arc tools: the plane, pointer inference on it, local conversion and the segment count. */
@@ -52,7 +54,13 @@ function arcBase(ctx: ToolContext) {
       const pl = vp().planeUnderCursor();
       if (!pl) return null;
       const at = inferOnPlane(ctx, pl.point, pl.normal, pl.point, pl.onFace ? 'face' : 'ground');
-      return { plane: { faceId: pl.faceId, onFace: pl.onFace, origin: at.point.clone(), normal: pl.normal.clone() }, at };
+      return { plane: { faceId: pl.faceId, onFace: pl.onFace, origin: at.point.clone(), normal: pl.normal.clone(), loose: startsLoose(at) }, at };
+    },
+    /** A plane still to find becomes the one under the pointer when that holds the points so far (local). */
+    follow(p: Plane, points: readonly Vec3[]): Plane {
+      if (!p.loose) return p;
+      const pl = planeHolding(ctx, points.map((q) => vp().frame.toWorld(q)), { point: p.origin, normal: p.normal });
+      return pl ? { faceId: pl.faceId, onFace: pl.onFace, origin: pl.point.clone(), normal: pl.normal.clone(), loose: true } : p;
     },
     /** The pointer on the plane, by inference. */
     on(p: Plane): Inferred | null {
@@ -220,6 +228,7 @@ export function createTwoPointArcTool(ctx: ToolContext): Tool {
         if (!base.pick()) vp().hideMarker();
         return;
       }
+      state.plane = base.follow(state.plane, state.end ? [state.start, state.end] : [state.start]);
       const at = base.on(state.plane);
       if (!at) return;
       const p = base.local(at.point);
@@ -344,6 +353,7 @@ export function createCenterArcTool(ctx: ToolContext, pie: boolean): Tool {
         if (!base.pick()) vp().hideMarker();
         return;
       }
+      state.plane = base.follow(state.plane, state.start ? [state.center, state.start] : [state.center]);
       if (!state.start) {
         const at = base.on(state.plane);
         if (at) state.pointer = base.local(at.point);
@@ -458,6 +468,7 @@ export function createThreePointArcTool(ctx: ToolContext): Tool {
         if (!base.pick()) vp().hideMarker();
         return;
       }
+      state.plane = base.follow(state.plane, state.points);
       const at = base.on(state.plane);
       if (!at) return;
       state.pointer = base.local(at.point);

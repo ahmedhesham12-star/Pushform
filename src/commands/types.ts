@@ -48,15 +48,16 @@ export interface CommandDef<I = unknown, O = unknown> {
   /**
    * Numeric inputs (in mm) that typed values may replace right after the
    * command has run ("amend last operation"), in the order they are typed.
-   * Omit for commands that cannot be amended.
+   * Omit for commands that cannot be amended. A function gives the fields
+   * for one input (Scale amends one factor or several, depending on the grip).
    */
-  readonly amendable?: readonly AmendableField<I>[];
+  readonly amendable?: readonly AmendableField<I>[] | ((input: I) => readonly AmendableField<I>[]);
   /** What to type to amend this command, already translated; shown when typed values do not fit. */
   readonly amendHint?: () => string;
   run(doc: PushformDocument, input: I): RunResult<O>;
 }
 
-type NumberKeys<I> = { [K in keyof I]-?: I[K] extends number ? K : never }[keyof I] & string;
+type NumberKeys<I> = { [K in keyof I]-?: NonNullable<I[K]> extends number ? K : never }[keyof I] & string;
 type BooleanKeys<I> = { [K in keyof I]-?: I[K] extends boolean ? K : never }[keyof I] & string;
 
 /**
@@ -68,13 +69,22 @@ type BooleanKeys<I> = { [K in keyof I]-?: I[K] extends boolean ? K : never }[key
  * typed with an "s" suffix, like 48s for segments or 6s for sides, or an
  * array after a copy, typed x5 (multiply) or /4 (divide): the count goes to
  * `key` and whether it divides to the boolean input named by `flag`; or an
- * angle in degrees (a plain number, or one marked °).
+ * angle in degrees (a plain number, or one marked °); or a scale factor: a
+ * plain number is the factor itself and replaces the old one, sign and all
+ * (-1 mirrors), and a length with units is divided by `reference`.
  */
 export interface AmendableField<I> {
   readonly key: NumberKeys<I>;
   readonly mode: 'positive' | 'signed';
-  readonly kind?: 'length' | 'count' | 'array' | 'angle';
+  readonly kind?: 'length' | 'count' | 'array' | 'angle' | 'factor';
   readonly flag?: BooleanKeys<I>;
+  /** For a factor: the size in mm that a typed length is divided by. */
+  readonly reference?: number;
+}
+
+/** The amendable fields of a command for one input. */
+export function amendableFields<I>(def: CommandDef<I>, input: I): readonly AmendableField<I>[] {
+  return typeof def.amendable === 'function' ? def.amendable(input) : (def.amendable ?? []);
 }
 
 /**

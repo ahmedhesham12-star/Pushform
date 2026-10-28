@@ -91,6 +91,8 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
   offsetNotChain: 'error.offsetNotChain',
   moveCrosses: 'error.moveCrosses',
   explodeWouldSkew: 'error.explodeWouldSkew',
+  scaleWouldSkew: 'error.scaleWouldSkew',
+  scaleTooSmall: 'error.scaleTooSmall',
 };
 
 export class App {
@@ -878,7 +880,7 @@ export class App {
     if (r?.ok) {
       // A moved or copied selection follows the amend (copies of loose geometry get new ids).
       const out = r.output as { faceIds?: string[]; edgeIds?: string[]; instanceIds?: string[] };
-      if (['core.move', 'core.moveCopies', 'core.rotate', 'core.rotateCopies'].includes(target.commandId)) {
+      if (['core.move', 'core.moveCopies', 'core.rotate', 'core.rotateCopies', 'core.scale'].includes(target.commandId)) {
         this.clearSelection();
         for (const f of out.faceIds ?? []) this.selection.faces.add(f);
         for (const e of out.edgeIds ?? []) this.selection.edges.add(e);
@@ -907,6 +909,7 @@ export class App {
         const field = target.fields[i]!;
         if (field.kind === 'count') return t('measure.count', { count: formatNumber(Math.abs(v)) });
         if (field.kind === 'angle') return formatAngle(v);
+        if (field.kind === 'factor') return formatNumber(v);
         if (field.kind === 'array') {
           const divide = field.flag !== undefined && target.input[field.flag] === true;
           return t(divide ? 'measure.divide' : 'measure.multiply', { count: formatNumber(Math.abs(v)) });

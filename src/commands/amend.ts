@@ -25,13 +25,28 @@ export function matchTypedValues(
     arrays?: readonly { count: number; divide: boolean }[];
     angles?: readonly number[];
     bare?: boolean;
+    /** For each length, the plain number typed (no unit), or null. */
+    plain?: readonly (number | null)[];
   },
 ): Result<Record<string, number | boolean>> {
   const out: Record<string, number | boolean> = {};
   // A plain number is a length for commands with lengths, and an angle for those with only angles.
   const hasLengths = fields.some((f) => kindOf(f) === 'length');
   const hasAngles = fields.some((f) => kindOf(f) === 'angle');
-  const lengths = !hasLengths && hasAngles && typed.bare ? [] : typed.lengths;
+  // Commands with factors read plain numbers as factors and lengths as sizes to scale to.
+  const factorFields = fields.filter((f) => kindOf(f) === 'factor');
+  if (factorFields.length && typed.lengths.length) {
+    if (typed.lengths.length !== factorFields.length) {
+      return { ok: false, error: { code: 'amendValueCount', detail: `factor: expected ${factorFields.length}, got ${typed.lengths.length}` } };
+    }
+    for (const [i, f] of factorFields.entries()) {
+      const plain = typed.plain?.[i] ?? null;
+      const value = plain ?? (f.reference ? typed.lengths[i]! / f.reference : NaN);
+      if (!Number.isFinite(value)) return { ok: false, error: { code: 'amendValueInvalid', detail: `${f.key}: no size to scale` } };
+      out[f.key] = value;
+    }
+  }
+  const lengths = factorFields.length || (!hasLengths && hasAngles && typed.bare) ? [] : typed.lengths;
   const angles = hasAngles ? (typed.angles ?? []) : [];
   const arrayFields = fields.filter((f) => kindOf(f) === 'array');
   if (typed.arrays?.length) {
@@ -94,7 +109,8 @@ export function applyAmendValues<I>(
       (field.mode === 'positive' && value < 0) ||
       ((kind === 'count' || kind === 'array') && !Number.isInteger(value));
     if (bad) return { ok: false, error: { code: 'amendValueInvalid', detail: `${field.key}: ${value}` } };
-    const direction = Math.sign(next[field.key] as number) || 1;
+    // A factor replaces the old one as typed; other values keep the old direction.
+    const direction = kind === 'factor' ? 1 : Math.sign(next[field.key] as number) || 1;
     next[field.key] = direction * value;
   }
   return { ok: true, input: next as I };

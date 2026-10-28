@@ -153,6 +153,9 @@ export const en = {
   'error.tapeSideFirst': 'Move the pointer to the side of the edge, then type the distance.',
   'error.tapeDirectionFirst': 'Move the pointer the way to measure, then type the distance.',
   'error.dimensionNoTyping': 'A dimension measures the points you click; typed values are not used here.',
+  'error.scaleWouldSkew': 'A group or component would be skewed. Scale it along its own axes, or the same in every direction.',
+  'error.scaleTooSmall': 'That scale would shrink an edge to nothing.',
+  'error.typeScale': 'Type a factor, like 2, 0.5 or -1 to mirror, or a length with units, like 600mm. Give one value for each direction scaled, separated by commas.',
   'error.explodeWouldSkew': 'This group is stretched and holds a turned group or component, which would be skewed. Make it uniform or explode the inner one first.',
   'error.textNoTyping': 'Click where the text goes first; then write it in place.',
   'error.typeDistanceOrArray': 'Type a distance, x5 for 5 copies, or /4 to divide the distance into 4.',
@@ -190,6 +193,7 @@ export const en = {
   'command.rotate': 'Rotate',
   'command.offset': 'Offset',
   'command.rotateCopy': 'Rotate copy',
+  'command.scale': 'Scale',
 
   'scene.component': 'Component',
   'scene.group': 'Group',

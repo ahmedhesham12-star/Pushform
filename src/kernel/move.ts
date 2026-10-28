@@ -1,22 +1,24 @@
 /**
- * Moving and rotating loose geometry, as the Move and Rotate tools do. The
- * selected faces and edges go through a rigid motion with their vertices;
+ * Moving, rotating, scaling and mirroring loose geometry, as the Move, Rotate
+ * and Scale tools and Flip do. The selected faces and edges go through an
+ * affine map with their vertices;
  * geometry made only of moving vertices goes along. Geometry connected to the
  * selection stretches; a stretched face bent out of its plane folds into flat
  * pieces, as in SketchUp. A move that would turn a face over or run it into
  * other geometry is refused.
  */
 import { EPSILON, VERTEX_TOLERANCE, snapPoint } from './precision';
-import { add, cleanNormal, dot, length, sub, type Vec3 } from './vec';
+import { add, cleanNormal, dot, length, normalize, sub, type Vec3 } from './vec';
 import { Draft } from './draft';
 import { onPlane, planeThrough, polygonNormal, samePlane, type Plane } from './geometry';
-import { extract, merge, transformTopology } from './assembly';
+import { extract, merge, placeCurve, transformTopology, type PlaceOptions } from './assembly';
 import { foldFace } from './fold';
 import { faceShapeProblems, planeProblems } from './validate';
 import { GROUND } from './shapes';
 import type { EdgeId, FaceId, Point3, Topology, VertexId } from './types';
 
-export type MoveError = 'moveCrosses';
+/** moveCrosses: a face would turn over or run into other geometry; tooSmall: an edge would shrink to nothing. */
+export type MoveError = 'moveCrosses' | 'tooSmall';
 
 export type MoveResult =
   | {
@@ -28,10 +30,13 @@ export type MoveResult =
     }
   | { ok: false; error: MoveError };
 
-/** A rigid motion: points through mapPoint, directions (normals) through mapVector. */
-export interface RigidMap {
+/**
+ * Where points go, and face normals (the inverse transpose, for a scale). A
+ * mirror reverses the loops of faces that move whole; see PlaceOptions.
+ */
+export interface AffineMap extends PlaceOptions {
   readonly mapPoint: (p: Point3) => Point3;
-  readonly mapVector: (v: Vec3) => Vec3;
+  readonly mapNormal: (v: Vec3) => Vec3;
 }
 
 export function moveGeometry(
@@ -41,15 +46,15 @@ export function moveGeometry(
   vector: Vec3,
   vertexIds: readonly VertexId[] = [],
 ): MoveResult {
-  return transformSelection(t, faceIds, edgeIds, { mapPoint: (p) => add(p, vector), mapVector: (v) => v }, vertexIds);
+  return transformSelection(t, faceIds, edgeIds, { mapPoint: (p) => add(p, vector), mapNormal: (v) => v }, vertexIds);
 }
 
-/** Faces, edges and single vertices (a corner moved on its own) through a rigid motion. */
+/** Faces, edges and single vertices (a corner moved on its own) through an affine map. */
 export function transformSelection(
   t: Topology,
   faceIds: readonly FaceId[],
   edgeIds: readonly EdgeId[],
-  map: RigidMap,
+  map: AffineMap,
   vertexIds: readonly VertexId[] = [],
 ): MoveResult {
   const d = new Draft(t);
@@ -72,6 +77,11 @@ export function transformSelection(
     const n = e.v.filter((v) => moving.has(v)).length;
     if (n === 2) rigidEdges.push(id);
     else if (n === 1) stretched.push(id);
+  }
+  // A scale that shrinks an edge to nothing would need its ends merged.
+  for (const e of rigidEdges) {
+    const [a, b] = t.edges.get(e)!.v.map((v) => target.get(v)!);
+    if (length(sub(a!, b!)) <= VERTEX_TOLERANCE) return { ok: false, error: 'tooSmall' };
   }
   // Free only when no edge and no other face (a hole around it, for one) holds on to a moving vertex.
   const rigidSet = new Set(rigidFaces);
@@ -113,18 +123,21 @@ export function transformSelection(
   return { ok: true, topology, faceIds: faceIds.filter((f) => topology.faces.has(f)), edgeIds: edgeIds.filter((e) => topology.edges.has(e)) };
 }
 
-/** Move the vertices to their targets, and turn the normals of faces and curves that move whole. */
-function applyRigid(d: Draft, target: ReadonlyMap<VertexId, Point3>, faces: readonly FaceId[], edges: readonly EdgeId[], map: RigidMap): void {
+/**
+ * Move the vertices to their targets, and place the faces and curves that move
+ * whole: normals turned, loops reversed under a mirror, radii scaled.
+ */
+function applyRigid(d: Draft, target: ReadonlyMap<VertexId, Point3>, faces: readonly FaceId[], edges: readonly EdgeId[], map: AffineMap): void {
+  const unit = (v: Vec3) => cleanNormal(normalize(map.mapNormal(v)));
+  const reversed = (loop: readonly VertexId[]) => (map.mirror ? [...loop].reverse() : loop);
   for (const [v, p] of target) d.moveVertex(v, p);
   for (const f of faces) {
     const face = d.face(f);
-    d.setFace(f, { ...face, normal: cleanNormal(map.mapVector(face.normal)) });
+    d.setFace(f, { normal: unit(face.normal), outer: reversed(face.outer), holes: face.holes.map(reversed) });
   }
   const moved = new Set(edges);
   for (const [id, c] of d.curves) {
-    if (c.edges.length && c.edges.every((e) => moved.has(e))) {
-      d.curves.set(id, { ...c, center: snapPoint(map.mapPoint(c.center)), normal: cleanNormal(map.mapVector(c.normal)) });
-    }
+    if (c.edges.length && c.edges.every((e) => moved.has(e))) d.curves.set(id, placeCurve(c, map.mapPoint, unit, map));
   }
 }
 
@@ -139,14 +152,14 @@ function moveIsland(
   target: ReadonlyMap<VertexId, Point3>,
   faceIds: FaceId[],
   edgeIds: EdgeId[],
-  map: RigidMap,
+  map: AffineMap,
 ): MoveResult {
   applyRigid(d, target, faceIds, edgeIds, map);
   if (![...target.keys()].some((v) => landsOnOther(d, v)) && !conflicts(d, new Set(faceIds), edgeIds, target.keys())) {
     return { ok: true, topology: d.commit(), faceIds, edgeIds };
   }
   const x = extract(t, faceIds, edgeIds);
-  const r = merge(x.remaining, transformTopology(x.extracted, map.mapPoint, map.mapVector));
+  const r = merge(x.remaining, transformTopology(x.extracted, map.mapPoint, map.mapNormal, map));
   return { ok: true, topology: r.topology, faceIds: r.faceIds, edgeIds: r.edgeIds };
 }
 

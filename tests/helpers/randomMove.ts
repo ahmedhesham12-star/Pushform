@@ -36,7 +36,7 @@ export function randomMoveRun(seed: number, steps: number, corners = false): num
       const [c, sn] = [Math.cos(angle), Math.sin(angle)];
       // A turn about the vertical line through (cx, cz): x and z rotate, y stays.
       const turn = (p: readonly number[]): [number, number, number] => [cx + (p[0]! - cx) * c + (p[2]! - cz) * sn, p[1]!, cz - (p[0]! - cx) * sn + (p[2]! - cz) * c];
-      m = transformSelection(t, faces, edges, { mapPoint: turn, mapVector: (v) => [v[0] * c + v[2] * sn, v[1], -v[0] * sn + v[2] * c] }, vertices);
+      m = transformSelection(t, faces, edges, { mapPoint: turn, mapNormal: (v) => [v[0] * c + v[2] * sn, v[1], -v[0] * sn + v[2] * c] }, vertices);
     } else {
       m = moveGeometry(t, faces, edges, vector, vertices);
     }

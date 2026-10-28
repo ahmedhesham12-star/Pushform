@@ -119,19 +119,23 @@ export function moveGeometry(
 }
 
 /**
- * Apply a rigid motion (a rotation, for one) to selected faces and edges, with
- * the same rules as moveGeometry: connected geometry stretches and folds,
- * unless that would turn a face over or cross other geometry.
+ * Apply an affine map (a rotation, a scale or a mirror) to selected faces and
+ * edges, with the same rules as moveGeometry: connected geometry stretches and
+ * folds, unless that would turn a face over or cross other geometry. Face
+ * normals go through mapNormal (the inverse transpose, for a scale); a
+ * mirroring map needs `mirror` and a scale `radiusScale`, as in
+ * transformGeometry. Refused with tooSmall when an edge would shrink to nothing.
  */
 export function transformSelection(
   m: Model,
   faceIds: readonly string[],
   edgeIds: readonly string[],
   mapPoint: (p: Point3) => Point3,
-  mapVector: (v: Vec3) => Vec3,
+  mapNormal: (v: Vec3) => Vec3,
   vertexIds: readonly string[] = [],
+  options: PlaceOptions = {},
 ): { ok: true; model: Model; faceIds: string[]; edgeIds: string[] } | { ok: false; error: MoveError } {
-  const r = transformTopologySelection(data(m), faceIds, edgeIds, { mapPoint, mapVector }, vertexIds);
+  const r = transformTopologySelection(data(m), faceIds, edgeIds, { ...options, mapPoint, mapNormal }, vertexIds);
   return r.ok ? { ok: true, model: wrap(r.topology), faceIds: r.faceIds, edgeIds: r.edgeIds } : r;
 }
 

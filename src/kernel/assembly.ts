@@ -51,15 +51,16 @@ export function extract(t: Topology, faceIds: readonly FaceId[], edgeIds: readon
   return { remaining: d.commit(), extracted };
 }
 
-/**
- * Apply a rigid motion to a whole model: points through mapPoint, directions
- * (normals) through mapVector. Coordinates are rounded to the stored precision.
- */
+/** How an affine map treats orientation and curve radii. */
 export interface PlaceOptions {
   /** The map turns space inside out (a mirror): face loops are reversed so faces keep facing the same way. */
   readonly mirror?: boolean;
-  /** Curve radii are multiplied by this; null drops them (a non-uniform scale makes circles ellipses). */
-  readonly radiusScale?: number | null;
+  /**
+   * Curve radii are multiplied by this; null drops them (a stretch makes circles ellipses). A function
+   * answers per curve, from the curve's normal before the map: a circle stays one when its plane is
+   * scaled the same both ways.
+   */
+  readonly radiusScale?: number | null | ((normal: Vec3) => number | null);
 }
 
 /**
@@ -73,17 +74,18 @@ export function transformTopology(t: Topology, mapPoint: (p: Point3) => Point3, 
   const faces = new Map<FaceId, Face>(
     [...t.faces].map(([id, f]) => [id, { normal: unit(f.normal), outer: reversed(f.outer), holes: f.holes.map(reversed) }]),
   );
-  const scale = options.radiusScale === undefined ? 1 : options.radiusScale;
-  const curves = new Map<CurveId, Curve>(
-    [...t.curves].map(([id, c]) => {
-      const { radius, ...rest } = c;
-      const placed = { ...rest, center: snapPoint(mapPoint(c.center)), normal: unit(c.normal) };
-      return [id, scale === null || radius === undefined ? placed : { ...placed, radius: radius * Math.abs(scale) }];
-    }),
-  );
+  const curves = new Map<CurveId, Curve>([...t.curves].map(([id, c]) => [id, placeCurve(c, mapPoint, unit, options)]));
   return { vertices, edges: t.edges, faces, curves, next: t.next };
 }
 
+/** A curve through an affine map: center and normal placed, the radius scaled or dropped (see PlaceOptions). */
+export function placeCurve(c: Curve, mapPoint: (p: Point3) => Point3, unitNormal: (v: Vec3) => Vec3, options: PlaceOptions): Curve {
+  const { radius, ...rest } = c;
+  const placed = { ...rest, center: snapPoint(mapPoint(c.center)), normal: unitNormal(c.normal) };
+  const s = options.radiusScale;
+  const scale = s === undefined ? 1 : typeof s === 'function' ? s(c.normal) : s;
+  return scale === null || radius === undefined ? placed : { ...placed, radius: radius * Math.abs(scale) };
+}
 
 export interface MergeResult {
   topology: Topology;

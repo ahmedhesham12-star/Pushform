@@ -147,6 +147,42 @@ export function applyNormal(x: AnyTransform, n: Vec3): Vec3 {
 }
 
 /**
+ * Scaling about `origin`: by factors[i] along each of `axes` (unit vectors at
+ * right angles to each other), or by factors[0] in every direction when there
+ * are no axes. A negative factor mirrors.
+ */
+export function scaling(origin: Vec3, axes: readonly Vec3[], factors: readonly number[]): Affine {
+  const m = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+  if (!axes.length) for (const i of [0, 4, 8]) m[i] = factors[0]!;
+  axes.forEach((u, k) => {
+    const f = factors[k]! - 1;
+    for (let c = 0; c < 3; c++) for (let r = 0; r < 3; r++) m[c * 3 + r]! += f * u[r]! * u[c]!;
+  });
+  const lin = m as unknown as Affine['m'];
+  const o = linear(lin, origin);
+  return { m: lin, t: [origin[0] - o[0], origin[1] - o[1], origin[2] - o[2]] };
+}
+
+/**
+ * How much a map scales lengths in the plane with this normal, when it scales
+ * them the same in every direction there (a circle in it stays a circle);
+ * null when it stretches the plane.
+ */
+export function planeScale(x: AnyTransform, normal: Vec3): number | null {
+  const [nx, ny, nz] = normal;
+  // Any unit vector in the plane, and the one square to it.
+  const u: Vec3 = Math.abs(nx) < 0.9 ? [0, nz, -ny] : [-nz, 0, nx];
+  const lu = Math.hypot(u[0], u[1], u[2]);
+  const a: Vec3 = [u[0] / lu, u[1] / lu, u[2] / lu];
+  const nl = Math.hypot(nx, ny, nz);
+  const b: Vec3 = [(ny * a[2] - nz * a[1]) / nl, (nz * a[0] - nx * a[2]) / nl, (nx * a[1] - ny * a[0]) / nl];
+  const [pa, pb] = [applyVector(x, a), applyVector(x, b)];
+  const [la, lb] = [Math.hypot(...pa), Math.hypot(...pb)];
+  const square = Math.abs(pa[0] * pb[0] + pa[1] * pb[1] + pa[2] * pb[2]) <= 1e-9 * la * lb;
+  return square && Math.abs(la - lb) <= 1e-9 * la ? la : null;
+}
+
+/**
  * The transform of an affine map without skew: its columns square to each
  * other. Null when it is skewed. A mirror shows as a negative scale on red.
  */
@@ -214,9 +250,10 @@ export function rotationAbout(center: Vec3, axis: Vec3, angle: number): Transfor
 export const isUnitScale = (t: Transform) => t.scale[0] === 1 && t.scale[1] === 1 && t.scale[2] === 1;
 
 /**
- * Round a transform for storage: translation to the model's 1e-6 mm, and the
+ * Round a transform for storage: translation to the model's 1e-6 mm, the
  * rotation normalized with components that are almost exact (0, 1, 1/sqrt 2)
- * snapped, so 90 degree turns compose without drift.
+ * snapped, so 90 degree turns compose without drift, and scales within float
+ * noise of a round value (2.0000000000000004) snapped to it.
  */
 export function snapTransform(t: Transform): Transform {
   const q = quatNormalize(t.rotation);
@@ -231,8 +268,13 @@ export function snapTransform(t: Transform): Transform {
   return {
     rotation: canonical,
     translation: [snapLength(t.translation[0]), snapLength(t.translation[1]), snapLength(t.translation[2])],
-    scale: t.scale,
+    scale: [snapScale(t.scale[0]), snapScale(t.scale[1]), snapScale(t.scale[2])],
   };
+}
+
+function snapScale(v: number): number {
+  const r = Math.round(v * 1e9) / 1e9;
+  return Math.abs(v - r) <= 1e-12 * Math.max(1, Math.abs(v)) ? r + 0 : v;
 }
 
 /** Column-major 4x4 matrix, as three.js and glTF use. */

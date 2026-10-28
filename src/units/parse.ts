@@ -92,10 +92,12 @@ export interface TypedArray {
  * `angles` holds every part that reads as an angle in degrees: a plain
  * number, or one marked ° or deg. A plain number is a length too; `bare` is
  * true when every length was a plain number, so a command that takes an
- * angle and no length can read them as degrees.
+ * angle and no length can read them as degrees. `plain` holds, for each
+ * length, the plain number typed or null when it had a unit (Scale reads a
+ * plain number as a factor).
  */
 export type TypedValuesResult =
-  | { ok: true; lengths: number[]; counts: number[]; arrays: TypedArray[]; angles: number[]; bare: boolean }
+  | { ok: true; lengths: number[]; counts: number[]; arrays: TypedArray[]; angles: number[]; bare: boolean; plain: (number | null)[] }
   | { ok: false; error: ParseError };
 
 /** A count typed with an "s" suffix, such as 48s for 48 segments or 6s for 6 sides. */
@@ -126,7 +128,7 @@ export function parseTypedValues(input: string, fileUnit: LengthUnit): TypedValu
   const divide = DIVIDE.exec(whole);
   if (multiply || divide) {
     const count = Number(multiply ? (multiply[1] ?? multiply[2]) : divide![1]);
-    return { ok: true, lengths: [], counts: [], arrays: [{ count, divide: !!divide }], angles: [], bare: false };
+    return { ok: true, lengths: [], counts: [], arrays: [{ count, divide: !!divide }], angles: [], bare: false, plain: [] };
   }
   const parts = whole
     .split(LIST_SEPARATOR)
@@ -136,6 +138,7 @@ export function parseTypedValues(input: string, fileUnit: LengthUnit): TypedValu
   const lengths: number[] = [];
   const counts: number[] = [];
   const angles: number[] = [];
+  const plain: (number | null)[] = [];
   let bare = true;
   for (const part of parts) {
     const count = COUNT.exec(part);
@@ -154,8 +157,9 @@ export function parseTypedValues(input: string, fileUnit: LengthUnit): TypedValu
     const r = parseLength(part, fileUnit);
     if (!r.ok) return r;
     lengths.push(r.mm);
+    plain.push(angle ? parseAngle(part) : null);
   }
-  return { ok: true, lengths, counts, arrays: [], angles, bare };
+  return { ok: true, lengths, counts, arrays: [], angles, bare, plain };
 }
 
 /** Parse one or more lengths, such as the width and depth of a rectangle. */

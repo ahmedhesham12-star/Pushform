@@ -99,7 +99,7 @@ describe('folding moved geometry', () => {
       const [c, s] = [Math.cos(Math.PI / 6), Math.sin(Math.PI / 6)];
       return [500 + (p[0]! - 500) * c + (p[2]! - 500) * s, p[1]!, 500 - (p[0]! - 500) * s + (p[2]! - 500) * c];
     };
-    const m = valid(transformSelection(t, [top], [], { mapPoint: turn, mapVector: (v) => turn([v[0] + 500, v[1], v[2] + 500]).map((x, i) => x - (i === 1 ? 0 : 500)) as [number, number, number] }));
+    const m = valid(transformSelection(t, [top], [], { mapPoint: turn, mapNormal: (v) => turn([v[0] + 500, v[1], v[2] + 500]).map((x, i) => x - (i === 1 ? 0 : 500)) as [number, number, number] }));
     expect(m.faces.size).toBe(10);
     expect(m.faces.has(top)).toBe(true);
   });

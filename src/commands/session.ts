@@ -1,7 +1,7 @@
 import { applyAmendValues, type AmendValues } from './amend';
 import { followDocument, type PushformDocument } from './document';
 import type { CommandRegistry } from './registry';
-import type { AmendableField, CommandError, CommandId, InputOf, OutputOf, RunResult } from './types';
+import { amendableFields, type AmendableField, type CommandError, type CommandId, type InputOf, type OutputOf, type RunResult } from './types';
 
 export type Outcome<O> = { ok: true; output: O; changed: boolean } | { ok: false; error: CommandError };
 export type PreviewOutcome<O> = { ok: true; doc: PushformDocument; output: O } | { ok: false; error: CommandError };
@@ -73,7 +73,8 @@ export class CommandSession {
       if (this.undoStack.length > HISTORY_LIMIT) this.undoStack.shift();
       this.redoStack = [];
       this.current = r.doc;
-      if (this.registry.get(id)?.amendable?.length) this.amendable = { commandId: id, input: r.input };
+      const def = this.registry.get(id);
+      if (def && amendableFields(def, r.input).length) this.amendable = { commandId: id, input: r.input };
       this.emit({ reason: 'execute', commandId: id });
     }
     return { ok: true, output: r.output, changed };
@@ -88,8 +89,9 @@ export class CommandSession {
   /** What typed values would amend right now, or null. */
   amendTarget(): AmendTarget | null {
     const a = this.amendable;
-    const fields = a && this.registry.get(a.commandId)?.amendable;
-    if (!a || !fields || this.undoStack.at(-1)?.after !== this.current) return null;
+    const def = a && this.registry.get(a.commandId);
+    const fields = def && amendableFields(def, a.input);
+    if (!a || !fields?.length || this.undoStack.at(-1)?.after !== this.current) return null;
     const input = a.input as Record<string, number>;
     return { commandId: a.commandId, fields, values: fields.map((f) => input[f.key]!), input };
   }

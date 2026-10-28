@@ -2,9 +2,15 @@ import { z } from 'zod';
 import { t } from '../../i18n';
 import { extractGeometry, hasEdge, hasFace, hasVertex, mergeGeometry, transformGeometry, transformSelection, type Model, type Vec3 } from '../../kernel';
 import {
+  applyNormal,
   applyPoint,
   applyVector,
   compose,
+  decompose,
+  determinant,
+  multiply,
+  planeScale,
+  type Affine,
   getDefinition,
   putInstance,
   rotationAbout,
@@ -23,8 +29,8 @@ import { definitionId, faceId, length, point3, targetModel } from './schemas';
 /** Most copies one array may make. */
 export const MAX_COPIES = 500;
 
-const vector3 = z.tuple([z.number(), z.number(), z.number()]);
-const selection = {
+export const vector3 = z.tuple([z.number(), z.number(), z.number()]);
+export const selection = {
   /** The editing context the selection is in (the root when omitted). */
   definitionId,
   faceIds: z.array(faceId).optional(),
@@ -40,7 +46,7 @@ const array = {
   divide: z.boolean(),
 };
 /** Single vertices, moved or turned on their own (a corner, for one); not copied. */
-const vertexIds = z.array(z.string().min(1)).optional();
+export const vertexIds = z.array(z.string().min(1)).optional();
 const moveFields = {
   ...selection,
   /** Direction of the move in the context's coordinates; any non-zero length, it is normalized. */
@@ -58,9 +64,9 @@ const rotateFields = {
   angle: z.number(),
 };
 type Ids = string[] | undefined;
-const anything = (v: { faceIds?: Ids; edgeIds?: Ids; instanceIds?: Ids; vertexIds?: Ids; annotationIds?: Ids }) =>
+export const anything = (v: { faceIds?: Ids; edgeIds?: Ids; instanceIds?: Ids; vertexIds?: Ids; annotationIds?: Ids }) =>
   (v.faceIds?.length ?? 0) + (v.edgeIds?.length ?? 0) + (v.instanceIds?.length ?? 0) + (v.vertexIds?.length ?? 0) + (v.annotationIds?.length ?? 0) > 0;
-const nothingSelected = { message: 'nothing selected' };
+export const nothingSelected = { message: 'nothing selected' };
 
 export const moveInput = z.strictObject({ ...moveFields, vertexIds }).refine(anything, nothingSelected);
 export type MoveInput = z.infer<typeof moveInput>;
@@ -80,10 +86,10 @@ export interface MoveOutput {
 }
 
 type Selection = z.infer<z.ZodObject<typeof selection>> & { vertexIds?: string[] | undefined };
-type Prepared = { ok: true; model: Model; faces: string[]; edges: string[]; vertices: string[]; instances: InstanceId[]; annotations: string[] };
+export type Prepared = { ok: true; model: Model; faces: string[]; edges: string[]; vertices: string[]; instances: InstanceId[]; annotations: string[] };
 
 /** The existing selection of a context that exists, or an error. */
-function prepare(doc: PushformDocument, input: Selection): Prepared | { ok: false; error: CommandError } {
+export function prepare(doc: PushformDocument, input: Selection): Prepared | { ok: false; error: CommandError } {
   const target = targetModel(doc, input.definitionId);
   if (!target.ok) return target;
   const context = getDefinition(doc.scene, input.definitionId ?? doc.scene.rootId)!;
@@ -107,17 +113,25 @@ function unit(v: readonly number[]): Vec3 | null {
 const zeroDirection = { ok: false as const, error: { code: 'invalidInput', detail: 'zero direction or axis' } as CommandError };
 
 /**
- * Apply a rigid transform to a selection: instances change their transform;
- * loose geometry moves, stretching what it is connected to, or the whole
- * command is refused when that would turn a face over or cross other geometry.
+ * Apply a transform to a selection: instances change their transform; loose
+ * geometry moves, stretching what it is connected to, or the whole command is
+ * refused when that would turn a face over or cross other geometry. A rigid
+ * transform (Move, Rotate) composes exactly; an affine map (Scale, Flip)
+ * scales and mirrors, and is refused when it would skew an instance.
  */
-function transformAll(doc: PushformDocument, input: Selection, p: Prepared, tr: Transform): RunResult<MoveOutput> {
+export function transformAll(doc: PushformDocument, input: Selection, p: Prepared, tr: Transform | Affine): RunResult<MoveOutput> {
   let next = doc;
   let faceIds = p.faces;
   let edgeIds = p.edges;
+  const affine = 'm' in tr;
   if (faceIds.length || edgeIds.length || p.vertices.length) {
-    const r = transformSelection(p.model, faceIds, edgeIds, (q) => applyPoint(tr, q), (n) => applyVector(tr, n), p.vertices);
-    if (!r.ok) return { ok: false, error: { code: r.error } };
+    const r = affine
+      ? transformSelection(p.model, faceIds, edgeIds, (q) => applyPoint(tr, q), (n) => applyNormal(tr, n), p.vertices, {
+          mirror: determinant(tr) < 0,
+          radiusScale: (n) => planeScale(tr, n),
+        })
+      : transformSelection(p.model, faceIds, edgeIds, (q) => applyPoint(tr, q), (n) => applyVector(tr, n), p.vertices);
+    if (!r.ok) return { ok: false, error: { code: r.error === 'tooSmall' ? 'scaleTooSmall' : r.error } };
     next = withDefinitionModel(doc, input.definitionId, r.model);
     ({ faceIds, edgeIds } = r);
   }
@@ -125,7 +139,9 @@ function transformAll(doc: PushformDocument, input: Selection, p: Prepared, tr: 
   let scene = next.scene;
   for (const id of p.instances) {
     const i = getDefinition(scene, contextId)!.instances.get(id)!;
-    scene = putInstance(scene, contextId, { ...i, transform: snapTransform(compose(tr, i.transform)) });
+    const placed = affine ? decompose(multiply(tr, i.transform)) : compose(tr, i.transform);
+    if (!placed) return { ok: false, error: { code: 'scaleWouldSkew', detail: id } };
+    scene = putInstance(scene, contextId, { ...i, transform: snapTransform(placed) });
   }
   if (p.annotations.length) scene = transformAnnotations(scene, contextId, p.annotations, tr);
   const output = { faceIds, edgeIds, instanceIds: p.instances, annotationIds: p.annotations };

@@ -22,6 +22,7 @@ import {
   determinant,
   compose,
   multiply,
+  planeScale,
   definitionBounds,
   duplicateDefinition,
   findInstance,
@@ -192,9 +193,7 @@ export const makeComponent: CommandDef<MakeComponentInput, MakeInstanceOutput> =
  * faces keep facing outward, curve radii scaled (dropped by a stretch).
  */
 export function placedModel(model: Model, T: Transform): Model {
-  const [sx, sy, sz] = T.scale.map(Math.abs) as [number, number, number];
-  const uniform = Math.abs(sx - sy) <= 1e-12 * sx && Math.abs(sx - sz) <= 1e-12 * sx;
-  return transformGeometry(model, (p) => applyPoint(T, p), (n) => applyNormal(T, n), { mirror: determinant(T) < 0, radiusScale: uniform ? sx : null });
+  return transformGeometry(model, (p) => applyPoint(T, p), (n) => applyNormal(T, n), { mirror: determinant(T) < 0, radiusScale: (n) => planeScale(T, n) });
 }
 
 export const explodeInput = z.strictObject({ instanceIds: z.array(instanceId).min(1) });

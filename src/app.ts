@@ -177,7 +177,7 @@ export class App {
       if (k === null) return {};
       return k === ' ' ? { keyLabel: t('key.spaceSymbol'), keyName: t('key.space') } : { keyLabel: k.toUpperCase(), keyName: k.toUpperCase() };
     };
-    // Grouped as in SketchUp's large tool set: select and erase, draw, edit, construction, view.
+    // Grouped as in SketchUp's large tool set: select and erase, draw, arcs, edit, construction, view.
     const toolSpecs: ToolButtonSpec<ToolId>[] = [
       { id: 'select', label: 'tool.select', icon: 'select', ...key('select') },
       { id: 'erase', label: 'tool.erase', icon: 'erase', ...key('erase') },
@@ -185,6 +185,10 @@ export class App {
       { id: 'rectangle', label: 'tool.rectangle', icon: 'rectangle', ...key('rectangle') },
       { id: 'circle', label: 'tool.circle', icon: 'circle', ...key('circle') },
       { id: 'polygon', label: 'tool.polygon', icon: 'polygon', ...key('polygon') },
+      { id: 'arc', label: 'tool.arc', icon: 'arc', ...key('arc'), group: true },
+      { id: 'centerArc', label: 'tool.centerArc', icon: 'centerArc', ...key('centerArc') },
+      { id: 'threePointArc', label: 'tool.threePointArc', icon: 'threePointArc', ...key('threePointArc') },
+      { id: 'pie', label: 'tool.pie', icon: 'pie', ...key('pie') },
       { id: 'pushPull', label: 'tool.pushPull', icon: 'pushPull', ...key('pushPull'), group: true },
       { id: 'offset', label: 'tool.offset', icon: 'offset', ...key('offset') },
       { id: 'move', label: 'tool.move', icon: 'move', ...key('move') },

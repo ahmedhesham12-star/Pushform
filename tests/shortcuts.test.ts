@@ -11,6 +11,7 @@ describe('tool shortcuts match SketchUp defaults', () => {
       l: 'line',
       r: 'rectangle',
       c: 'circle',
+      a: 'arc',
       p: 'pushPull',
       f: 'offset',
       e: 'erase',
@@ -25,7 +26,7 @@ describe('tool shortcuts match SketchUp defaults', () => {
   });
 
   test('keys reserved for later SketchUp tools are not assigned', () => {
-    expect(Object.keys(RESERVED_SHORTCUTS).sort()).toEqual(['a', 'b']);
+    expect(Object.keys(RESERVED_SHORTCUTS).sort()).toEqual(['b']);
     for (const key of Object.keys(RESERVED_SHORTCUTS)) {
       expect(TOOL_SHORTCUTS[key], key).toBeUndefined();
       expect(ACTION_SHORTCUTS[key], key).toBeUndefined();

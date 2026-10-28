@@ -21,6 +21,19 @@ export const ICONS = {
     '<path d="M12 4 19 8v8l-7 4-7-4V8z"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/>',
     'stroke-linejoin="round"',
   ),
+  arc: svg(
+    '<path d="M4 18a9 9 0 0 1 16 0"/><circle cx="4" cy="18" r="1.4" fill="currentColor"/><circle cx="20" cy="18" r="1.4" fill="currentColor"/>',
+    'stroke-linecap="round"',
+  ),
+  centerArc: svg(
+    '<path d="M20 15a8 8 0 0 0-12.5-6.6"/><path d="M12 15h8M12 15 7.5 8.4" stroke-dasharray="1.8 1.6"/><circle cx="12" cy="15" r="1.4" fill="currentColor"/>',
+    'stroke-linecap="round"',
+  ),
+  threePointArc: svg(
+    '<path d="M4 18a9 9 0 0 1 16 0"/><circle cx="4" cy="18" r="1.4" fill="currentColor"/><circle cx="12" cy="9" r="1.4" fill="currentColor"/><circle cx="20" cy="18" r="1.4" fill="currentColor"/>',
+    'stroke-linecap="round"',
+  ),
+  pie: svg('<path d="M12 13V4a9 9 0 0 1 8.6 11.7z"/><circle cx="12" cy="13" r="1.4" fill="currentColor"/>', 'stroke-linejoin="round"'),
   move: svg(
     '<path d="M12 3v18M3 12h18"/><path d="m9 6 3-3 3 3M9 18l3 3 3-3M6 9l-3 3 3 3M18 9l3 3-3 3"/>',
     'stroke-linejoin="round" stroke-linecap="round"',

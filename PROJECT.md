@@ -331,6 +331,7 @@ Every level is validated on load: unit quaternions, scale with no zero component
 | 2026-10-28 | Arcs (kernel `drawArc`): an arc of straight segments around a center is one curve of kind `arc`, drawn through the planar engine like a circle (it splits what it crosses and closes regions with existing edges); a pie adds its two radii as plain edges and is a face of its own. Commands: `core.drawArc` (two points and a bulge, or a radius), `core.drawArcCenter` (center, start and angle; the 3-Point Arc tool uses it too) and `core.drawPie`. At least 2 segments; no full turns | Plan step 11. Push/Pull already softens walls between segments of one curve, and Offset already keeps curves. |
 | 2026-10-28 | Typing for arcs: a radius is a length ending in r (300mmr, 12"r). After a 2-point arc, a plain length amends the bulge, a radius amends the radius (the bulge then only keeps the side and which arc), and 12s the segments; after a center arc or pie, a plain number is the angle. Amend fields may name an optional input they replace (`clears`) | As SketchUp types radii. |
 | 2026-10-28 | Offset measures a new curve's radius at a point between two of its segments, so an arc's offset gets the same radius rule as a circle's (the circumradius of its segments); its ends meet straight edges at a different miter | Found by the rounded-panel test. |
+| 2026-10-28 | Arc tools: 2-Point Arc (A) with tangent inference at both ends (edges through the start or end point in the drawing plane, continuing an edge that ends there) and half-circle inference, Arc, 3-Point Arc and Pie (no shortcuts, as in SketchUp), in their own tool bar group. The drawing plane is fixed by the first click (a face or the ground). A segment count typed in the tool is shared by the four tools; typed after an arc it amends that arc only | Plan step 12; SketchUp's own default is 12 segments per arc. |
 
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
@@ -347,6 +348,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 | L | Line |
 | R | Rectangle |
 | C | Circle |
+| A | 2-Point Arc (milestone 4) |
 | P | Push/Pull |
 | E | Eraser |
 | T | Tape Measure (milestone 4) |
@@ -358,7 +360,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 | Middle drag | Orbit |
 | Shift + middle drag | Pan |
 | Scroll | Zoom (to the cursor) |
-| Polygon | No default shortcut, as in SketchUp |
+| Polygon, Arc, 3-Point Arc, Pie | No default shortcut, as in SketchUp |
 | G | Make Component (milestone 3) |
 | Double-click a group or component | Edit it (Select tool) |
 | Double-click a face / an edge | The face and its edges / the edge and its faces |
@@ -374,7 +376,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 - **Context menu items:** Make Component (G), Make Group, Edit Group/Component, Close Group/Component (Esc), Explode, Make Unique, Delete, Flip along red, green or blue (a lone group or component: along its own axes, worded "the group's red"; milestone 4), Zoom to selection.
 - **Clicking outside** the group or component being edited (on faded geometry or empty space) closes it.
 
-**Reserved for later tools** (never assign them to anything else): A 2-point Arc, B Paint Bucket.
+**Reserved for later tools** (never assign it to anything else): B Paint Bucket.
 
 - **Move (milestone 3):** with nothing selected, a corner (endpoint) under the pointer moves on its own (milestone 4), and faces bent out of their plane fold. Ctrl (Option on a Mac) toggles copying, tapped during the move or held at the first click. After a copy, typing `x5` makes a multiply array (5 copies at the same spacing; `5x` and `*5` too) and `/4` a divide array (the distance split into 4 equal steps). Arrays and distances are amendable like other operations. Arrow keys lock an axis, as in the Line tool. With nothing selected, Move takes the face, edge, group or component under the pointer.
 
@@ -383,6 +385,7 @@ Our users come from SketchUp, so matching their muscle memory is a product requi
 
 - **Protractor (milestone 4):** the same protractor as Rotate; click the center, a point on the base line and the angle, or type it, for an angled guide line. No shortcut, as in SketchUp.
 - **Rotate (milestone 3):** the protractor lies on the face under the pointer or the ground; arrow keys lock it to the red, green or blue axis before the center is clicked. Click the center, the start of the angle and the end, or type an angle. Angles snap to 15 degree steps near them; points and edges under the pointer give exact angles. Ctrl copies and `x5`, `/4` make arrays, as in Move. A plain number typed after a rotation is an angle in degrees.
+- **Arcs (milestone 4):** 2-Point Arc (A): click the start and the end (or type the length between them), then the bulge. Near a bulge that makes the arc tangent to an edge at either end, it snaps there and turns cyan ("Tangent to edge"); near a half circle it snaps too. Type a bulge, a radius ending in r (300mmr), or segments (12s). Arc: the center, the start (or a typed radius), then the end (or a typed angle), snapping to 15 degree steps and following the pointer round past half a turn. 3-Point Arc: the start, a point it passes through, and the end. Pie: as Arc, with its two radii, so it is a face. Every arc tool starts at 12 segments; a count typed before or while drawing is kept for the next arc. Typing after an arc amends it.
 - **Scale (milestone 4):** green grips on the selection's bounding box, in the open context's axes, or a lone group's or component's own box. With nothing selected, a click takes the face, edge, group or component under the pointer. A corner grip scales the same in every direction (along the diagonal), an edge middle along two directions, a side middle along one; Shift switches between even and per-direction scaling, and holding Ctrl (Option on a Mac) scales about the center instead of the opposite grip. The grip under the pointer turns red and the status line says what it does. Click and click, or drag; the factor shows with two decimals and is applied as shown, unless the pointer snaps to a point. Type a factor (2, 0.5, -1 mirrors) or a length with units, one value per direction, during the scale or afterwards to amend it.
 - **Offset (milestone 3):** click a face and move in or out: the new loop follows the pointer; click again or type a distance, and typing afterwards amends it. A face's holes are offset with it: inward they grow, outward they shrink. With connected edges selected (an open chain or a loop in one plane), those are offset. Straight corners stay sharp; circles and polygons offset as curves with the same segment count. Double-clicking a face repeats the last offset.
 - **Axes inside a group or component** are its own axes: arrow-key locks and axis inference follow a turned instance.

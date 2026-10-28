@@ -72,6 +72,8 @@ const previewFill = new MeshBasicMaterial({
   depthWrite: false,
 });
 const previewLine = new LineBasicMaterial({ color: PREVIEW_COLOR });
+/** An arc tangent to an edge, as SketchUp shows it. */
+const tangentLine = new LineBasicMaterial({ color: 0x14a3c7 });
 
 export type Axis = 'x' | 'y' | 'z';
 /** Red is X, green is Z and blue is Y (up), as drawn by the axis lines. */
@@ -796,11 +798,14 @@ export class Viewport {
     this.showGuides([{ points: [a, b], axis }]);
   }
 
-  /** Guide lines (a protractor, rubber bands), each in an axis color or the accent color; open or closed. */
-  showGuides(lines: readonly { points: Vector3[]; closed?: boolean; axis?: Axis | null }[]): void {
+  /**
+   * Guide lines (a protractor, rubber bands), each in an axis color, cyan for
+   * an arc tangent to an edge, or the accent color; open or closed.
+   */
+  showGuides(lines: readonly { points: Vector3[]; closed?: boolean; axis?: Axis | null; tone?: 'tangent' | null }[]): void {
     this.clearPreview();
     for (const l of lines) {
-      const material = l.axis ? AXIS_LINE[l.axis] : previewLine;
+      const material = l.axis ? AXIS_LINE[l.axis] : l.tone === 'tangent' ? tangentLine : previewLine;
       const g = new BufferGeometry().setFromPoints(l.points);
       this.preview.add(l.closed ? new LineLoop(g, material) : new Line(g, material));
     }

@@ -1,3 +1,4 @@
+import { createCenterArcTool, createThreePointArcTool, createTwoPointArcTool } from './arc';
 import { createCircleTool } from './circle';
 import { createEraseTool } from './erase';
 import { createPolygonTool } from './polygon';
@@ -44,6 +45,10 @@ export function createTools(ctx: ToolContext): Record<ToolId, Tool> {
     rectangle: createRectangleTool(ctx),
     circle: createCircleTool(ctx),
     polygon: createPolygonTool(ctx),
+    arc: createTwoPointArcTool(ctx),
+    centerArc: createCenterArcTool(ctx, false),
+    threePointArc: createThreePointArcTool(ctx),
+    pie: createCenterArcTool(ctx, true),
     pushPull: createPushPullTool(ctx),
     offset: createOffsetTool(ctx),
     erase: createEraseTool(ctx),

@@ -3,7 +3,7 @@ import type { ToolId } from './tool';
 /**
  * Single-key tool shortcuts. They match SketchUp's defaults, because our users
  * come from SketchUp and rely on that muscle memory. Tools SketchUp gives no
- * default key (Polygon) get none here either.
+ * default key (Polygon, Arc, 3-Point Arc, Pie) get none here either.
  */
 export const TOOL_SHORTCUTS: Readonly<Record<string, ToolId>> = {
   ' ': 'select',
@@ -13,6 +13,7 @@ export const TOOL_SHORTCUTS: Readonly<Record<string, ToolId>> = {
   l: 'line',
   r: 'rectangle',
   c: 'circle',
+  a: 'arc',
   p: 'pushPull',
   f: 'offset',
   e: 'erase',
@@ -26,7 +27,6 @@ export const TOOL_SHORTCUTS: Readonly<Record<string, ToolId>> = {
  * SketchUp meaning when we do. Never assign them to anything else.
  */
 export const RESERVED_SHORTCUTS: Readonly<Record<string, string>> = {
-  a: '2-point Arc',
   b: 'Paint Bucket',
 };
 

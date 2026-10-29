@@ -432,6 +432,23 @@ Checked on 2026-10-26 in SketchUp 2023 (Windows), by scripts run through the Rub
 - Moving one vertex of a circle through the API moves the whole circle; folds inside curves appear once the curve is exploded.
 - **Dimensions** (checked 2026-10-27, `add_dimension_linear` on box vertices): ends attach to vertices and follow them when the geometry moves (the value updates). Erasing the geometry keeps the dimension, detached, with its last value.
 
+Checked on 2026-10-29 for milestone 5, in SketchUp 2023 (Windows), in a new untitled model the product owner opened. Each script ran in one operation that was aborted (or undone) afterwards, leaving the model unmodified. Visibility was checked with `Model#raytest`, which skips what is hidden; rendering with viewport screenshots.
+- **Tags:**
+  - An item inside a definition is hidden when its own tag is hidden, while the instance stays visible.
+  - An instance on a hidden tag hides everything inside it, tagged or not.
+  - Untagged cannot be hidden (setting it hidden has no effect).
+  - Removing a tag moves its items to Untagged.
+  - With Color by Tag, untagged geometry inside a tagged group shows the group's tag color; untagged items show the Untagged color (white).
+- **Materials:**
+  - Push/pull walls take the pushed face's materials, front and back (both caps keep them too). Pocket walls and through-hole walls take the pushed face's material, not the material of the face they cut into.
+  - A face split by a new edge (a line across it, or a rectangle drawn on it) keeps its front and back materials on every piece.
+  - Erasing the edge between two coplanar faces of different materials keeps the larger face's material.
+  - Folded pieces keep the face's material.
+  - Exploding a painted group gives the group's material to every unpainted side of its faces, **backs included**; painted sides keep their own.
+  - A group's material shows on its unpainted faces; a face painted inside keeps its own color.
+  - Front and back materials are independent.
+  - Default texture position: aligned to the axes, not to the face. On a horizontal face u runs along red and v along green from the origin, whatever way the face's edges turn; on a vertical face u runs along the horizontal axis and v up. A material's texture size sets the tile size. We place textures along each face's longest edge instead (approved by the product owner).
+
 **Not verified** (interactive tool behavior the Ruby API cannot drive); these follow our best knowledge of SketchUp and are for the product owner to check:
 - Tape Measure details: what a point-to-point measure creates, and how guide points are made.
 - The scope of Delete Guides (the open context or the whole model).
@@ -441,6 +458,9 @@ Checked on 2026-10-26 in SketchUp 2023 (Windows), by scripts run through the Rub
 - What a length typed on a Scale corner grip scales (we scale the diagonal between the grip and the opposite one to it).
 - Whether Scale's Ctrl (about the center) is held or toggled (we read it held, like Shift, as the pointer moves).
 - Which plane a shape started on an edge takes (we take the face the pointer moves over that holds the points placed so far).
+- Paint Bucket modifiers (milestone 5; the tool cannot be driven through the Ruby API). We follow SketchUp's documentation: a click paints the side clicked; Ctrl (Option on a Mac) paints connected faces that have the same material as the one clicked; Shift paints every face in the context with that material; Alt (Cmd on a Mac) samples; clicking a selected item paints the whole selection.
+- Hidden tags and inference: that hidden objects are not snapped to (the Ruby API cannot drive inference). We follow SketchUp's documented behavior.
+- OpenCutList conventions (the extension is not installed). We follow the product owner's brief and OpenCutList as we know it: part size from the definition's bounding box in its own axes, the smallest size as thickness and the largest as length unless a grain direction sets it, and identical parts grouped by definition, size and material.
 
 ## Differences from the prototype
 - **Bug fix:** pulling a lone face downward built its side walls facing inward. Walls of a lone face now always face outward.
@@ -574,7 +594,7 @@ Decisions approved for milestone 5 (2026-10-29, product owner):
 - **The Paint Bucket paints the side clicked**, as SketchUp does; "Paint Back" in the right-click menu paints the backs of a selection.
 - **Hidden parts in the cut list:** an "Include hidden parts" switch, off by default and saved in the file; the panel says how many hidden parts are left out.
 - **Tags:** Untagged is built in and cannot be renamed, deleted or hidden. Showing or hiding a tag is an undoable change saved in the file. Color by Tag is a per-device view setting. The open editing context stays visible when its own tag is hidden.
-- **Materials:** the starter set is built in; a starter material is copied into the file when first used. "Default" removes paint. Paint follows faces through edits (split pieces keep it, push/pull walls take the pushed face's, a merge keeps the larger face's, Explode moves an instance's material onto its unpainted faces), as checked in SketchUp. Ctrl is SketchUp's Adjacent Fill (connected faces with the same material as the one clicked); Shift paints every face in the context with the same material; Alt (Cmd on a Mac) samples; clicking a selected item paints the whole selection.
+- **Materials:** the starter set is built in; a starter material is copied into the file when first used. "Default" removes paint. Paint follows faces through edits as checked in SketchUp (see "Verified in SketchUp"): split pieces keep front and back, push/pull walls (pockets and holes too) take the pushed face's front and back, a merge keeps the larger face's, folds keep it, and Explode gives an instance's material to every unpainted side of its faces, backs included. Ctrl is SketchUp's Adjacent Fill (connected faces with the same material as the one clicked); Shift paints every face in the context with the same material; Alt (Cmd on a Mac) samples; clicking a selected item paints the whole selection.
 - **Textures:** PNG or JPEG, at most 2048 px on the longest side (larger images are scaled down), stored as base64 in the file; the tile width is set in mm and the height follows the image. The texture runs along each face's longest edge, in the definition's own coordinates. The autosave moves to IndexedDB, which can hold textures.
 - **GLB** writes front materials only (glTF allows one material per primitive); back materials are not exported.
 - **Cut list:** currency is a file setting (none by default: plain numbers); solid wood shows board feet for imperial units and m³ for metric. Copied groups that still share their geometry count as the same part. Sheets = area × (1 + waste) / sheet area, rounded up. Clicking a row highlights all its instances, selects those in one context, and says how many are elsewhere. CSV is UTF-8 with a byte order mark. The print view is a printable page in the app. The cut list is a new pure layer, `src/cutlist`.

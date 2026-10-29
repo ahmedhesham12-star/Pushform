@@ -607,6 +607,8 @@ Decisions approved for milestone 4 (2026-10-26, product owner):
 
 Checkpoints for the product owner's manual testing: (a) tags; (b) materials and the Paint Bucket; (c) the cut list.
 
+Progress (2026-10-29, later): ready for checkpoint (b). Done since checkpoint (a): paint on kernel faces through every edit (step 3), materials, painting commands and the IndexedDB autosave (step 4), materials and textures in the viewport (step 5), the Paint Bucket (B) and the Materials panel (step 6), materials in GLB export (step 7). 815 unit tests pass and the build succeeds; `npm run test:stress` passes (sweeps 1 to 8, 3290 cases). The new paint sweep (8) found two kernel faults, fixed and pinned (seeds 8006 and 8368).
+
 Checkpoint (a) passed (2026-10-29). The product owner approved both open choices: exports leave out what a hidden tag hides, and the Outliner can still select hidden groups and components.
 
 Progress (2026-10-29): ready for checkpoint (a). Done: the plan and the SketchUp checks (steps 0 and 0b), tag data, commands and visibility with document version 5 (step 1), and the tray, Tags panel, Tag field in Entity Info, right-click Tag menu and Color by Tag (step 2). 770 unit tests pass and the build succeeds.

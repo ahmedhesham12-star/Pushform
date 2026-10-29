@@ -2,7 +2,7 @@ import { deserialize, listFaces, serialize, type Model, type SerializedTopology 
 import { MATERIAL_COLOR, validStock, type Material, type Stock } from './materials';
 import type { Anchor, AnchorRef, Annotation } from './annotations';
 import { guideLine, guidePoint, type Guide } from './guides';
-import { contains, createScene, type Definition, type DefinitionKind, type Instance, type Scene } from './scene';
+import { contains, createScene, type Definition, type DefinitionKind, type GrainAxis, type Instance, type Scene } from './scene';
 import { withTag, type Tag } from './tags';
 import type { Quat, Transform } from './transform';
 
@@ -46,6 +46,7 @@ export interface SerializedScene {
       instances: Record<string, { definition: string; name: string; transform: SerializedTransform; tag?: string; material?: string }>;
       guides?: Record<string, SerializedGuide>;
       annotations?: Record<string, SerializedAnnotation>;
+      grain?: GrainAxis;
     }
   >;
 }
@@ -63,7 +64,7 @@ export function serializeScene(s: Scene): SerializedScene {
         ...(i.material ? { material: i.material } : {}),
       };
     }
-    definitions[id] = { kind: d.kind, name: d.name, model: serialize(d.model), instances };
+    definitions[id] = { kind: d.kind, name: d.name, model: serialize(d.model), instances, ...(d.grain ? { grain: d.grain } : {}) };
     if (d.guides.size) {
       const guides: Record<string, SerializedGuide> = {};
       for (const [gid, g] of d.guides) {
@@ -244,7 +245,8 @@ export function deserializeScene(data: unknown): Scene | null {
         annotations.set(aid, withTag(a, tag));
       }
     }
-    definitions.set(id, { id, kind: raw.kind as DefinitionKind, name: raw.name, model, instances, guides, annotations });
+    if (raw.grain !== undefined && raw.grain !== 'red' && raw.grain !== 'green' && raw.grain !== 'blue') return null;
+    definitions.set(id, { id, kind: raw.kind as DefinitionKind, name: raw.name, model, instances, guides, annotations, ...(raw.grain ? { grain: raw.grain as GrainAxis } : {}) });
   }
   const root = definitions.get(data.root);
   if (!root || root.kind !== 'root') return null;

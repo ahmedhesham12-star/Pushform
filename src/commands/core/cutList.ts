@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { t } from '../../i18n';
+import { getDefinition, setGrain as setSceneGrain } from '../../scene';
 import { cutListSettings } from '../document';
 import type { CommandDef } from '../types';
 
@@ -31,5 +32,25 @@ export const setCutListSettings: CommandDef<SetCutListSettingsInput, Record<stri
     };
     if (next.waste === old.waste && next.currency === old.currency && next.includeHidden === old.includeHidden) return { ok: true, doc, output: {} };
     return { ok: true, doc: { ...doc, cutList: next }, output: {} };
+  },
+};
+
+export const setGrainInput = z.strictObject({ definitionId: z.string().min(1), grain: z.enum(['red', 'green', 'blue']).nullable() });
+export type SetGrainInput = z.infer<typeof setGrainInput>;
+
+/**
+ * A part's grain direction (Entity Info): its length in the cut list runs
+ * along that axis of its own. Null leaves the longest side as the length.
+ * Copies of a component share it.
+ */
+export const setGrain: CommandDef<SetGrainInput, Record<string, never>> = {
+  id: 'core.setGrain',
+  title: () => t('command.setGrain'),
+  input: setGrainInput,
+  run(doc, input) {
+    const def = getDefinition(doc.scene, input.definitionId);
+    if (!def || def.kind === 'root') return { ok: false, error: { code: 'noSuchDefinition', detail: input.definitionId } };
+    const scene = setSceneGrain(doc.scene, def.id, input.grain);
+    return { ok: true, doc: scene === doc.scene ? doc : { ...doc, scene }, output: {} };
   },
 };

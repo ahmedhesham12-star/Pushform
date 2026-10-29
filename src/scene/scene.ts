@@ -42,7 +42,12 @@ export interface Definition {
   readonly guides: ReadonlyMap<GuideId, Guide>;
   /** Dimensions, in its local space. */
   readonly annotations: ReadonlyMap<AnnotationId, Annotation>;
+  /** The grain direction of a part (cut list): its length runs along this axis of its own. */
+  readonly grain?: GrainAxis;
 }
+
+/** One of a definition's own axes, as SketchUp names them: red (x), green (our -z), blue (y, up). */
+export type GrainAxis = 'red' | 'green' | 'blue';
 
 /** What a new definition needs; guides and annotations start empty unless given. */
 export type NewDefinition = Omit<Definition, 'id' | 'guides' | 'annotations'> & {
@@ -196,6 +201,14 @@ export function updateDefinition(s: Scene, id: DefinitionId, patch: Partial<Pick
   return d ? withDefinition(s, { ...d, ...patch }) : s;
 }
 
+/** Set or clear (null) a definition's grain direction; the same scene when unchanged. */
+export function setGrain(s: Scene, id: DefinitionId, grain: GrainAxis | null): Scene {
+  const d = s.definitions.get(id);
+  if (!d || (d.grain ?? null) === grain) return s;
+  const { grain: _old, ...rest } = d;
+  return withDefinition(s, grain ? { ...rest, grain } : rest);
+}
+
 /** Drop definitions that no instance uses any more (never the root). */
 export function pruneDefinitions(s: Scene): Scene {
   const used = new Set<DefinitionId>([s.rootId]);
@@ -229,7 +242,7 @@ export function duplicateDefinition(s: Scene, id: DefinitionId, patch: Partial<P
     [iid, next] = newId(next, 'i');
     instances.set(iid, { ...i, id: iid, definitionId });
   }
-  return addDefinition(next, { kind: d.kind, name: d.name, model: d.model, instances, guides: d.guides, annotations: d.annotations, ...patch });
+  return addDefinition(next, { kind: d.kind, name: d.name, model: d.model, instances, guides: d.guides, annotations: d.annotations, ...(d.grain ? { grain: d.grain } : {}), ...patch });
 }
 
 /** Bounds of a definition's geometry and nested instances in its local space, or null when it is empty. */

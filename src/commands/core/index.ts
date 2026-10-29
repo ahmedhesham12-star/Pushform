@@ -84,7 +84,7 @@ import {
   type SetMaterialStockInput,
   type SetMaterialTextureInput,
 } from './materials';
-import { setCutListSettings, type SetCutListSettingsInput } from './cutList';
+import { setCutListSettings, setGrain, type SetCutListSettingsInput, type SetGrainInput } from './cutList';
 import { offset, type OffsetInput, type OffsetOutput } from './offset';
 import { pushPull, type PushPullInput, type PushPullOutput } from './pushPull';
 import { flip, scale, type FlipInput, type ScaleInput } from './scale';
@@ -156,6 +156,7 @@ declare module '../types' {
     'core.paint': { input: PaintInput; output: { materialId: string | null } };
     'core.setMaterialStock': { input: SetMaterialStockInput; output: Record<string, never> };
     'core.setCutListSettings': { input: SetCutListSettingsInput; output: Record<string, never> };
+    'core.setGrain': { input: SetGrainInput; output: Record<string, never> };
   }
 }
 
@@ -209,6 +210,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
   registry.register(paint);
   registry.register(setMaterialStock);
   registry.register(setCutListSettings);
+  registry.register(setGrain);
 }
 
 export { selectionBox, type ScaleBox } from './scale';

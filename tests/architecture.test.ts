@@ -137,6 +137,15 @@ describe('architecture', () => {
     expect(bad.map((i) => `${i.file} -> ${i.spec}`)).toEqual([]);
   });
 
+  test('the cut list depends only on the kernel, the scene, units and i18n, and uses no DOM', () => {
+    const bad = all.filter((i) => i.layer === 'cutlist' && (i.target === null || !['cutlist', 'kernel', 'scene', 'units', 'i18n'].includes(i.target)));
+    expect(bad.map((i) => `${i.file} -> ${i.spec}`)).toEqual([]);
+    const dom = sourceFiles()
+      .filter((f) => layerOf(f) === 'cutlist')
+      .filter((f) => DOM_GLOBALS.test(codeOnly(readFileSync(f, 'utf8'))));
+    expect(dom.map((f) => relative(SRC, f))).toEqual([]);
+  });
+
   test('nothing imports the kernel with a namespace import', () => {
     const bad = all.filter((i) => i.layer !== 'kernel' && i.target === 'kernel' && i.names.length === 0);
     expect(bad.map((i) => `${i.file} -> ${i.spec}`)).toEqual([]);

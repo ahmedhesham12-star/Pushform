@@ -24,6 +24,7 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 - `src/tools`: one file per tool. Tools change the model only through `session.execute` or `session.preview`.
 - `src/ui`: DOM components.
 - `src/export`: STL and GLB writers. Pure: imports only the kernel and the scene, no DOM. The app loads it on demand.
+- `src/cutlist`: the cut list (parts, sizes, materials, totals) and its CSV. Pure: imports only the kernel, the scene, units and i18n, no DOM.
 - `src/app.ts`: wiring. `src/files.ts`: open and save on the device. `src/storage.ts`: autosave (the recovery copy).
 
 ## Conventions

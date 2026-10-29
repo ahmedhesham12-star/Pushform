@@ -130,3 +130,73 @@ describe('GLB export', () => {
     expect(c.definitionId).toBeDefined();
   });
 });
+
+describe('GLB export with materials (milestone 5)', () => {
+  /** A 1 x 1 PNG (red), so the validator can read a real image. */
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
+
+  function painted() {
+    const { s, c } = scene();
+    const oak = ok(s.execute('core.addMaterial', { starter: 'oak' })).materialId;
+    const navy = ok(s.execute('core.addMaterial', { starter: 'paintedNavy' })).materialId;
+    ok(s.execute('core.setMaterialTexture', { materialId: oak, texture: { data: PNG, mime: 'image/png', width: 400, height: 200 } }));
+    // The loose box's top in oak; the drawer copies: one navy, one as drawn; the second one mirrored.
+    const top = listFaces(definitionModel(s.doc)!).find((f) => f.normal[1] === 1 && f.outer.every((p) => p[0] <= 1000))!.id;
+    ok(s.execute('core.paint', { faceIds: [top], materialId: oak }));
+    ok(s.execute('core.paint', { instanceIds: [c.instanceId], materialId: navy }));
+    const copy = [...s.doc.scene.definitions.get(s.doc.scene.rootId)!.instances.keys()].find((i) => i !== c.instanceId)!;
+    ok(s.execute('core.flip', { instanceIds: [copy], axis: 'red' }));
+    return { s, oak, navy };
+  }
+
+  test('passes the Khronos validator: colors, an embedded texture, a mirrored copy', async () => {
+    const { s } = painted();
+    const report = await validateBytes(exportGlb(s.doc.scene, 'Painted'));
+    expect(report.issues.messages.filter((m) => m.severity <= 1)).toEqual([]);
+    expect(report.issues.numErrors).toBe(0);
+    expect(report.issues.numWarnings).toBe(0);
+  });
+
+  test('one primitive per material; a textured one has its image and texture coordinates in tiles', () => {
+    const { s } = painted();
+    const json = readGlb(exportGlb(s.doc.scene));
+    expect(json.materials.map((m: { name: string }) => m.name).sort()).toEqual(['Default', 'Oak', 'Painted navy']);
+    const oak = json.materials.find((m: { name: string }) => m.name === 'Oak');
+    expect(oak.pbrMetallicRoughness.baseColorTexture).toEqual({ index: 0 });
+    expect(json.images).toEqual([{ bufferView: expect.any(Number), mimeType: 'image/png' }]);
+    expect(json.samplers).toEqual([{ wrapS: 10497, wrapT: 10497 }]);
+    const navy = json.materials.find((m: { name: string }) => m.name === 'Painted navy');
+    // #2f3e57 in linear light.
+    expect(navy.pbrMetallicRoughness.baseColorFactor.map((v: number) => Math.round(v * 1000) / 1000)).toEqual([0.028, 0.048, 0.095, 1]);
+    const root = json.nodes[json.scenes[0].nodes[0]];
+    const box = json.meshes[root.mesh];
+    expect(box.primitives).toHaveLength(2);
+    const textured = box.primitives.find((p: { material: number }) => json.materials[p.material].name === 'Oak');
+    const uv = json.accessors[textured.attributes.TEXCOORD_0];
+    // The top: two triangles, a coordinate pair for each corner.
+    expect([uv.type, uv.count]).toEqual(['VEC2', 6]);
+    expect(box.primitives.find((p: { material: number }) => p !== textured).attributes.TEXCOORD_0).toBeUndefined();
+    // Every buffer view starts on a 4-byte boundary.
+    for (const v of json.bufferViews) expect(v.byteOffset % 4).toBe(0);
+  });
+
+  test('a component copy with its own material gets a mesh of its own; the plain copy keeps the plain one', () => {
+    const { s } = painted();
+    const json = readGlb(exportGlb(s.doc.scene));
+    const root = json.nodes[json.scenes[0].nodes[0]];
+    const [a, b] = root.children.map((i: number) => json.nodes[i]);
+    expect(a.mesh).not.toBe(b.mesh);
+    const names = (n: { mesh: number }) => json.meshes[n.mesh].primitives.map((p: { material: number }) => json.materials[p.material].name);
+    expect([names(a), names(b)].sort()).toEqual([['Default'], ['Painted navy']]);
+    // The knob inside the navy copy shows navy too; the other knob the default.
+    const knobs = [a, b].map((n: { children: number[] }) => names(json.nodes[n.children[0]!]));
+    expect(knobs.sort()).toEqual([['Default'], ['Painted navy']]);
+  });
+
+  test('STL ignores materials: the same triangles as before painting', () => {
+    const plain = scene();
+    const { s } = painted();
+    // The flip mirrors the copy in place; the triangle count is unchanged.
+    expect(exportStl(s.doc.scene).byteLength).toBe(exportStl(plain.s.doc.scene).byteLength);
+  });
+});

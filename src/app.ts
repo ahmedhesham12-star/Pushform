@@ -38,6 +38,7 @@ import {
   instanceCount,
   pathDefinition,
   rootDefinition,
+  tagShown,
   transformBounds,
   union,
   type InstanceId,
@@ -288,11 +289,13 @@ export class App {
     const s = this.selection;
     for (const f of s.faces) if (!hasFace(m, f)) s.faces.delete(f);
     for (const e of s.edges) if (!hasEdge(m, e)) s.edges.delete(e);
-    for (const i of s.instances) if (!placed.has(i)) s.instances.delete(i);
-    for (const g of s.guides) if (!guides.has(g)) s.guides.delete(g);
-    for (const a of s.annotations) if (!annotations.has(a)) s.annotations.delete(a);
+    // What a hidden tag hides cannot stay selected.
+    const shown = (x: { readonly tag?: string } | undefined) => !!x && tagShown(doc.scene, x.tag);
+    for (const i of s.instances) if (!shown(placed.get(i))) s.instances.delete(i);
+    for (const g of s.guides) if (!shown(guides.get(g))) s.guides.delete(g);
+    for (const a of s.annotations) if (!shown(annotations.get(a))) s.annotations.delete(a);
     const h = s.hovered;
-    const exists = h && { face: () => hasFace(m, h.id), edge: () => hasEdge(m, h.id), guide: () => guides.has(h.id), annotation: () => annotations.has(h.id), instance: () => placed.has(h.id) }[h.kind]();
+    const exists = h && { face: () => hasFace(m, h.id), edge: () => hasEdge(m, h.id), guide: () => shown(guides.get(h.id)), annotation: () => shown(annotations.get(h.id)), instance: () => shown(placed.get(h.id)) }[h.kind]();
     if (h && !exists) s.hovered = null;
     this.applyHighlights();
     this.intro.setVisible(this.isEmpty());
@@ -408,10 +411,12 @@ export class App {
     this.clearSelection();
     for (const f of listFaces(m)) this.selection.faces.add(f.id);
     for (const e of listEdges(m)) this.selection.edges.add(e.id);
-    const context = pathDefinition(this.session.doc.scene, this.context)!;
-    for (const i of context.instances.keys()) this.selection.instances.add(i);
-    if (this.viewport.guidesVisible) for (const g of context.guides.keys()) this.selection.guides.add(g);
-    for (const a of context.annotations.keys()) this.selection.annotations.add(a);
+    const scene = this.session.doc.scene;
+    const context = pathDefinition(scene, this.context)!;
+    const shown = <T extends { readonly tag?: string }>(items: ReadonlyMap<string, T>) => [...items].filter(([, x]) => tagShown(scene, x.tag)).map(([id]) => id);
+    for (const i of shown(context.instances)) this.selection.instances.add(i);
+    if (this.viewport.guidesVisible) for (const g of shown(context.guides)) this.selection.guides.add(g);
+    for (const a of shown(context.annotations)) this.selection.annotations.add(a);
     this.applyHighlights();
     this.measure.set(this.tool.measurementLabel(), '');
     this.status.hint();

@@ -127,12 +127,12 @@ describe('guides in groups and components', () => {
 });
 
 describe('guides in files', () => {
-  test('guides are saved (version 4) and come back the same', () => {
+  test('guides are saved and come back the same', () => {
     const s = createSession();
     ok(s.execute('core.addGuideLine', { point: [10, 20, 30], direction: [0, 1, 0] }));
     ok(s.execute('core.addGuidePoint', { from: [0, 0, 0], direction: [1, 0, 0], distance: 50 }));
     const text = documentToText(s.doc);
-    expect(JSON.parse(text).version).toBe(4);
+    expect(JSON.parse(text).version).toBe(5);
     const back = documentFromText(text)!;
     expect(serializeDocument(back)).toEqual(serializeDocument(s.doc));
     expect(getDefinition(back.scene, back.scene.rootId)!.guides).toEqual(guidesOf(s));

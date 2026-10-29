@@ -1,12 +1,15 @@
 /**
  * The scene seen from the world: where every definition's geometry is placed,
  * and the snap points and edges of all of it in world coordinates. Tools snap
- * to everything visible, inside the editing context or not.
+ * to everything visible, inside the editing context or not. What a hidden tag
+ * hides is left out; the open editing context (and the instances leading to
+ * it) is always shown, so it can still be edited.
  */
 import { listEdges, snapPoints, type Model, type Point3, type SnapKind } from '../kernel';
 import { dimensionLength, transformAnnotation, type Annotation, type AnnotationId } from './annotations';
 import { transformGuide, type Guide, type GuideId } from './guides';
 import { placedInstances, rootDefinition, type Definition, type InstanceId, type Scene } from './scene';
+import { tagShown } from './tags';
 import { AFFINE_IDENTITY, applyPoint, type Affine } from './transform';
 
 export interface Placement {
@@ -17,10 +20,14 @@ export interface Placement {
   readonly world: Affine;
 }
 
-/** The root's geometry, then every instance's geometry, depth first. */
-export function placements(s: Scene): Placement[] {
+/** Whether an instance path leads to (or is) the open context. */
+const onContextPath = (path: readonly InstanceId[], context: readonly InstanceId[]) => path.length <= context.length && path.every((id, i) => context[i] === id);
+
+/** The root's geometry, then every shown instance's geometry, depth first. */
+export function placements(s: Scene, context: readonly InstanceId[] = []): Placement[] {
   const out: Placement[] = [{ path: [], definition: rootDefinition(s), world: AFFINE_IDENTITY }];
-  for (const p of placedInstances(s)) out.push({ path: p.path, definition: s.definitions.get(p.instance.definitionId)!, world: p.world });
+  const hidden = (i: { readonly tag?: string }, path: readonly InstanceId[]) => !tagShown(s, i.tag) && !onContextPath(path, context);
+  for (const p of placedInstances(s, s.rootId, AFFINE_IDENTITY, [], hidden)) out.push({ path: p.path, definition: s.definitions.get(p.instance.definitionId)!, world: p.world });
   return out;
 }
 
@@ -50,10 +57,10 @@ export interface WorldEdge {
 }
 
 /** Endpoints and midpoints of the visible edges of every placement, in world coordinates. */
-export function worldSnapPoints(s: Scene): WorldSnap[] {
+export function worldSnapPoints(s: Scene, context: readonly InstanceId[] = []): WorldSnap[] {
   const local = new Map<Model, ReturnType<typeof snapPoints>>();
   const out: WorldSnap[] = [];
-  for (const p of placements(s)) {
+  for (const p of placements(s, context)) {
     const m = p.definition.model;
     if (!local.has(m)) local.set(m, snapPoints(m));
     for (const sp of local.get(m)!) out.push({ point: applyPoint(p.world, sp.point), kind: sp.kind, path: p.path, ...(sp.vertex ? { vertex: sp.vertex } : {}) });
@@ -62,10 +69,10 @@ export function worldSnapPoints(s: Scene): WorldSnap[] {
 }
 
 /** The visible (not soft) edges of every placement, in world coordinates. */
-export function worldEdges(s: Scene): WorldEdge[] {
+export function worldEdges(s: Scene, context: readonly InstanceId[] = []): WorldEdge[] {
   const local = new Map<Model, ReturnType<typeof listEdges>>();
   const out: WorldEdge[] = [];
-  for (const p of placements(s)) {
+  for (const p of placements(s, context)) {
     const m = p.definition.model;
     if (!local.has(m)) local.set(m, listEdges(m).filter((e) => !e.soft));
     for (const e of local.get(m)!) out.push({ edgeId: e.id, a: applyPoint(p.world, e.a), b: applyPoint(p.world, e.b), path: p.path });
@@ -80,11 +87,11 @@ export interface WorldGuide {
   readonly path: readonly InstanceId[];
 }
 
-/** The guides of every placement, in world coordinates. */
-export function worldGuides(s: Scene): WorldGuide[] {
+/** The shown guides of every placement, in world coordinates. */
+export function worldGuides(s: Scene, context: readonly InstanceId[] = []): WorldGuide[] {
   const out: WorldGuide[] = [];
-  for (const p of placements(s)) {
-    for (const [guideId, g] of p.definition.guides) out.push({ guideId, guide: transformGuide(p.world, g), path: p.path });
+  for (const p of placements(s, context)) {
+    for (const [guideId, g] of p.definition.guides) if (tagShown(s, g.tag)) out.push({ guideId, guide: transformGuide(p.world, g), path: p.path });
   }
   return out;
 }
@@ -98,12 +105,13 @@ export interface WorldAnnotation {
   readonly path: readonly InstanceId[];
 }
 
-/** The annotations of every placement, in world coordinates. Screen text shows once, with its definition's first placement. */
-export function worldAnnotations(s: Scene): WorldAnnotation[] {
+/** The shown annotations of every placement, in world coordinates. Screen text shows once, with its definition's first placement. */
+export function worldAnnotations(s: Scene, context: readonly InstanceId[] = []): WorldAnnotation[] {
   const out: WorldAnnotation[] = [];
   const onScreen = new Set<string>();
-  for (const p of placements(s)) {
+  for (const p of placements(s, context)) {
     for (const [annotationId, a] of p.definition.annotations) {
+      if (!tagShown(s, a.tag)) continue;
       if (a.kind === 'screenText') {
         if (onScreen.has(annotationId)) continue;
         onScreen.add(annotationId);

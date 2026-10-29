@@ -11,6 +11,7 @@
 import { bounds, type Bounds, type Model } from '../kernel';
 import type { Annotation, AnnotationId } from './annotations';
 import type { Guide, GuideId } from './guides';
+import type { Tag, TagId } from './tags';
 import { AFFINE_IDENTITY, applyPoint, multiply, type Affine, type AnyTransform, type Transform } from './transform';
 
 export type DefinitionId = string;
@@ -23,6 +24,8 @@ export interface Instance {
   /** Optional instance name; empty when unnamed. */
   readonly name: string;
   readonly transform: Transform;
+  /** Its tag; Untagged when absent. */
+  readonly tag?: TagId;
 }
 
 export interface Definition {
@@ -47,13 +50,15 @@ export type NewDefinition = Omit<Definition, 'id' | 'guides' | 'annotations'> & 
 export interface Scene {
   readonly rootId: DefinitionId;
   readonly definitions: ReadonlyMap<DefinitionId, Definition>;
-  /** Next id number for definitions, instances, guides and annotations. */
+  /** Tags, in the order they were made; Untagged is not one of them. */
+  readonly tags: ReadonlyMap<TagId, Tag>;
+  /** Next id number for definitions, instances, guides, annotations and tags. */
   readonly next: number;
 }
 
 export function createScene(rootModel: Model): Scene {
   const root: Definition = { id: 'd1', kind: 'root', name: '', model: rootModel, instances: new Map(), guides: new Map(), annotations: new Map() };
-  return { rootId: root.id, definitions: new Map([[root.id, root]]), next: 2 };
+  return { rootId: root.id, definitions: new Map([[root.id, root]]), tags: new Map(), next: 2 };
 }
 
 export function rootDefinition(s: Scene): Definition {
@@ -100,16 +105,27 @@ export interface PlacedInstance {
   readonly world: Affine;
 }
 
-/** Every instance reachable from a definition (the root by default), depth first, with world transforms. */
-export function placedInstances(s: Scene, from: DefinitionId = s.rootId, base: Affine = AFFINE_IDENTITY, path: readonly InstanceId[] = []): PlacedInstance[] {
+/**
+ * Every instance reachable from a definition (the root by default), depth
+ * first, with world transforms. Instances `skip` says yes to are left out
+ * with everything inside them.
+ */
+export function placedInstances(
+  s: Scene,
+  from: DefinitionId = s.rootId,
+  base: Affine = AFFINE_IDENTITY,
+  path: readonly InstanceId[] = [],
+  skip?: (instance: Instance, path: readonly InstanceId[]) => boolean,
+): PlacedInstance[] {
   const out: PlacedInstance[] = [];
   const d = s.definitions.get(from);
   if (!d) return out;
   for (const instance of d.instances.values()) {
-    const world = multiply(base, instance.transform);
     const p = [...path, instance.id];
+    if (skip?.(instance, p)) continue;
+    const world = multiply(base, instance.transform);
     out.push({ path: p, instance, world });
-    out.push(...placedInstances(s, instance.definitionId, world, p));
+    out.push(...placedInstances(s, instance.definitionId, world, p, skip));
   }
   return out;
 }
@@ -151,7 +167,7 @@ export function setModel(s: Scene, id: DefinitionId, model: Model): Scene {
   return withDefinition(s, { ...d, model });
 }
 
-export const newId = (s: Scene, prefix: 'd' | 'i' | 'g' | 'a'): [string, Scene] => [`${prefix}${s.next}`, { ...s, next: s.next + 1 }];
+export const newId = (s: Scene, prefix: 'd' | 'i' | 'g' | 'a' | 't'): [string, Scene] => [`${prefix}${s.next}`, { ...s, next: s.next + 1 }];
 
 export function addDefinition(s: Scene, def: NewDefinition): [DefinitionId, Scene] {
   const [id, next] = newId(s, 'd');

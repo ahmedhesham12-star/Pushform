@@ -268,7 +268,7 @@ describe('loading milestone 1 documents', () => {
     expect(checkModel(rootModel(doc))).toEqual([]);
     expect(listFaces(rootModel(doc)).map((f) => f.id).sort()).toEqual(Object.keys(v1.model.faces).sort());
     const saved = serializeDocument(doc);
-    expect(saved.version).toBe(4);
+    expect(saved.version).toBe(5);
     expect(saved.scene.definitions[saved.scene.root]!.model.kind).toBe('topology');
     expect(serializeDocument(deserializeDocument(JSON.parse(JSON.stringify(saved)))!)).toEqual(saved);
   });
@@ -595,7 +595,7 @@ describe('document serialization', () => {
     const good = serializeDocument(newDocument());
     expect(deserializeDocument(good)).not.toBeNull();
     expect(deserializeDocument({ ...good, format: 'other' })).toBeNull();
-    expect(deserializeDocument({ ...good, version: 5 })).toBeNull();
+    expect(deserializeDocument({ ...good, version: 6 })).toBeNull();
     expect(deserializeDocument({ ...good, units: { unit: 'km', precision: 2 } })).toBeNull();
     expect(deserializeDocument({ ...good, units: { unit: 'mm', precision: 16 } })).toBeNull();
     expect(deserializeDocument({ faces: {}, next: 1 })).toBeNull();

@@ -13,7 +13,7 @@ import {
   type Model,
   type Point3,
 } from '../kernel';
-import { applyPoint, definitionBounds, multiply, pathDefinition, transformAnnotation, worldEdges, type InstanceId } from '../scene';
+import { applyPoint, definitionBounds, multiply, pathDefinition, tagShown, transformAnnotation, worldEdges, type InstanceId } from '../scene';
 import { formatArea, formatLength } from '../units';
 import { annotationSegment, type Picked } from '../viewport';
 import { isMac, selectionMode, type SelectionMode } from './shortcuts';
@@ -190,9 +190,10 @@ export function createSelectTool(ctx: ToolContext): Tool {
     });
     const scene = ctx.session.doc.scene;
     const context = ctx.contextPath();
-    const all = worldEdges(scene);
+    const all = worldEdges(scene, context);
     const instances: WindowItem[] = [];
     for (const i of pathDefinition(scene, context)?.instances.values() ?? []) {
+      if (!tagShown(scene, i.tag)) continue;
       const b = definitionBounds(scene, i.definitionId);
       if (!b) continue;
       const world = multiply(frame.world, i.transform);
@@ -208,6 +209,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
     const guides: WindowItem[] = [];
     if (vp.guidesVisible) {
       for (const [id, g] of pathDefinition(scene, context)?.guides ?? []) {
+        if (!tagShown(scene, g.tag)) continue;
         const p = frame.toWorld(g.point);
         if (g.kind === 'point') {
           guides.push({ id, points: [screen(p)], segments: [] });
@@ -222,6 +224,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
     // A dimension is its dimension line, leader text its leader, screen text its label.
     const annotations: WindowItem[] = [];
     for (const [id, a] of pathDefinition(scene, context)?.annotations ?? []) {
+      if (!tagShown(scene, a.tag)) continue;
       const segment = annotationSegment(transformAnnotation(frame.world, a));
       if (segment) {
         const [p, q] = segment.map(screen) as [ScreenPoint, ScreenPoint];

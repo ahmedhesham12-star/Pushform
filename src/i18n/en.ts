@@ -232,6 +232,14 @@ export const en = {
   'command.rotateCopy': 'Rotate copy',
   'command.scale': 'Scale',
   'command.flip': 'Flip',
+  'command.addTag': 'Add tag',
+  'command.renameTag': 'Rename tag',
+  'command.setTagColor': 'Change tag color',
+  'command.setTagVisible': 'Show or hide tag',
+  'command.deleteTag': 'Delete tag',
+  'command.setTag': 'Set tag',
+
+  'tags.newName': 'Tag {number}',
 
   'scene.component': 'Component',
   'scene.group': 'Group',

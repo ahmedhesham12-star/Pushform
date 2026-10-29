@@ -198,21 +198,23 @@ Plugins call `registry.register(def)` and extend the typed `CommandMap` through 
 - New tools get it by declaring their fields.
 
 ### Document format
-`.pushform` files are this JSON, version 4 (milestone 4): a scene of definitions, each holding a version 2 topology model, the instances placed in them, its guides and its annotations (dimensions and text). Version 3 (milestone 3) is the same without guides and annotations and still opens.
+`.pushform` files are this JSON, version 5 (milestone 5): a scene of tags and definitions, each definition holding a version 2 topology model, the instances placed in them, its guides and its annotations (dimensions and text). Instances, guides and annotations may name a tag; none means Untagged. Version 4 (milestone 4) is the same without tags, and version 3 (milestone 3) without guides and annotations; both still open.
 ```
-{ format: 'pushform', version: 4, units: { unit, precision },
+{ format: 'pushform', version: 5, units: { unit, precision },
   scene: { root: definition id, next,
+           tags?: { id: { name, color: '#rrggbb', visible } },
            definitions: { id: { kind: 'root' | 'group' | 'component', name,
                                 model: <version 2 model, below>,
                                 instances: { id: { definition, name,
                                   transform: { rotation: [x, y, z, w], translation: [x, y, z],
-                                               scale: [1, 1, 1] } } },
-                                guides?: { id: { kind: 'line', point, direction }
-                                              | { kind: 'point', point } },
+                                               scale: [1, 1, 1] }, tag? } },
+                                guides?: { id: ({ kind: 'line', point, direction }
+                                               | { kind: 'point', point }) & { tag? } },
                                 annotations?: { id: { kind: 'dimension', start: anchor, end: anchor,
                                                       offset: [x, y, z] }
                                                   | { kind: 'text', anchor, leader: [x, y, z], text }
-                                                  | { kind: 'screenText', position: [x, y], text } } } } } }
+                                                  | { kind: 'screenText', position: [x, y], text }
+                                                  (each with tag?) } } } } }
 
 anchor: { point: [x, y, z],
           ref?: { path: [instance ids], definition, a: vertex id, b?: vertex id, t?: 0..1 } }
@@ -223,7 +225,7 @@ model: { kind: 'topology', version: 2, next,
          faces: { id: { normal, outer: [vertex ids], holes: [[vertex ids]] } },
          curves: { id: { kind, edges, segments, center, normal, radius? } } }
 ```
-Every level is validated on load: unit quaternions, scale with no zero component (negative mirrors; milestone 4), instances only of existing non-root definitions, no nesting cycles, guide lines with a non-zero direction (stored as a unit vector), dimension and text anchors with a point and, when attached, a reference whose fraction lies strictly between 0 and 1, screen text positions between 0 and 1. **Version 2 documents** (milestone 2) load as the root definition; the conversion is tested against a milestone 2 autosave (`tests/fixtures/milestone2-autosave.json`).
+Every level is validated on load: unit quaternions, scale with no zero component (negative mirrors; milestone 4), instances only of existing non-root definitions, no nesting cycles, guide lines with a non-zero direction (stored as a unit vector), dimension and text anchors with a point and, when attached, a reference whose fraction lies strictly between 0 and 1, screen text positions between 0 and 1, tags with a name and a #rrggbb color, and tag references only to existing tags. **Version 2 documents** (milestone 2) load as the root definition; the conversion is tested against a milestone 2 autosave (`tests/fixtures/milestone2-autosave.json`).
 
 **Version 1 documents** (milestone 1 autosaves, face-loop models) are converted on load:
 - Corners at the same position become one shared vertex, and every loop side becomes a shared edge.
@@ -339,6 +341,8 @@ Every level is validated on load: unit quaternions, scale with no zero component
 | 2026-10-28 | Arc tools: 2-Point Arc (A) with tangent inference at both ends (edges through the start or end point in the drawing plane, continuing an edge that ends there) and half-circle inference, Arc, 3-Point Arc and Pie (no shortcuts, as in SketchUp), in their own tool bar group. The drawing plane is fixed by the first click (a face or the ground). A segment count typed in the tool is shared by the four tools; typed after an arc it amends that arc only | Plan step 12; SketchUp's own default is 12 segments per arc. |
 | 2026-10-28 | A dimension or text end attached again by position takes the exact place of the vertex or edge it attaches to, so following anchors is a fixed point (the random runs check it after every step) | Found by stress sweep 7 (seed 7079, pinned in `npm test`). |
 | 2026-10-28 | A rectangle, circle, polygon or arc started on an edge, a corner or a guide (not inside a face or on the ground) has no plane yet: it takes the face under the pointer whose plane holds every point placed so far, and keeps its plane while the pointer is over an edge or a point that plane also holds. Started inside a face or on the ground, the first click still fixes the plane. Supersedes "the drawing plane is fixed by the first click" for those starts | Checkpoint (c) bug: an arc from a box's top edge to the same edge was drawn on the side face the pick ray happened to hit first, so the top was never split and pushing the region did not cut through. A rectangle notch started on the edge had the same fault. |
+| 2026-10-29 | Tags live in the scene (`Scene.tags`, ids from `scene.next` with prefix t, in the order made); instances, guides and annotations carry an optional tag, and loose geometry has none (`core.setTag` refuses faces and edges alone with `looseGeometryUntagged`). Showing or hiding a tag is a command (`core.setTagVisible`): saved, undoable, and marking the file unsaved. Deleting a tag moves what is on it to Untagged | Plan step 1, approved; SketchUp best practice keeps loose geometry Untagged; SketchUp checks show Untagged cannot be hidden and removing a tag moves its items to Untagged. |
+| 2026-10-29 | What a hidden tag hides is filtered once, in `placements()` (an instance on a hidden tag is left out with everything in it, in every copy) and in `worldGuides`/`worldAnnotations` (guides and annotations on hidden tags). Drawing, picking, snapping, window selection, Ctrl+A and both exports read from these, so hidden things are not drawn, picked, snapped to, selected or exported. The open editing context and the instances leading to it are always shown | One filter keeps every reader consistent; SketchUp checks show an item inside a definition hides on its own tag. Exporting what is shown matches what the user sees. |
 
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
@@ -570,7 +574,7 @@ Decisions approved for milestone 4 (2026-10-26, product owner):
    - A Materials panel: the model's materials and a starter set (birch ply, oak, walnut, white MDF, white melamine, painted colors); create, rename, duplicate, delete and edit color.
    - Optional image textures with a real-world tile size (mm), mapped by planar projection on each face, along the face's longest edge by default. Textures are stored in the `.pushform` file. Texture positioning tools are a next step.
    - Paint Bucket (B): click a face to paint it; clicking a group or component paints the instance (its material shows on unpainted faces inside it). Alt (Cmd on a Mac) samples a material; Ctrl paints connected faces; Shift paints all faces with the same material in the context.
-   - Front and back faces: a click paints the side clicked; "Paint Back" in the right-click menu.
+   - Front and back faces: a click paints the side clicked, as SketchUp does; "Paint Back" in the right-click menu paints the backs of a selection.
    - GLB export writes materials (base color and textures). STL ignores them.
 3. **Woodworking material properties**
    - Sheet goods (thickness, sheet length and width, price per sheet) or solid wood (thickness, price per board foot or per cubic meter), with a grain flag.

@@ -291,7 +291,7 @@ export class Viewport {
     this.previewModel.build(def.model, this.frameValue.matrix);
     this.previewInstances.build(scene, this.context);
     // Dimensions follow the geometry in the preview too.
-    this.showAnnotations(worldAnnotations(scene));
+    this.showAnnotations(worldAnnotations(scene, this.context));
     this.showPreviewMeshes(true);
     this.requestRender();
   }
@@ -380,11 +380,11 @@ export class Viewport {
    * committed scene only, as in the prototype.
    */
   setSnapTargets(scene: PushformScene): void {
-    this.snaps = worldSnapPoints(scene).map((s) => ({ point: toVector(s.point), kind: s.kind, path: s.path, ...(s.vertex ? { vertex: s.vertex } : {}) }));
-    this.worldEdgeList = worldEdges(scene);
-    this.guideList = worldGuides(scene);
+    this.snaps = worldSnapPoints(scene, this.context).map((s) => ({ point: toVector(s.point), kind: s.kind, path: s.path, ...(s.vertex ? { vertex: s.vertex } : {}) }));
+    this.worldEdgeList = worldEdges(scene, this.context);
+    this.guideList = worldGuides(scene, this.context);
     this.showGuideList();
-    this.annotationList = worldAnnotations(scene);
+    this.annotationList = worldAnnotations(scene, this.context);
     this.showAnnotations(this.annotationList);
   }
 

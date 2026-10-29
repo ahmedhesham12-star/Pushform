@@ -70,6 +70,21 @@ import { offset, type OffsetInput, type OffsetOutput } from './offset';
 import { pushPull, type PushPullInput, type PushPullOutput } from './pushPull';
 import { flip, scale, type FlipInput, type ScaleInput } from './scale';
 import { setDisplayUnits, type SetDisplayUnitsInput } from './setDisplayUnits';
+import {
+  addTag,
+  deleteTag,
+  renameTag,
+  setTag,
+  setTagColor,
+  setTagVisible,
+  type AddTagInput,
+  type DeleteTagInput,
+  type RenameTagInput,
+  type SetTagColorInput,
+  type SetTagInput,
+  type SetTagOutput,
+  type SetTagVisibleInput,
+} from './tags';
 
 declare module '../types' {
   interface CommandMap {
@@ -107,6 +122,12 @@ declare module '../types' {
     'core.addText': { input: AddTextInput; output: AnnotationOutput };
     'core.addScreenText': { input: AddScreenTextInput; output: AnnotationOutput };
     'core.editText': { input: EditTextInput; output: Record<string, never> };
+    'core.addTag': { input: AddTagInput; output: { tagId: string } };
+    'core.renameTag': { input: RenameTagInput; output: Record<string, never> };
+    'core.setTagColor': { input: SetTagColorInput; output: Record<string, never> };
+    'core.setTagVisible': { input: SetTagVisibleInput; output: Record<string, never> };
+    'core.deleteTag': { input: DeleteTagInput; output: Record<string, never> };
+    'core.setTag': { input: SetTagInput; output: SetTagOutput };
   }
 }
 
@@ -145,6 +166,12 @@ export function registerCoreCommands(registry: CommandRegistry): void {
   registry.register(addText);
   registry.register(addScreenText);
   registry.register(editText);
+  registry.register(addTag);
+  registry.register(renameTag);
+  registry.register(setTagColor);
+  registry.register(setTagVisible);
+  registry.register(deleteTag);
+  registry.register(setTag);
 }
 
 export { selectionBox, type ScaleBox } from './scale';

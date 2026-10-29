@@ -107,7 +107,7 @@ export class InstancesView {
     this.boxes = null;
     this.pickables = [];
     const used = new Set<Model>();
-    for (const p of placements(scene)) {
+    for (const p of placements(scene, context)) {
       const relation = contextRelation(p.path, context);
       if (relation === 'context') continue;
       const model = p.definition.model;

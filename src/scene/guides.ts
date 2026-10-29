@@ -5,14 +5,15 @@
  */
 import { cleanNormal, snapPoint, type Point3, type Vec3 } from '../kernel';
 import { newId, type DefinitionId, type Scene } from './scene';
+import { withTag, type TagId } from './tags';
 import { applyPoint, applyVector, type AnyTransform } from './transform';
 
 export type GuideId = string;
 
-/** An infinite guide line (through `point`, along a unit `direction`) or a guide point. */
+/** An infinite guide line (through `point`, along a unit `direction`) or a guide point, with its tag (Untagged when absent). */
 export type Guide =
-  | { readonly kind: 'line'; readonly point: Point3; readonly direction: Vec3 }
-  | { readonly kind: 'point'; readonly point: Point3 };
+  | { readonly kind: 'line'; readonly point: Point3; readonly direction: Vec3; readonly tag?: TagId }
+  | { readonly kind: 'point'; readonly point: Point3; readonly tag?: TagId };
 
 /** A guide line through a point along a direction (any non-zero length), or null for a zero direction. */
 export function guideLine(point: Point3, direction: Vec3): Guide | null {
@@ -23,10 +24,11 @@ export function guideLine(point: Point3, direction: Vec3): Guide | null {
 
 export const guidePoint = (point: Point3): Guide => ({ kind: 'point', point: snapPoint(point) });
 
-/** A guide placed with a transform (into a parent's space, or the world). */
+/** A guide placed with a transform (into a parent's space, or the world), keeping its tag. */
 export function transformGuide(t: AnyTransform, g: Guide): Guide {
-  if (g.kind === 'point') return guidePoint(applyPoint(t, g.point));
-  return guideLine(applyPoint(t, g.point), applyVector(t, g.direction)) ?? g;
+  if (g.kind === 'point') return withTag(guidePoint(applyPoint(t, g.point)), g.tag);
+  const line = guideLine(applyPoint(t, g.point), applyVector(t, g.direction));
+  return line ? withTag(line, g.tag) : g;
 }
 
 /** Add a guide to a definition; returns its id and the new scene. */

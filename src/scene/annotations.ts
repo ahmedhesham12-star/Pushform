@@ -8,6 +8,7 @@
  */
 import { edgeThrough, snapPoint, VERTEX_TOLERANCE, vertexAt, vertexPoint, type Model, type Point3, type Vec3 } from '../kernel';
 import { newId, placedInstances, type Definition, type DefinitionId, type InstanceId, type Scene } from './scene';
+import type { TagId } from './tags';
 import { AFFINE_IDENTITY, applyPoint, applyVector, invert, multiply, type Affine, type AnyTransform } from './transform';
 
 export type AnnotationId = string;
@@ -36,6 +37,7 @@ export interface Anchor {
 /** An aligned dimension: the distance between two anchors, drawn `offset` to the side. */
 export interface Dimension {
   readonly kind: 'dimension';
+  readonly tag?: TagId;
   readonly start: Anchor;
   readonly end: Anchor;
   readonly offset: Vec3;
@@ -44,6 +46,7 @@ export interface Dimension {
 /** Text with a leader line from an anchor; the text sits at the anchor plus `leader`. */
 export interface LeaderText {
   readonly kind: 'text';
+  readonly tag?: TagId;
   readonly anchor: Anchor;
   readonly leader: Vec3;
   readonly text: string;
@@ -55,6 +58,7 @@ export interface LeaderText {
  */
 export interface ScreenText {
   readonly kind: 'screenText';
+  readonly tag?: TagId;
   readonly position: readonly [number, number];
   readonly text: string;
 }

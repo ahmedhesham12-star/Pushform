@@ -1,5 +1,5 @@
 import { faceMeshes } from '../kernel';
-import { rootDefinition, type Definition, type DefinitionId, type Instance, type Scene } from '../scene';
+import { rootDefinition, tagShown, type Definition, type DefinitionId, type Instance, type Scene } from '../scene';
 
 /** glTF is in meters; Pushform in millimeters. Both are Y-up and right-handed. */
 const M = 0.001;
@@ -81,7 +81,8 @@ export function exportGlb(scene: Scene, name = ''): Uint8Array<ArrayBuffer> {
     nodes.push(n);
     const m = mesh(def);
     if (m !== null) n.mesh = m;
-    const children = [...def.instances.values()].map((i) => instanceNode(i));
+    // What a hidden tag hides is not exported, as it is not shown.
+    const children = [...def.instances.values()].filter((i) => tagShown(scene, i.tag)).map((i) => instanceNode(i));
     if (children.length) n.children = children;
     return index;
   };

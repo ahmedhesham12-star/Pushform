@@ -220,6 +220,8 @@ export function deserialize(json: unknown): Model | null {
 export const serialize = (m: Model): SerializedTopology => serializeTopology(data(m));
 export const listFaces = (m: Model) => q.listFaces(data(m));
 export const getFace = (m: Model, id: string) => q.getFace(data(m), id);
+/** How a texture lies on a face: origin and u/v directions in mm (see query.ts). */
+export const faceTextureFrame = (m: Model, id: string) => q.faceTextureFrame(data(m), id);
 export const hasFace = (m: Model, id: string): boolean => data(m).faces.has(id);
 export const faceCount = (m: Model) => data(m).faces.size;
 export const faceArea = (m: Model, id: string) => q.faceArea(data(m), id);

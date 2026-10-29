@@ -22,10 +22,11 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
-import { getFace, planeAxes, type Bounds, type Model } from '../kernel';
+import { getFace, listFaces, planeAxes, type Bounds, type Model } from '../kernel';
 import {
   applyPoint,
   contextRelation,
+  inheritedMaterial,
   pathDefinition,
   pathTransform,
   worldAnnotations,
@@ -47,7 +48,8 @@ import { meet, MEET } from './meet';
 import { guideSegment, GuidesView } from './guidesView';
 import { InstancesView, tagColor } from './instancesView';
 import { SnapMarker, type MarkerKind } from './marker';
-import { ModelView, type EdgeHighlight } from './modelView';
+import { MaterialLibrary } from './materials';
+import { colorMaterials, ModelView, type EdgeHighlight, type FaceLook } from './modelView';
 import { Picker, type FaceHit } from './picking';
 
 // Match the r128 prototype: colors are used as given, with no sRGB conversion.
@@ -178,8 +180,10 @@ export class Viewport {
   private readonly selectionBox = document.createElement('div');
   private readonly renderer: WebGLRenderer;
   private readonly scene = new Scene();
+  /** three.js materials for the scene's materials, shared by every view; an image arriving asks for a frame. */
+  private readonly library = new MaterialLibrary(() => this.requestRender());
   private readonly modelView = new ModelView();
-  private readonly instancesView = new InstancesView();
+  private readonly instancesView = new InstancesView(this.library);
   private readonly preview = new Group();
   private readonly guidesView = new GuidesView();
   private guideList: WorldGuide[] = [];
@@ -196,7 +200,7 @@ export class Viewport {
   private worldEdgeList: WorldEdge[] = [];
   /** Previews draw here, so picking and inference keep using the committed scene. */
   private readonly previewModel = new ModelView();
-  private readonly previewInstances = new InstancesView();
+  private readonly previewInstances = new InstancesView(this.library);
   private previewing = false;
   private excluded: PickExclusions | null = null;
   /** Endpoints and midpoints of excluded edges of the context (world), which inference skips too. */
@@ -274,7 +278,7 @@ export class Viewport {
     this.context = context;
     this.frameValue = new Frame(context.length ? def.id : undefined, pathTransform(scene, context));
     this.contextModel = def.model;
-    this.modelView.build(def.model, this.frameValue.matrix, this.colorByTag ? tagColor(scene, context) : null);
+    this.modelView.build(def.model, this.frameValue.matrix, this.faceLook(scene, context, def.model));
     this.instancesView.build(scene, context, this.colorByTag);
     this.showGuideList();
     this.showAnnotations(this.annotationList);
@@ -289,7 +293,7 @@ export class Viewport {
    */
   showPreviewScene(scene: PushformScene): void {
     const def = pathDefinition(scene, this.context) ?? pathDefinition(scene, [])!;
-    this.previewModel.build(def.model, this.frameValue.matrix, this.colorByTag ? tagColor(scene, this.context) : null);
+    this.previewModel.build(def.model, this.frameValue.matrix, this.faceLook(scene, this.context, def.model));
     this.previewInstances.build(scene, this.context, this.colorByTag);
     // Dimensions follow the geometry in the preview too.
     this.showAnnotations(worldAnnotations(scene, this.context));
@@ -469,6 +473,21 @@ export class Viewport {
 
   get guidesVisible(): boolean {
     return this.guidesOn;
+  }
+
+  /**
+   * How the open context's faces look: in their tag's color with Color by
+   * Tag, else in their materials, unpainted sides in what the groups around
+   * the context pass down (as when SketchUp edits inside a painted group).
+   */
+  private faceLook(scene: PushformScene, context: readonly InstanceId[], model: Model): FaceLook {
+    if (this.colorByTag) {
+      const pair = colorMaterials(tagColor(scene, context));
+      return (_f, side) => pair[side === 'front' ? 0 : 1];
+    }
+    const inherited = inheritedMaterial(scene, context);
+    const paints = new Map(listFaces(model).map((f) => [f.id, f.paint]));
+    return (f, side) => this.library.get(scene.materials.get(paints.get(f)?.[side] ?? inherited ?? ''), side, false);
   }
 
   /** Show faces in their tag's color (Color by Tag), or in their usual colors. */

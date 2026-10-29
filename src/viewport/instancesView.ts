@@ -1,22 +1,11 @@
-import {
-  BackSide,
-  BufferGeometry,
-  Float32BufferAttribute,
-  FrontSide,
-  Group,
-  LineBasicMaterial,
-  LineSegments,
-  Mesh,
-  MeshLambertMaterial,
-  type Intersection,
-  type Side,
-} from 'three';
-import { faceMeshes, listEdges, listFaces, type Model, type Vec3 } from '../kernel';
+import { BackSide, BufferGeometry, Float32BufferAttribute, FrontSide, Group, LineBasicMaterial, LineSegments, Mesh, MeshLambertMaterial, type Intersection } from 'three';
+import { faceMeshes, listEdges, listFaces, type FaceSide, type Model, type Vec3 } from '../kernel';
 import {
   applyNormal,
   applyPoint,
   contextRelation,
   definitionBounds,
+  inheritedMaterial,
   multiply,
   pathDefinition,
   pathTag,
@@ -27,33 +16,15 @@ import {
   type Placement,
   type Scene,
 } from '../scene';
-import { EDGE_COLORS, FACE_COLOR, type EdgeHighlight } from './modelView';
-
-/** Geometry outside the editing context is drawn faded, as in SketchUp. */
-const FADED_OPACITY = 0.3;
-
-function material(color: number, side: Side, faded: boolean): MeshLambertMaterial {
-  return new MeshLambertMaterial({
-    color,
-    side,
-    polygonOffset: true,
-    polygonOffsetFactor: 1,
-    polygonOffsetUnits: 1,
-    transparent: faded,
-    opacity: faded ? FADED_OPACITY : 1,
-    depthWrite: !faded,
-  });
-}
-
-/** Same colors as the editable model (modelView.ts). Faded back faces use the front color, so faded geometry reads as a neutral ghost. */
-const FACES = { normal: [material(FACE_COLOR, FrontSide, false), material(0x8e9fb2, BackSide, false)] as const, faded: [material(FACE_COLOR, FrontSide, true), material(FACE_COLOR, BackSide, true)] as const };
+import { FACE_COLOR, FADED_OPACITY, faceMaterial, faceUVs, MaterialLibrary } from './materials';
+import { EDGE_COLORS, type EdgeHighlight } from './modelView';
 
 /** Both sides in a tag's color (Color by Tag), normal or faded, made once per color. */
 const colored = new Map<string, readonly [MeshLambertMaterial, MeshLambertMaterial]>();
 function colorFaces(color: number, faded: boolean): readonly [MeshLambertMaterial, MeshLambertMaterial] {
   const key = `${color}:${faded}`;
   let pair = colored.get(key);
-  if (!pair) colored.set(key, (pair = [material(color, FrontSide, faded), material(color, BackSide, faded)]));
+  if (!pair) colored.set(key, (pair = [faceMaterial(color, FrontSide, faded), faceMaterial(color, BackSide, faded)]));
   return pair;
 }
 
@@ -67,32 +38,59 @@ const EDGES = {
   faded: new LineBasicMaterial({ color: 0x262c31, transparent: true, opacity: FADED_OPACITY, depthWrite: false }),
 };
 
-/** A definition's geometry built once and shared by all its instances. */
-interface DefinitionGeometry {
-  readonly faces: BufferGeometry;
+/**
+ * The triangles of a definition's faces for one side, ordered by the
+ * material painted on that side, with a draw group per material (null:
+ * unpainted, which shows what the instance passes down).
+ */
+interface SideGeometry {
+  readonly geometry: BufferGeometry;
   /** Face id of each triangle, to find the exact normal of a picked face. */
   readonly triangleFaces: readonly string[];
+  /** The material of each draw group. */
+  readonly paints: readonly (string | null)[];
+}
+
+/** A definition's geometry built once and shared by all its instances. */
+interface DefinitionGeometry {
+  readonly front: SideGeometry;
+  readonly back: SideGeometry;
   readonly normals: ReadonlyMap<string, Vec3>;
   readonly edges: BufferGeometry;
 }
 
-function buildGeometry(model: Model): DefinitionGeometry {
+function buildSide(model: Model, side: FaceSide): SideGeometry {
+  const meshes = faceMeshes(model);
+  const paint = new Map(listFaces(model).map((f) => [f.id, f.paint?.[side] ?? null]));
+  const paints = [...new Set(meshes.map((m) => paint.get(m.faceId) ?? null))];
   const positions: number[] = [];
   const normals: number[] = [];
+  const uvs: number[] = [];
   const triangleFaces: string[] = [];
-  for (const m of faceMeshes(model)) {
-    positions.push(...m.positions);
-    normals.push(...m.normals);
-    for (let i = 0; i < m.positions.length / 9; i++) triangleFaces.push(m.faceId);
-  }
-  const faces = new BufferGeometry();
-  faces.setAttribute('position', new Float32BufferAttribute(positions, 3));
-  faces.setAttribute('normal', new Float32BufferAttribute(normals, 3));
+  const geometry = new BufferGeometry();
+  paints.forEach((key, group) => {
+    const start = positions.length / 3;
+    for (const m of meshes) {
+      if ((paint.get(m.faceId) ?? null) !== key) continue;
+      positions.push(...m.positions);
+      normals.push(...m.normals);
+      uvs.push(...faceUVs(model, m));
+      for (let i = 0; i < m.positions.length / 9; i++) triangleFaces.push(m.faceId);
+    }
+    geometry.addGroup(start, positions.length / 3 - start, group);
+  });
+  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new Float32BufferAttribute(normals, 3));
+  geometry.setAttribute('uv', new Float32BufferAttribute(uvs, 2));
+  return { geometry, triangleFaces, paints };
+}
+
+function buildGeometry(model: Model): DefinitionGeometry {
   const ep: number[] = [];
   for (const e of listEdges(model)) if (!e.soft) ep.push(...e.a, ...e.b);
   const edges = new BufferGeometry();
   edges.setAttribute('position', new Float32BufferAttribute(ep, 3));
-  return { faces, triangleFaces, normals: new Map(listFaces(model).map((f) => [f.id, f.normal])), edges };
+  return { front: buildSide(model, 'front'), back: buildSide(model, 'back'), normals: new Map(listFaces(model).map((f) => [f.id, f.normal])), edges };
 }
 
 /** What a picked mesh belongs to. */
@@ -108,8 +106,9 @@ export interface PlacementHit {
 /**
  * Every placement of geometry except the open context's own: the root and
  * instances outside the context (faded, not editable), and instances inside
- * it (drawn normally, selected as a whole). Also draws bounding boxes for
- * highlighted instances.
+ * it (drawn normally, selected as a whole), in their materials: each face
+ * side's own, else what the instances around it pass down. Also draws
+ * bounding boxes for highlighted instances.
  */
 export class InstancesView {
   readonly group = new Group();
@@ -117,7 +116,9 @@ export class InstancesView {
   private readonly cache = new Map<Model, DefinitionGeometry>();
   private boxes: LineSegments | null = null;
 
-  /** With `colorByTag`, faces show their tag's color (see tagColor). */
+  constructor(private readonly library = new MaterialLibrary()) {}
+
+  /** With `colorByTag`, faces show their tag's color (see tagColor) instead of their materials. */
   build(scene: Scene, context: readonly InstanceId[], colorByTag = false): void {
     for (const c of [...this.group.children]) this.group.remove(c);
     this.boxes?.geometry.dispose();
@@ -131,22 +132,31 @@ export class InstancesView {
       used.add(model);
       let g = this.cache.get(model);
       if (!g) this.cache.set(model, (g = buildGeometry(model)));
-      const look = relation === 'outside' ? 'faded' : 'normal';
-      const faces = colorByTag ? colorFaces(tagColor(scene, p.path), look === 'faded') : FACES[look];
-      const front = new Mesh(g.faces, faces[0]);
-      const back = new Mesh(g.faces, faces[1]);
-      const lines = new LineSegments(g.edges, EDGES[look]);
-      for (const o of [front, back, lines]) {
+      const faded = relation === 'outside';
+      const inherited = inheritedMaterial(scene, p.path);
+      const looks = (side: FaceSide, s: SideGeometry): MeshLambertMaterial[] => {
+        if (colorByTag) return s.paints.map(() => colorFaces(tagColor(scene, p.path), faded)[side === 'front' ? 0 : 1]);
+        return s.paints.map((id) => this.library.get(scene.materials.get(id ?? inherited ?? ''), side, faded));
+      };
+      const front = new Mesh(g.front.geometry, looks('front', g.front));
+      const back = new Mesh(g.back.geometry, looks('back', g.back));
+      const lines = new LineSegments(g.edges, EDGES[faded ? 'faded' : 'normal']);
+      for (const [o, side] of [
+        [front, g.front],
+        [back, g.back],
+        [lines, null],
+      ] as const) {
         o.matrixAutoUpdate = false;
         o.matrix.fromArray(toMatrix(p.world));
-        o.userData = { placement: p, relation, geometry: g };
+        o.userData = { placement: p, relation, geometry: g, side };
         this.group.add(o);
       }
       this.pickables.push(front, back);
     }
     for (const [model, g] of this.cache) {
       if (used.has(model)) continue;
-      g.faces.dispose();
+      g.front.geometry.dispose();
+      g.back.geometry.dispose();
       g.edges.dispose();
       this.cache.delete(model);
     }
@@ -156,9 +166,9 @@ export class InstancesView {
 
   /** The placement a raycast hit belongs to, or null when the hit is not on one of these meshes. */
   placementOf(hit: Intersection): PlacementHit | null {
-    const data = hit.object.userData as { placement?: Placement; relation?: 'inside' | 'outside'; geometry?: DefinitionGeometry };
-    if (!data.placement || !data.relation || !data.geometry || hit.faceIndex == null) return null;
-    const faceId = data.geometry.triangleFaces[hit.faceIndex];
+    const data = hit.object.userData as { placement?: Placement; relation?: 'inside' | 'outside'; geometry?: DefinitionGeometry; side?: SideGeometry | null };
+    if (!data.placement || !data.relation || !data.geometry || !data.side || hit.faceIndex == null) return null;
+    const faceId = data.side.triangleFaces[hit.faceIndex];
     const local = (faceId && data.geometry.normals.get(faceId)) || ([0, 1, 0] as Vec3);
     return { placement: data.placement, relation: data.relation, normal: applyNormal(data.placement.world, local), faceId: faceId ?? null };
   }

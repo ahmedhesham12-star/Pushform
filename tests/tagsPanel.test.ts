@@ -208,7 +208,7 @@ describe('Color by Tag', () => {
     const view = new InstancesView();
     view.build(s.doc.scene, [], true);
     const colors = (path: string) =>
-      view.pickables.filter((m) => m.userData.placement.path.join('/') === path).map((m) => (m.material as MeshLambertMaterial).color.getHex());
+      view.pickables.filter((m) => m.userData.placement.path.join('/') === path).flatMap((m) => (m.material as MeshLambertMaterial[]).map((x) => x.color.getHex()));
     expect(colors(outer)).toEqual([0xcc0000, 0xcc0000]);
     expect(colors(`${outer}/${inner}`)).toEqual([0xcc0000, 0xcc0000]);
     expect(colors(plain)).toEqual([0xf3f2ee, 0xf3f2ee]);

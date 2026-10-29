@@ -243,3 +243,29 @@ export function edgeThrough(t: Topology, p: Point3, tol: number): { a: VertexId;
   return null;
 }
 
+/**
+ * How a texture lies on a face (milestone 5): from the start of the face's
+ * longest outer edge, u along that edge and v across it in the face's plane
+ * (u, v and the normal turn as x, y and z). Texture coordinates are distances
+ * in mm along u and v; a material's tile size scales them.
+ */
+export function faceTextureFrame(t: Topology, id: FaceId): { origin: Point3; u: Vec3; v: Vec3 } | undefined {
+  const f = t.faces.get(id);
+  if (!f) return undefined;
+  const P = (v: VertexId) => t.vertices.get(v)!.p;
+  let best = 0;
+  let origin: Point3 = P(f.outer[0]!);
+  let u: Vec3 = [1, 0, 0];
+  f.outer.forEach((a, i) => {
+    const d = sub(P(f.outer[(i + 1) % f.outer.length]!), P(a));
+    const l = length(d);
+    // Ties go to the first, so the frame does not depend on rounding.
+    if (l > best + 1e-9) {
+      best = l;
+      origin = P(a);
+      u = [d[0] / l, d[1] / l, d[2] / l];
+    }
+  });
+  const n = f.normal;
+  return { origin, u, v: [n[1] * u[2] - n[2] * u[1], n[2] * u[0] - n[0] * u[2], n[0] * u[1] - n[1] * u[0]] };
+}

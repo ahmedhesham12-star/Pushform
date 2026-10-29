@@ -12,7 +12,8 @@ import {
   Vector3,
   type Side,
 } from 'three';
-import { faceMeshes, listEdges, listFaces, type Model } from '../kernel';
+import { faceMeshes, listEdges, listFaces, type FaceSide, type Model } from '../kernel';
+import { BACK_COLOR, FACE_COLOR, faceUVs } from './materials';
 
 export type Highlight = 'normal' | 'hover' | 'selected' | 'erase';
 
@@ -20,12 +21,9 @@ function faceMaterial(color: number, side: Side): MeshLambertMaterial {
   return new MeshLambertMaterial({ color, side, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
 }
 
-/** The front face color, which Untagged also shows with Color by Tag. */
-export const FACE_COLOR = 0xf3f2ee;
-
 /** Front and back face colors, as in the prototype. */
 const MATERIALS: Record<Highlight, [MeshLambertMaterial, MeshLambertMaterial]> = {
-  normal: [faceMaterial(FACE_COLOR, FrontSide), faceMaterial(0x8e9fb2, BackSide)],
+  normal: [faceMaterial(FACE_COLOR, FrontSide), faceMaterial(BACK_COLOR, BackSide)],
   hover: [faceMaterial(0xd5e5f1, FrontSide), faceMaterial(0xa9bed2, BackSide)],
   selected: [faceMaterial(0x8fbde0, FrontSide), faceMaterial(0x6f9dc4, BackSide)],
   erase: [faceMaterial(0xf1c3ba, FrontSide), faceMaterial(0xd29a90, BackSide)],
@@ -34,11 +32,15 @@ const EDGE_MATERIAL = new LineBasicMaterial({ color: 0x262c31 });
 
 /** Both sides in one color (Color by Tag), made once per color. */
 const colored = new Map<number, [MeshLambertMaterial, MeshLambertMaterial]>();
-function colorMaterials(color: number): [MeshLambertMaterial, MeshLambertMaterial] {
+export function colorMaterials(color: number): [MeshLambertMaterial, MeshLambertMaterial] {
   let pair = colored.get(color);
   if (!pair) colored.set(color, (pair = [faceMaterial(color, FrontSide), faceMaterial(color, BackSide)]));
   return pair;
 }
+
+/** How a face side looks when not highlighted: its material, or its tag color with Color by Tag. */
+export type FaceLook = (faceId: string, side: FaceSide) => MeshLambertMaterial;
+const PLAIN: FaceLook = (_f, side) => MATERIALS.normal[side === 'front' ? 0 : 1];
 
 export type EdgeHighlight = 'hover' | 'selected' | 'erase';
 /** Linear RGB, as color management is off (see viewport.ts). */
@@ -65,11 +67,11 @@ export class ModelView {
   private meshes = new Map<string, [Mesh, Mesh]>();
   private normals = new Map<string, Vector3>();
   private overlay: LineSegments | null = null;
-  /** The color faces show when not highlighted (Color by Tag), or null for the usual front and back colors. */
-  private base: number | null = null;
+  /** How each face looks when not highlighted, front and back. */
+  private normal = new Map<string, [MeshLambertMaterial, MeshLambertMaterial]>();
 
-  build(model: Model, world: Matrix4, base: number | null = null): void {
-    this.base = base;
+  /** Build the meshes; `look` gives each face side its material (the usual colors by default). */
+  build(model: Model, world: Matrix4, look: FaceLook = PLAIN): void {
     this.dispose();
     this.group.matrixAutoUpdate = false;
     this.group.matrix.copy(world);
@@ -79,7 +81,9 @@ export class ModelView {
       const g = new BufferGeometry();
       g.setAttribute('position', new Float32BufferAttribute(m.positions, 3));
       g.setAttribute('normal', new Float32BufferAttribute(m.normals, 3));
-      const [frontMaterial, backMaterial] = this.materials('normal');
+      g.setAttribute('uv', new Float32BufferAttribute(faceUVs(model, m), 2));
+      const [frontMaterial, backMaterial] = [look(m.faceId, 'front'), look(m.faceId, 'back')];
+      this.normal.set(m.faceId, [frontMaterial, backMaterial]);
       const front = new Mesh(g, frontMaterial);
       const back = new Mesh(g, backMaterial);
       front.userData.faceId = back.userData.faceId = m.faceId;
@@ -103,11 +107,7 @@ export class ModelView {
 
   paint(faceId: string, kind: Highlight): void {
     const pair = this.meshes.get(faceId);
-    if (pair) [pair[0].material, pair[1].material] = this.materials(kind);
-  }
-
-  private materials(kind: Highlight): [MeshLambertMaterial, MeshLambertMaterial] {
-    return kind === 'normal' && this.base !== null ? colorMaterials(this.base) : MATERIALS[kind];
+    if (pair) [pair[0].material, pair[1].material] = kind === 'normal' ? (this.normal.get(faceId) ?? MATERIALS.normal) : MATERIALS[kind];
   }
 
   paintAll(kind: Highlight): void {
@@ -148,6 +148,7 @@ export class ModelView {
     this.edges = [];
     this.overlay = null;
     this.meshes.clear();
+    this.normal.clear();
     this.normals.clear();
   }
 }

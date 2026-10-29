@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-import { instanceCount, type Instance, type InstanceId, type Scene } from '../scene';
+import { instanceCount, tagShown, type Instance, type InstanceId, type Scene } from '../scene';
 import { el } from './dom';
 
 export interface OutlinerHost {
@@ -69,7 +69,8 @@ export class Outliner {
     this.tree.replaceChildren(...items);
   }
 
-  private children(scene: Scene, instances: ReadonlyMap<InstanceId, Instance>, parent: readonly InstanceId[], depth: number): HTMLLIElement[] {
+  /** `hidden`: inside an instance on a hidden tag, so these are hidden too. */
+  private children(scene: Scene, instances: ReadonlyMap<InstanceId, Instance>, parent: readonly InstanceId[], depth: number, hidden = false): HTMLLIElement[] {
     const context = this.host.context();
     const inContext = parent.length === context.length && parent.every((id, i) => id === context[i]);
     const selected = this.host.selected();
@@ -83,6 +84,9 @@ export class Outliner {
       const label = this.label(scene, i);
       const count = def.kind === 'component' ? t('outliner.count', { count: instanceCount(scene, def.id) }) : '';
       const row = this.row(label.text, label.detail, def.kind === 'component' ? COMPONENT_ICON : GROUP_ICON, depth, inContext && selected.has(i.id), open, count);
+      // Hidden by a tag (its own or a parent's): listed, greyed, as in SketchUp.
+      const isHidden = hidden || !tagShown(scene, i.tag);
+      if (isHidden) row.li.classList.add('outliner-hidden');
       const hasChildren = def.instances.size > 0;
       // The open context and its parents stay expanded.
       const onOpenPath = path.length <= context.length && path.every((id, k) => id === context[k]);
@@ -121,7 +125,7 @@ export class Outliner {
       if (expanded) {
         const group = el('ul');
         group.setAttribute('role', 'group');
-        group.append(...this.children(scene, def.instances, path, depth + 1));
+        group.append(...this.children(scene, def.instances, path, depth + 1, isHidden));
         row.li.append(group);
       }
     }

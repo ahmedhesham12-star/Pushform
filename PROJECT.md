@@ -80,8 +80,8 @@ src/
               erase, tape, protractor, dimension, text, orbit, pan; shared inference,
               drawing planes, protractor geometry and shortcuts
   ui/         tool bar, top actions, File and View menus, units menu, status bar,
-              measurements box, intro, right-click menu, text editor, Entity Info
-              and Outliner
+              measurements box, intro, right-click menu, text editor, and the
+              panel tray: Entity Info, Outliner and Tags
   app.ts      wiring: input events, keyboard, selection, editing context, refresh on
               document change
   export/     STL and GLB writers (pure: kernel and scene only)
@@ -343,6 +343,8 @@ Every level is validated on load: unit quaternions, scale with no zero component
 | 2026-10-28 | A rectangle, circle, polygon or arc started on an edge, a corner or a guide (not inside a face or on the ground) has no plane yet: it takes the face under the pointer whose plane holds every point placed so far, and keeps its plane while the pointer is over an edge or a point that plane also holds. Started inside a face or on the ground, the first click still fixes the plane. Supersedes "the drawing plane is fixed by the first click" for those starts | Checkpoint (c) bug: an arc from a box's top edge to the same edge was drawn on the side face the pick ray happened to hit first, so the top was never split and pushing the region did not cut through. A rectangle notch started on the edge had the same fault. |
 | 2026-10-29 | Tags live in the scene (`Scene.tags`, ids from `scene.next` with prefix t, in the order made); instances, guides and annotations carry an optional tag, and loose geometry has none (`core.setTag` refuses faces and edges alone with `looseGeometryUntagged`). Showing or hiding a tag is a command (`core.setTagVisible`): saved, undoable, and marking the file unsaved. Deleting a tag moves what is on it to Untagged | Plan step 1, approved; SketchUp best practice keeps loose geometry Untagged; SketchUp checks show Untagged cannot be hidden and removing a tag moves its items to Untagged. |
 | 2026-10-29 | What a hidden tag hides is filtered once, in `placements()` (an instance on a hidden tag is left out with everything in it, in every copy) and in `worldGuides`/`worldAnnotations` (guides and annotations on hidden tags). Drawing, picking, snapping, window selection, Ctrl+A and both exports read from these, so hidden things are not drawn, picked, snapped to, selected or exported. The open editing context and the instances leading to it are always shown | One filter keeps every reader consistent; SketchUp checks show an item inside a definition hides on its own tag. Exporting what is shown matches what the user sees. |
+| 2026-10-29 | The right panel is a tray: Entity Info, Outliner and Tags one under another, each folded or opened by its heading (kept per device). The Tags panel lists Untagged first (always shown, not editable), then tags by name, each with an eye, a color swatch, a name renamed by double-click or F2, and a delete button; Entity Info has a Tag menu for groups, components, guides and annotations ("Mixed" when they differ) and, for loose geometry alone, the hint that it stays Untagged; the right-click menu has Tag, which opens a menu of tags with the selection's own greyed. The Outliner lists hidden groups and components greyed | Plan step 2; SketchUp's Tags panel and Entity Info. The right-click menu has no submenus, so Tag opens a second menu in place. |
+| 2026-10-29 | Color by Tag (Tags panel or View menu) is a per-device view setting. Faces take the color of the nearest tagged instance around them, both sides; Untagged keeps the usual face color | Checked in SketchUp: untagged geometry inside a tagged group shows the group's tag color. |
 
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
@@ -591,6 +593,8 @@ Decisions approved for milestone 4 (2026-10-26, product owner):
 5. **Out of scope** (see Next steps): sheet layout and cutting diagrams (milestone 6), edge banding, part labels, hardware import, solid tools, OBJ and DXF export.
 
 Checkpoints for the product owner's manual testing: (a) tags; (b) materials and the Paint Bucket; (c) the cut list.
+
+Progress (2026-10-29): ready for checkpoint (a). Done: the plan and the SketchUp checks (steps 0 and 0b), tag data, commands and visibility with document version 5 (step 1), and the tray, Tags panel, Tag field in Entity Info, right-click Tag menu and Color by Tag (step 2). 770 unit tests pass and the build succeeds.
 
 Decisions approved for milestone 5 (2026-10-29, product owner):
 - **Branching:** `main` was fast-forwarded to `milestone-4` and pushed; `milestone-5` starts from it.

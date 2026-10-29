@@ -45,7 +45,7 @@ import { toPoint, toVector } from './convert';
 import { Frame } from './frame';
 import { meet, MEET } from './meet';
 import { guideSegment, GuidesView } from './guidesView';
-import { InstancesView } from './instancesView';
+import { InstancesView, tagColor } from './instancesView';
 import { SnapMarker, type MarkerKind } from './marker';
 import { ModelView, type EdgeHighlight } from './modelView';
 import { Picker, type FaceHit } from './picking';
@@ -184,6 +184,7 @@ export class Viewport {
   private readonly guidesView = new GuidesView();
   private guideList: WorldGuide[] = [];
   private guidesOn = true;
+  private colorByTag = false;
   private readonly annotationsView = new AnnotationsView();
   private annotationList: WorldAnnotation[] = [];
   private units: UnitSettings = DEFAULT_UNIT_SETTINGS;
@@ -273,8 +274,8 @@ export class Viewport {
     this.context = context;
     this.frameValue = new Frame(context.length ? def.id : undefined, pathTransform(scene, context));
     this.contextModel = def.model;
-    this.modelView.build(def.model, this.frameValue.matrix);
-    this.instancesView.build(scene, context);
+    this.modelView.build(def.model, this.frameValue.matrix, this.colorByTag ? tagColor(scene, context) : null);
+    this.instancesView.build(scene, context, this.colorByTag);
     this.showGuideList();
     this.showAnnotations(this.annotationList);
     this.showPreviewMeshes(false);
@@ -288,8 +289,8 @@ export class Viewport {
    */
   showPreviewScene(scene: PushformScene): void {
     const def = pathDefinition(scene, this.context) ?? pathDefinition(scene, [])!;
-    this.previewModel.build(def.model, this.frameValue.matrix);
-    this.previewInstances.build(scene, this.context);
+    this.previewModel.build(def.model, this.frameValue.matrix, this.colorByTag ? tagColor(scene, this.context) : null);
+    this.previewInstances.build(scene, this.context, this.colorByTag);
     // Dimensions follow the geometry in the preview too.
     this.showAnnotations(worldAnnotations(scene, this.context));
     this.showPreviewMeshes(true);
@@ -468,6 +469,17 @@ export class Viewport {
 
   get guidesVisible(): boolean {
     return this.guidesOn;
+  }
+
+  /** Show faces in their tag's color (Color by Tag), or in their usual colors. */
+  setColorByTag(on: boolean): void {
+    if (on === this.colorByTag) return;
+    this.colorByTag = on;
+    if (this.shown) this.showScene(this.shown, this.context);
+  }
+
+  get colorsByTag(): boolean {
+    return this.colorByTag;
   }
 
   private showGuideList(): void {

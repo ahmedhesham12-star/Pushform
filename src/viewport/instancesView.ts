@@ -19,6 +19,7 @@ import {
   definitionBounds,
   multiply,
   pathDefinition,
+  pathTag,
   pathTransform,
   placements,
   toMatrix,
@@ -26,7 +27,7 @@ import {
   type Placement,
   type Scene,
 } from '../scene';
-import { EDGE_COLORS, type EdgeHighlight } from './modelView';
+import { EDGE_COLORS, FACE_COLOR, type EdgeHighlight } from './modelView';
 
 /** Geometry outside the editing context is drawn faded, as in SketchUp. */
 const FADED_OPACITY = 0.3;
@@ -45,7 +46,22 @@ function material(color: number, side: Side, faded: boolean): MeshLambertMateria
 }
 
 /** Same colors as the editable model (modelView.ts). Faded back faces use the front color, so faded geometry reads as a neutral ghost. */
-const FACES = { normal: [material(0xf3f2ee, FrontSide, false), material(0x8e9fb2, BackSide, false)] as const, faded: [material(0xf3f2ee, FrontSide, true), material(0xf3f2ee, BackSide, true)] as const };
+const FACES = { normal: [material(FACE_COLOR, FrontSide, false), material(0x8e9fb2, BackSide, false)] as const, faded: [material(FACE_COLOR, FrontSide, true), material(FACE_COLOR, BackSide, true)] as const };
+
+/** Both sides in a tag's color (Color by Tag), normal or faded, made once per color. */
+const colored = new Map<string, readonly [MeshLambertMaterial, MeshLambertMaterial]>();
+function colorFaces(color: number, faded: boolean): readonly [MeshLambertMaterial, MeshLambertMaterial] {
+  const key = `${color}:${faded}`;
+  let pair = colored.get(key);
+  if (!pair) colored.set(key, (pair = [material(color, FrontSide, faded), material(color, BackSide, faded)]));
+  return pair;
+}
+
+/** A tag's #rrggbb color as a number; Untagged shows the usual face color. */
+export const tagColor = (s: Scene, path: readonly InstanceId[]): number => {
+  const tag = pathTag(s, path);
+  return tag ? parseInt(s.tags.get(tag)!.color.slice(1), 16) : FACE_COLOR;
+};
 const EDGES = {
   normal: new LineBasicMaterial({ color: 0x262c31 }),
   faded: new LineBasicMaterial({ color: 0x262c31, transparent: true, opacity: FADED_OPACITY, depthWrite: false }),
@@ -101,7 +117,8 @@ export class InstancesView {
   private readonly cache = new Map<Model, DefinitionGeometry>();
   private boxes: LineSegments | null = null;
 
-  build(scene: Scene, context: readonly InstanceId[]): void {
+  /** With `colorByTag`, faces show their tag's color (see tagColor). */
+  build(scene: Scene, context: readonly InstanceId[], colorByTag = false): void {
     for (const c of [...this.group.children]) this.group.remove(c);
     this.boxes?.geometry.dispose();
     this.boxes = null;
@@ -115,8 +132,9 @@ export class InstancesView {
       let g = this.cache.get(model);
       if (!g) this.cache.set(model, (g = buildGeometry(model)));
       const look = relation === 'outside' ? 'faded' : 'normal';
-      const front = new Mesh(g.faces, FACES[look][0]);
-      const back = new Mesh(g.faces, FACES[look][1]);
+      const faces = colorByTag ? colorFaces(tagColor(scene, p.path), look === 'faded') : FACES[look];
+      const front = new Mesh(g.faces, faces[0]);
+      const back = new Mesh(g.faces, faces[1]);
       const lines = new LineSegments(g.edges, EDGES[look]);
       for (const o of [front, back, lines]) {
         o.matrixAutoUpdate = false;

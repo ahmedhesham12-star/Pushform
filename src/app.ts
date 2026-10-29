@@ -59,7 +59,9 @@ import {
   type ToolId,
 } from './tools';
 import { ContextMenu, type MenuEntry } from './ui/contextMenu';
-import { EntityInfo, type EntityInfoData } from './ui/entityInfo';
+import { EntityInfo, type EntityInfoData, type TagField } from './ui/entityInfo';
+import { TagsPanel } from './ui/tagsPanel';
+import { Tray } from './ui/tray';
 import { TextEditor } from './ui/textEditor';
 import { Outliner } from './ui/outliner';
 import { el } from './ui/dom';
@@ -95,6 +97,8 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
   scaleWouldSkew: 'error.scaleWouldSkew',
   scaleTooSmall: 'error.scaleTooSmall',
   arcRadiusTooSmall: 'error.arcRadiusTooSmall',
+  looseGeometryUntagged: 'info.looseUntagged',
+  noSuchTag: 'error.noSuchTag',
 };
 
 export class App {
@@ -128,6 +132,7 @@ export class App {
   private readonly fileLabel = el('span', 'file-name');
   private readonly entityInfo: EntityInfo;
   private readonly outliner: Outliner;
+  private readonly tags: TagsPanel;
   /**
    * Navigation in progress. A right-button press only starts orbiting once it
    * moves past DRAG_THRESHOLD; released before that, it opens the menu.
@@ -225,6 +230,7 @@ export class App {
     this.entityInfo = new EntityInfo({
       renameDefinition: (definitionId, name) => this.run(this.session.execute('core.renameDefinition', { definitionId, name })),
       renameInstance: (instanceId, name) => this.run(this.session.execute('core.renameInstance', { instanceId, name })),
+      setTag: (tagId) => this.tagSelected(tagId),
     });
     this.outliner = new Outliner({
       scene: () => this.session.doc.scene,
@@ -244,13 +250,27 @@ export class App {
         this.showMenu(e.clientX, e.clientY);
       },
     });
-    const panel = el('aside', 'panel');
-    panel.append(this.entityInfo.element, this.outliner.element);
+    this.tags = new TagsPanel({
+      scene: () => this.session.doc.scene,
+      colorByTag: () => this.viewport.colorsByTag,
+      add: () => this.run(this.session.execute('core.addTag', {})),
+      rename: (tagId, name) => this.run(this.session.execute('core.renameTag', { tagId, name })),
+      setColor: (tagId, color) => this.run(this.session.execute('core.setTagColor', { tagId, color })),
+      setVisible: (tagId, visible) => this.run(this.session.execute('core.setTagVisible', { tagId, visible })),
+      remove: (tagId) => this.run(this.session.execute('core.deleteTag', { tagId })),
+      setColorByTag: (on) => this.setColorByTag(on),
+    });
+    const view0 = loadViewSettings();
+    const tray = new Tray(new Set(view0.collapsed), (folded) => saveViewSettings({ ...loadViewSettings(), collapsed: [...folded] }));
+    tray.add('entityInfo', this.entityInfo.element);
+    tray.add('outliner', this.outliner.element);
+    tray.add('tags', this.tags.element);
 
-    root.append(top, this.toolbar.element, view, panel, footer, this.menu.element);
+    root.append(top, this.toolbar.element, view, tray.element, footer, this.menu.element);
     this.viewport = new Viewport(view);
     this.textEditor = new TextEditor(view);
-    this.viewport.setGuidesVisible(loadViewSettings().guides);
+    this.viewport.setGuidesVisible(view0.guides);
+    this.viewport.setColorByTag(view0.colorByTag);
 
     this.tools = createTools(this.toolContext());
     this.tool = this.tools.rectangle;
@@ -337,6 +357,7 @@ export class App {
     // Every selection change ends here, so the panels follow it.
     this.entityInfo.show(this.entityInfoData());
     this.outliner.sync();
+    this.tags.sync();
   }
 
   /** Flash a command's error; a successful command needs no message here. */
@@ -352,8 +373,8 @@ export class App {
     const count = (n: number) => formatNumber(n);
     if (annotations.size === 1 && !faces.size && !edges.size && !instances.size && !guides.size) {
       const a = pathDefinition(doc.scene, this.context)?.annotations.get([...annotations][0]!);
-      if (a?.kind === 'dimension') return { kind: 'dimension', length: formatLength(dimensionLength(a), doc.units) };
-      if (a) return { kind: 'text', text: a.text };
+      if (a?.kind === 'dimension') return { kind: 'dimension', length: formatLength(dimensionLength(a), doc.units), tag: this.tagField([a]) };
+      if (a) return { kind: 'text', text: a.text, tag: this.tagField([a]) };
     }
     if (instances.size) {
       const id = [...instances][0]!;
@@ -380,6 +401,7 @@ export class App {
           // Red, green and blue are the instance's own x, z and y.
           scale: scaled ? t('info.scaleValue', { red: size(sx), green: size(sz), blue: size(sy) }) : null,
           stretched: !even(sx, sy) || !even(sx, sz),
+          tag: this.tagField([i]),
         };
       }
     }
@@ -401,7 +423,33 @@ export class App {
     const m = this.contextModel();
     const area = faces.size ? formatArea([...faces].reduce((s, f) => s + faceArea(m, f), 0), doc.units) : null;
     const length = edges.size ? formatLength([...edges].reduce((s, e) => s + edgeLength(m, e), 0), doc.units) : null;
-    return { kind: 'selection', total: count(faces.size + edges.size + instances.size + guides.size + annotations.size), counts, area, length };
+    const taggable = this.taggableSelection();
+    return {
+      kind: 'selection',
+      total: count(faces.size + edges.size + instances.size + guides.size + annotations.size),
+      counts,
+      area,
+      length,
+      tag: taggable.length ? this.tagField(taggable) : null,
+      looseOnly: !taggable.length,
+    };
+  }
+
+  /** The selected groups, components, guides and annotations: what can carry a tag. */
+  private taggableSelection(): { readonly tag?: string }[] {
+    const def = pathDefinition(this.session.doc.scene, this.context);
+    if (!def) return [];
+    const pick = <T>(ids: Iterable<string>, items: ReadonlyMap<string, T>) => [...ids].map((id) => items.get(id)).filter((x): x is T => !!x);
+    const { instances, guides, annotations } = this.selection;
+    return [...pick(instances, def.instances), ...pick(guides, def.guides), ...pick(annotations, def.annotations)];
+  }
+
+  /** The Tag field for some items: their common tag (undefined when they differ) and every tag by name. */
+  private tagField(items: readonly { readonly tag?: string }[]): TagField {
+    const tags = this.session.doc.scene.tags;
+    const first = items[0]?.tag ?? null;
+    const options = [...tags].map(([id, x]) => ({ id, name: x.name })).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+    return items.every((x) => (x.tag ?? null) === first) ? { value: first, options } : { options };
   }
 
   /** Ctrl+A: everything in the open context (switching to the Select tool). */
@@ -740,6 +788,7 @@ export class App {
       },
       { label: t('menu.explode'), enabled: this.selection.instances.size > 0, run: () => this.explodeSelected() },
       { label: t('menu.makeUnique'), enabled: this.canMakeUnique(), run: () => this.makeUniqueSelected() },
+      { label: t('menu.tag'), enabled: any, run: () => this.tagMenu(x, y) },
       null,
       { label: t('menu.delete'), shortcut: t('key.delete'), enabled: any, run: () => this.deleteSelected() },
       this.deleteGuidesEntry(),
@@ -781,11 +830,51 @@ export class App {
     this.applyHighlights();
   }
 
+  /* ---------- tags ---------- */
+
+  /** The right-click Tag menu: Untagged and every tag, the selection's own tag greyed. */
+  private tagMenu(x: number, y: number): void {
+    const items = this.taggableSelection();
+    if (!items.length) return this.status.flash(t('info.looseUntagged'));
+    const field = this.tagField(items);
+    const entry = (id: string | null, label: string): MenuEntry => ({ label, enabled: field.value !== id, run: () => this.tagSelected(id) });
+    this.menu.open(x, y, [entry(null, t('tags.untagged')), ...field.options.map((o) => entry(o.id, o.name))]);
+  }
+
+  /** Put the selected groups, components, guides and annotations on a tag. Loose geometry stays Untagged, and the status bar says so. */
+  private tagSelected(tagId: string | null): void {
+    const { faces, edges, instances, guides, annotations } = this.selection;
+    const r = this.session.execute('core.setTag', {
+      definitionId: this.viewport.frame.definitionId,
+      instanceIds: [...instances],
+      guideIds: [...guides],
+      annotationIds: [...annotations],
+      faceIds: [...faces],
+      edgeIds: [...edges],
+      tagId,
+    });
+    if (!r.ok) return r.error.code === 'looseGeometryUntagged' ? this.status.flash(t('info.looseUntagged')) : this.flashError(r.error);
+    if (r.output.looseSkipped) this.status.flash(t('info.looseUntagged'));
+  }
+
+  /** Color faces by their tag on this device. */
+  private setColorByTag(on: boolean): void {
+    this.viewport.setColorByTag(on);
+    saveViewSettings({ ...loadViewSettings(), colorByTag: on });
+    this.applyHighlights();
+  }
+
   /* ---------- view ---------- */
 
   private viewMenu(): MenuEntry[] {
     const shown = this.viewport.guidesVisible;
-    return [{ label: t(shown ? 'view.hideGuides' : 'view.showGuides'), enabled: true, run: () => this.setGuidesVisible(!shown) }, this.deleteGuidesEntry()];
+    const byTag = this.viewport.colorsByTag;
+    return [
+      { label: t(shown ? 'view.hideGuides' : 'view.showGuides'), enabled: true, run: () => this.setGuidesVisible(!shown) },
+      this.deleteGuidesEntry(),
+      null,
+      { label: t(byTag ? 'view.plainColors' : 'view.colorByTag'), enabled: true, run: () => this.setColorByTag(!byTag) },
+    ];
   }
 
   private deleteGuidesEntry(): MenuEntry {
@@ -796,7 +885,7 @@ export class App {
   /** Show or hide guides on this device; hidden guides cannot be selected, so they leave the selection. */
   private setGuidesVisible(on: boolean): void {
     this.viewport.setGuidesVisible(on);
-    saveViewSettings({ guides: on });
+    saveViewSettings({ ...loadViewSettings(), guides: on });
     if (!on) {
       this.selection.guides.clear();
       if (this.selection.hovered?.kind === 'guide') this.selection.hovered = null;

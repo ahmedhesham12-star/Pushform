@@ -83,3 +83,20 @@ export function withTag<T extends { readonly tag?: TagId }>(item: T, tag: TagId 
   const { tag: _old, ...rest } = item;
   return (tag ? { ...rest, tag } : rest) as T;
 }
+
+/**
+ * The tag geometry at the end of an instance path shows with Color by Tag:
+ * the nearest tagged instance on the path, innermost first, as SketchUp
+ * colors untagged geometry with its group's tag. Undefined is Untagged.
+ */
+export function pathTag(s: Scene, path: readonly InstanceId[]): TagId | undefined {
+  let tag: TagId | undefined;
+  let parent = s.rootId;
+  for (const id of path) {
+    const i = s.definitions.get(parent)?.instances.get(id);
+    if (!i) break;
+    if (i.tag && s.tags.has(i.tag)) tag = i.tag;
+    parent = i.definitionId;
+  }
+  return tag;
+}

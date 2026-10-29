@@ -52,16 +52,29 @@ export function saveFileState(state: FileState): void {
 
 export interface ViewSettings {
   guides: boolean;
+  /** Faces in their tag's color (milestone 5). */
+  colorByTag: boolean;
+  /** Panels folded shut in the tray, by name. */
+  collapsed: string[];
 }
+
+const DEFAULT_VIEW: ViewSettings = { guides: true, colorByTag: false, collapsed: [] };
 
 export function loadViewSettings(): ViewSettings {
   try {
     const raw = JSON.parse(localStorage.getItem(VIEW_KEY) ?? 'null') as Partial<ViewSettings> | null;
-    if (raw && typeof raw.guides === 'boolean') return { guides: raw.guides };
+    // Each setting on its own, so one saved by an older version keeps its value.
+    if (raw && typeof raw === 'object') {
+      return {
+        guides: typeof raw.guides === 'boolean' ? raw.guides : DEFAULT_VIEW.guides,
+        colorByTag: typeof raw.colorByTag === 'boolean' ? raw.colorByTag : DEFAULT_VIEW.colorByTag,
+        collapsed: Array.isArray(raw.collapsed) ? raw.collapsed.filter((x): x is string => typeof x === 'string') : [],
+      };
+    }
   } catch {
     // Unreadable: fall through.
   }
-  return { guides: true };
+  return { ...DEFAULT_VIEW, collapsed: [] };
 }
 
 export function saveViewSettings(settings: ViewSettings): void {

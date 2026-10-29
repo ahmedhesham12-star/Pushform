@@ -12,6 +12,7 @@ import {
   pathTransform,
   placements,
   toMatrix,
+  type Affine,
   type InstanceId,
   type Placement,
   type Scene,
@@ -173,23 +174,25 @@ export class InstancesView {
     return { placement: data.placement, relation: data.relation, normal: applyNormal(data.placement.world, local), faceId: faceId ?? null };
   }
 
-  /** Bounding boxes around instances placed in the open context, in their highlight colors. */
-  highlight(scene: Scene, context: readonly InstanceId[], instances: ReadonlyMap<InstanceId, EdgeHighlight>): void {
+  /**
+   * Bounding boxes around instances placed in the open context, in their
+   * highlight colors, and around `marked` instances anywhere (by path: the
+   * parts of a cut list row outside the open context), in the hover color.
+   */
+  highlight(scene: Scene, context: readonly InstanceId[], instances: ReadonlyMap<InstanceId, EdgeHighlight>, marked: readonly (readonly InstanceId[])[] = []): void {
     if (this.boxes) {
       this.group.remove(this.boxes);
       this.boxes.geometry.dispose();
       this.boxes = null;
     }
     const def = pathDefinition(scene, context);
-    if (!def || !instances.size) return;
+    if (!def || (!instances.size && !marked.length)) return;
     const base = pathTransform(scene, context);
     const pos: number[] = [];
     const col: number[] = [];
-    for (const [id, kind] of instances) {
-      const i = def.instances.get(id);
-      const b = i && definitionBounds(scene, i.definitionId);
-      if (!i || !b) continue;
-      const world = multiply(base, i.transform);
+    const box = (world: Affine, definitionId: string, kind: EdgeHighlight) => {
+      const b = definitionBounds(scene, definitionId);
+      if (!b) return;
       const corner = (x: number, y: number, z: number) => applyPoint(world, [x ? b.max[0] : b.min[0], y ? b.max[1] : b.min[1], z ? b.max[2] : b.min[2]]);
       const c = EDGE_COLORS[kind];
       // The twelve edges of the box: along x, y and z from each corner on the low side.
@@ -197,6 +200,14 @@ export class InstancesView {
         pos.push(...corner(a[0], a[1], a[2]), ...corner(d[0], d[1], d[2]));
         col.push(...c, ...c);
       }
+    };
+    for (const [id, kind] of instances) {
+      const i = def.instances.get(id);
+      if (i) box(multiply(base, i.transform), i.definitionId, kind);
+    }
+    for (const path of marked) {
+      const d = pathDefinition(scene, path);
+      if (d) box(pathTransform(scene, path), d.id, 'hover');
     }
     const g = new BufferGeometry();
     g.setAttribute('position', new Float32BufferAttribute(pos, 3));

@@ -30,6 +30,19 @@ export function t(key: MessageKey, params?: MessageParams): string {
   });
 }
 
+/** Keys with a form for one and a form for other counts: "key.one" and "key.other". */
+type CountedKey = MessageKey extends infer K ? (K extends `${infer Base}.one` ? Base : never) : never;
+
+/**
+ * Translate a message that depends on a count: the locale's plural rule picks
+ * the key's .one or .other form. `count` is the number; `shown` its text in
+ * the message, already formatted (the {count} placeholder).
+ */
+export function tCount(key: CountedKey, count: number, shown: string, params: MessageParams = {}): string {
+  const form = new Intl.PluralRules(localeTag()).select(count) === 'one' ? 'one' : 'other';
+  return t(`${key}.${form}` as MessageKey, { ...params, count: shown });
+}
+
 export function getLocale(): Locale {
   return current;
 }

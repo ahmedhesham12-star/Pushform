@@ -1,5 +1,6 @@
 import {
   createSession,
+  cutListSettings,
   definitionModel,
   documentFromText,
   documentToText,
@@ -10,7 +11,8 @@ import {
   type CommandSession,
   type PushformDocument,
 } from './commands';
-import { t, type MessageKey } from './i18n';
+import { cutList, toCsv } from './cutlist';
+import { t, tCount, type MessageKey } from './i18n';
 import {
   edgeCount,
   edgeGroup,
@@ -61,6 +63,7 @@ import {
 } from './tools';
 import { ContextMenu, type MenuEntry } from './ui/contextMenu';
 import { EntityInfo, type EntityInfoData, type TagField } from './ui/entityInfo';
+import { CutListPanel } from './ui/cutListPanel';
 import { MaterialsPanel } from './ui/materialsPanel';
 import { TagsPanel } from './ui/tagsPanel';
 import { Tray } from './ui/tray';
@@ -140,6 +143,9 @@ export class App {
   private readonly materials: MaterialsPanel;
   /** What the Paint Bucket paints with (the Materials panel chooses it); Default (no paint) to start. */
   private paintChoice: PaintChoice = { materialId: null };
+  private readonly cutListPanel: CutListPanel;
+  /** Parts of the chosen cut list row outside the open context, marked with boxes until the selection changes. */
+  private marked: (readonly InstanceId[])[] = [];
   /**
    * Navigation in progress. A right-button press only starts orbiting once it
    * moves past DRAG_THRESHOLD; released before that, it opens the menu.
@@ -182,7 +188,10 @@ export class App {
       },
       [this.unitsMenu.element],
     );
-    top.append(brand, fileButton, viewButton, this.fileLabel, this.actions.element);
+    const cutListButton = el('button', 'file-button', t('cutlist.open'));
+    cutListButton.type = 'button';
+    cutListButton.addEventListener('click', () => this.setCutListOpen(!this.cutListPanel.open));
+    top.append(brand, fileButton, viewButton, cutListButton, this.fileLabel, this.actions.element);
 
     // Shortcuts come from TOOL_SHORTCUTS (SketchUp defaults); Polygon has none, as in SketchUp.
     const key = (id: ToolId) => {
@@ -219,6 +228,17 @@ export class App {
 
     const view = el('main', 'view');
     view.append(this.intro.element);
+    this.cutListPanel = new CutListPanel({
+      scene: () => this.session.doc.scene,
+      units: () => this.session.doc.units,
+      settings: () => cutListSettings(this.session.doc),
+      setSettings: (patch) => this.run(this.session.execute('core.setCutListSettings', patch)),
+      select: (paths) => this.selectParts(paths),
+      exportCsv: () => void this.exportCutList(),
+      close: () => this.setCutListOpen(false),
+      flash: (message, isError) => this.status.flash(message, isError),
+    });
+    view.append(this.cutListPanel.element);
 
     const footer = el('footer', 'status');
     this.status = new StatusBar(() => this.tool.hint());
@@ -239,6 +259,7 @@ export class App {
       renameDefinition: (definitionId, name) => this.run(this.session.execute('core.renameDefinition', { definitionId, name })),
       renameInstance: (instanceId, name) => this.run(this.session.execute('core.renameInstance', { instanceId, name })),
       setTag: (tagId) => this.tagSelected(tagId),
+      setGrain: (definitionId, grain) => this.run(this.session.execute('core.setGrain', { definitionId, grain })),
     });
     this.outliner = new Outliner({
       scene: () => this.session.doc.scene,
@@ -377,7 +398,7 @@ export class App {
     const boxes = new Map<InstanceId, EdgeHighlight>();
     for (const i of instances) boxes.set(i, 'selected');
     if (hovered?.kind === 'instance' && !instances.has(hovered.id)) boxes.set(hovered.id, kind === 'erase' ? 'erase' : 'hover');
-    this.viewport.highlightInstances(boxes);
+    this.viewport.highlightInstances(boxes, this.marked);
     const guides = new Map<string, EdgeHighlight>();
     for (const g of this.selection.guides) guides.set(g, 'selected');
     if (hovered?.kind === 'guide' && !guides.has(hovered.id)) guides.set(hovered.id, kind === 'erase' ? 'erase' : 'hover');
@@ -394,6 +415,7 @@ export class App {
     const c = this.paintChoice;
     if ('materialId' in c && c.materialId !== null && !this.session.doc.scene.materials.has(c.materialId)) this.paintChoice = { materialId: null };
     this.materials.sync();
+    this.cutListPanel.sync();
   }
 
   private setPaintChoice(choice: PaintChoice): void {
@@ -444,6 +466,7 @@ export class App {
           stretched: !even(sx, sy) || !even(sx, sz),
           tag: this.tagField([i]),
           material: i.material ? (doc.scene.materials.get(i.material)?.name ?? t('materials.default')) : t('materials.default'),
+          grain: def.grain ?? null,
         };
       }
     }
@@ -548,6 +571,7 @@ export class App {
   }
 
   private clearSelection(): void {
+    this.marked = [];
     this.selection.faces.clear();
     this.selection.edges.clear();
     this.selection.instances.clear();
@@ -881,6 +905,54 @@ export class App {
     if ('starter' in this.paintChoice) this.setPaintChoice({ materialId: r.output.materialId });
   }
 
+  /* ---------- cut list ---------- */
+
+  private setCutListOpen(on: boolean): void {
+    this.cutListPanel.setOpen(on);
+    if (!on && this.marked.length) {
+      this.marked = [];
+      this.applyHighlights();
+    }
+  }
+
+  /**
+   * Select the parts of a cut list row. When they all sit in one group (or the
+   * model), that context opens and they are selected; otherwise the context
+   * holding most of them, and the others are marked with boxes.
+   */
+  private selectParts(paths: readonly (readonly InstanceId[])[]): void {
+    if (!paths.length) return;
+    const parents = new Map<string, (readonly InstanceId[])[]>();
+    for (const p of paths) {
+      const key = p.slice(0, -1).join('/');
+      parents.set(key, [...(parents.get(key) ?? []), p]);
+    }
+    const [, here] = [...parents].sort((a, b) => b[1].length - a[1].length)[0]!;
+    if (this.tool.id !== 'select') this.setTool('select');
+    this.setContext(here[0]!.slice(0, -1));
+    this.clearSelection();
+    for (const p of here) this.selection.instances.add(p.at(-1)!);
+    this.marked = paths.filter((p) => !here.includes(p));
+    this.applyHighlights();
+    const count = formatNumber(here.length);
+    this.status.flash(this.marked.length ? t('cutlist.selectedElsewhere', { count, elsewhere: formatNumber(this.marked.length) }) : tCount('cutlist.selected', here.length, count));
+  }
+
+  /** Save the cut list as CSV. */
+  private async exportCutList(): Promise<void> {
+    const name = this.fileName ?? t('file.untitled');
+    const doc = this.session.doc;
+    const settings = cutListSettings(doc);
+    const type: FileType = { description: t('file.typeCsv'), mime: 'text/csv', extension: '.csv' };
+    try {
+      const text = toCsv(cutList(doc.scene, { waste: settings.waste, includeHidden: settings.includeHidden }), doc.scene, doc.units);
+      const r = await saveFile(text, type, `${name}${t('cutlist.fileSuffix')}${type.extension}`);
+      if (r) this.status.flash(t('message.exported', { name: r.name }));
+    } catch {
+      this.status.flash(t('error.fileWrite'), true);
+    }
+  }
+
   /* ---------- tags ---------- */
 
   /** The right-click Tag menu: Untagged and every tag, the selection's own tag greyed. */
@@ -925,6 +997,8 @@ export class App {
       this.deleteGuidesEntry(),
       null,
       { label: t(byTag ? 'view.plainColors' : 'view.colorByTag'), enabled: true, run: () => this.setColorByTag(!byTag) },
+      null,
+      { label: t(this.cutListPanel.open ? 'cutlist.hide' : 'cutlist.open'), enabled: true, run: () => this.setCutListOpen(!this.cutListPanel.open) },
     ];
   }
 

@@ -949,3 +949,169 @@ li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
     transition: none !important;
   }
 }
+
+/* ---------- cut list (over the view) ---------- */
+.cutlist {
+  position: absolute;
+  inset-inline: 12px;
+  inset-block-end: 12px;
+  display: flex;
+  flex-direction: column;
+  max-block-size: 60%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ui);
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+}
+.cutlist[hidden] {
+  display: none;
+}
+.cutlist-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 6px;
+  padding-inline: 12px;
+  border-block-end: 1px solid var(--line);
+}
+.cutlist h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.cutlist-buttons,
+.cutlist-settings {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 14px;
+}
+.cutlist-settings {
+  padding-block: 6px;
+  padding-inline: 12px;
+  border-block-end: 1px solid var(--line);
+  color: var(--ink-2);
+}
+.cutlist-settings label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.cutlist-settings input:not([type='checkbox']) {
+  padding-block: 2px;
+  padding-inline: 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--canvas);
+  color: var(--ink);
+  font: inherit;
+}
+.cutlist-body {
+  overflow: auto;
+  padding-block: 0 8px;
+}
+.cutlist table {
+  inline-size: 100%;
+  border-collapse: collapse;
+}
+.cutlist th,
+.cutlist td {
+  padding-block: 3px;
+  padding-inline: 10px;
+  text-align: start;
+  white-space: nowrap;
+}
+.cutlist .numeric {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+.cutlist thead th {
+  position: sticky;
+  inset-block-start: 0;
+  background: var(--ui);
+  border-block-end: 1px solid var(--line);
+  padding: 0;
+}
+.cutlist thead .cutlist-plain {
+  padding-block: 5px;
+  padding-inline: 10px;
+  color: var(--ink-2);
+  font-weight: 600;
+}
+.cutlist-sort {
+  inline-size: 100%;
+  padding-block: 5px;
+  padding-inline: 10px;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  font-weight: 600;
+  text-align: inherit;
+  cursor: pointer;
+}
+.cutlist th[aria-sort='ascending'] .cutlist-sort::after {
+  content: ' \25B4';
+}
+.cutlist th[aria-sort='descending'] .cutlist-sort::after {
+  content: ' \25BE';
+}
+.cutlist-group th {
+  padding-block: 8px 3px;
+  font-weight: 600;
+}
+.cutlist-row {
+  cursor: pointer;
+}
+.cutlist-row:hover,
+.cutlist-row:focus-visible {
+  background: var(--ui-2);
+  outline: none;
+}
+.cutlist-total td {
+  padding-block-end: 6px;
+  border-block-end: 1px solid var(--line);
+  color: var(--ink-2);
+}
+.cutlist-warning {
+  color: var(--err);
+}
+.cutlist-empty,
+.cutlist-note,
+.cutlist-grand {
+  margin: 0;
+  padding-block: 6px 0;
+  padding-inline: 12px;
+}
+.cutlist-grand {
+  font-weight: 600;
+}
+
+/* Print: only the cut list, as a plain page (the browser's print to PDF makes the PDF). */
+@media print {
+  body.printing-cutlist * {
+    visibility: hidden;
+  }
+  body.printing-cutlist .cutlist,
+  body.printing-cutlist .cutlist * {
+    visibility: visible;
+  }
+  body.printing-cutlist .cutlist {
+    position: fixed;
+    inset-block-start: 0;
+    inset-inline: 0;
+    max-block-size: none;
+    border: 0;
+    box-shadow: none;
+    background: #fff;
+    color: #000;
+  }
+  body.printing-cutlist .cutlist-body {
+    overflow: visible;
+  }
+  body.printing-cutlist .cutlist-controls {
+    display: none;
+  }
+}

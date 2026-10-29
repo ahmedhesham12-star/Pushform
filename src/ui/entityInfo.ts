@@ -1,5 +1,5 @@
 import { t } from '../i18n';
-import type { DefinitionId, InstanceId } from '../scene';
+import type { DefinitionId, GrainAxis, InstanceId } from '../scene';
 import { el } from './dom';
 
 /** The select's value for Untagged; tag ids never take this form. */
@@ -34,6 +34,8 @@ export type EntityInfoData =
       tag: TagField;
       /** The name of its material, or Default. */
       material: string;
+      /** Its grain direction for the cut list (shared by component copies); null for the longest side. */
+      grain: GrainAxis | null;
     }
   | { kind: 'dimension'; length: string; tag: TagField }
   | { kind: 'text'; text: string; tag: TagField }
@@ -57,6 +59,8 @@ export interface EntityInfoHost {
   renameInstance(id: InstanceId, name: string): void;
   /** Put the selected groups, components, guides and annotations on a tag (null: Untagged). */
   setTag(id: string | null): void;
+  /** Set a definition's grain direction (null: the longest side). */
+  setGrain(definitionId: DefinitionId, grain: GrainAxis | null): void;
 }
 
 /**
@@ -93,6 +97,7 @@ export class EntityInfo {
         this.input(t('info.instance'), data.instanceName, (name) => this.host.renameInstance(data.instanceId, name), true);
         this.tagRow(data.tag);
         this.row(t('info.material'), data.material);
+        this.grainRow(data.definitionId, data.grain);
         if (data.volume) this.row(t('info.volume'), data.volume);
         if (data.scale) this.row(t('info.scale'), data.scale);
         if (data.stretched) this.body.append(el('dd', 'entity-info-warning', t('info.stretched')));
@@ -116,6 +121,32 @@ export class EntityInfo {
         if (data.looseOnly) this.body.append(el('dd', 'entity-info-hint', t('info.looseUntagged')));
         break;
     }
+  }
+
+  /** The grain direction menu: the longest side, or along one of the part's own axes. */
+  private grainRow(definitionId: DefinitionId, grain: GrainAxis | null): void {
+    const id = `entity-info-${this.body.children.length}`;
+    const dt = el('dt');
+    const lab = el('label', undefined, t('info.grain'));
+    lab.htmlFor = id;
+    dt.append(lab);
+    const select = el('select');
+    select.id = id;
+    for (const [value, key] of [
+      ['', 'info.grainLongest'],
+      ['red', 'cutlist.grain.red'],
+      ['green', 'cutlist.grain.green'],
+      ['blue', 'cutlist.grain.blue'],
+    ] as const) {
+      const o = el('option', undefined, t(key));
+      o.value = value;
+      select.append(o);
+    }
+    select.value = grain ?? '';
+    select.addEventListener('change', () => this.host.setGrain(definitionId, (select.value || null) as GrainAxis | null));
+    const dd = el('dd');
+    dd.append(select);
+    this.body.append(dt, dd);
   }
 
   /** A menu of tags; picking one puts the selection on it. */

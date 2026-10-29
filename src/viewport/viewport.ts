@@ -698,8 +698,9 @@ export class Viewport {
   }
 
   /** Bounding boxes around instances of the editing context, in highlight colors. */
-  highlightInstances(instances: ReadonlyMap<InstanceId, EdgeHighlight>): void {
-    if (this.shown) this.instancesView.highlight(this.shown, this.context, instances);
+  /** Boxes around instances of the open context in their highlight colors, and around `marked` ones anywhere (by path). */
+  highlightInstances(instances: ReadonlyMap<InstanceId, EdgeHighlight>, marked: readonly (readonly InstanceId[])[] = []): void {
+    if (this.shown) this.instancesView.highlight(this.shown, this.context, instances, marked);
     this.requestRender();
   }
 

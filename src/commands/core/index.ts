@@ -66,6 +66,22 @@ import {
   type RotateCopiesInput,
   type RotateInput,
 } from './move';
+import {
+  addMaterial,
+  deleteMaterial,
+  duplicateMaterial,
+  paint,
+  renameMaterial,
+  setMaterialColor,
+  setMaterialTexture,
+  type AddMaterialInput,
+  type DeleteMaterialInput,
+  type DuplicateMaterialInput,
+  type PaintInput,
+  type RenameMaterialInput,
+  type SetMaterialColorInput,
+  type SetMaterialTextureInput,
+} from './materials';
 import { offset, type OffsetInput, type OffsetOutput } from './offset';
 import { pushPull, type PushPullInput, type PushPullOutput } from './pushPull';
 import { flip, scale, type FlipInput, type ScaleInput } from './scale';
@@ -128,6 +144,13 @@ declare module '../types' {
     'core.setTagVisible': { input: SetTagVisibleInput; output: Record<string, never> };
     'core.deleteTag': { input: DeleteTagInput; output: Record<string, never> };
     'core.setTag': { input: SetTagInput; output: SetTagOutput };
+    'core.addMaterial': { input: AddMaterialInput; output: { materialId: string } };
+    'core.renameMaterial': { input: RenameMaterialInput; output: Record<string, never> };
+    'core.setMaterialColor': { input: SetMaterialColorInput; output: Record<string, never> };
+    'core.setMaterialTexture': { input: SetMaterialTextureInput; output: Record<string, never> };
+    'core.duplicateMaterial': { input: DuplicateMaterialInput; output: { materialId: string } };
+    'core.deleteMaterial': { input: DeleteMaterialInput; output: Record<string, never> };
+    'core.paint': { input: PaintInput; output: Record<string, never> };
   }
 }
 
@@ -172,9 +195,17 @@ export function registerCoreCommands(registry: CommandRegistry): void {
   registry.register(setTagVisible);
   registry.register(deleteTag);
   registry.register(setTag);
+  registry.register(addMaterial);
+  registry.register(renameMaterial);
+  registry.register(setMaterialColor);
+  registry.register(setMaterialTexture);
+  registry.register(duplicateMaterial);
+  registry.register(deleteMaterial);
+  registry.register(paint);
 }
 
 export { selectionBox, type ScaleBox } from './scale';
+export { STARTER_MATERIALS, starterName, type StarterMaterial } from './materials';
 
 export type {
   DrawArcCenterInput,

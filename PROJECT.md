@@ -86,7 +86,8 @@ src/
               document change
   export/     STL and GLB writers (pure: kernel and scene only)
   files.ts    open and save on the device: File System Access API, or upload and download
-  storage.ts  autosave to local storage (the recovery copy, with the file name)
+  storage.ts  autosave to IndexedDB, or local storage where it is missing (the recovery
+              copy), the file name and per-device view settings
 tests/        units, kernel, scene, commands, tools (with stand-in viewports), DOM
               components, export, acceptance tests per milestone and architecture
               tests; helpers/ holds the randomized runs, stress/ the long sweeps
@@ -198,16 +199,19 @@ Plugins call `registry.register(def)` and extend the typed `CommandMap` through 
 - New tools get it by declaring their fields.
 
 ### Document format
-`.pushform` files are this JSON, version 5 (milestone 5): a scene of tags and definitions, each definition holding a version 2 topology model, the instances placed in them, its guides and its annotations (dimensions and text). Instances, guides and annotations may name a tag; none means Untagged. Version 4 (milestone 4) is the same without tags, and version 3 (milestone 3) without guides and annotations; both still open.
+`.pushform` files are this JSON, version 5 (milestone 5): a scene of tags, materials and definitions, each definition holding a version 2 topology model, the instances placed in them, its guides and its annotations (dimensions and text). Instances, guides and annotations may name a tag; none means Untagged. Faces (in the model) and instances may name materials. Version 4 (milestone 4) is the same without tags, and version 3 (milestone 3) without guides and annotations; both still open.
 ```
 { format: 'pushform', version: 5, units: { unit, precision },
   scene: { root: definition id, next,
            tags?: { id: { name, color: '#rrggbb', visible } },
+           materials?: { id: { name, color: '#rrggbb',
+                               texture?: { data: base64, mime: 'image/png' | 'image/jpeg',
+                                           width: mm, height: mm } } },
            definitions: { id: { kind: 'root' | 'group' | 'component', name,
                                 model: <version 2 model, below>,
                                 instances: { id: { definition, name,
                                   transform: { rotation: [x, y, z, w], translation: [x, y, z],
-                                               scale: [1, 1, 1] }, tag? } },
+                                               scale: [1, 1, 1] }, tag?, material? } },
                                 guides?: { id: ({ kind: 'line', point, direction }
                                                | { kind: 'point', point }) & { tag? } },
                                 annotations?: { id: { kind: 'dimension', start: anchor, end: anchor,
@@ -226,7 +230,7 @@ model: { kind: 'topology', version: 2, next,
                         paint?: { front?: material id, back?: material id } } },
          curves: { id: { kind, edges, segments, center, normal, radius? } } }
 ```
-Every level is validated on load: unit quaternions, scale with no zero component (negative mirrors; milestone 4), instances only of existing non-root definitions, no nesting cycles, guide lines with a non-zero direction (stored as a unit vector), dimension and text anchors with a point and, when attached, a reference whose fraction lies strictly between 0 and 1, screen text positions between 0 and 1, tags with a name and a #rrggbb color, and tag references only to existing tags. **Version 2 documents** (milestone 2) load as the root definition; the conversion is tested against a milestone 2 autosave (`tests/fixtures/milestone2-autosave.json`).
+Every level is validated on load: unit quaternions, scale with no zero component (negative mirrors; milestone 4), instances only of existing non-root definitions, no nesting cycles, guide lines with a non-zero direction (stored as a unit vector), dimension and text anchors with a point and, when attached, a reference whose fraction lies strictly between 0 and 1, screen text positions between 0 and 1, tags with a name and a #rrggbb color, and tag references only to existing tags; materials with a name, a #rrggbb color and a PNG or JPEG texture of positive size, and material references (instances and face paint) only to existing materials. **Version 2 documents** (milestone 2) load as the root definition; the conversion is tested against a milestone 2 autosave (`tests/fixtures/milestone2-autosave.json`).
 
 **Version 1 documents** (milestone 1 autosaves, face-loop models) are converted on load:
 - Corners at the same position become one shared vertex, and every loop side becomes a shared edge.
@@ -348,6 +352,8 @@ Every level is validated on load: unit quaternions, scale with no zero component
 | 2026-10-29 | Color by Tag (Tags panel or View menu) is a per-device view setting. Faces take the color of the nearest tagged instance around them, both sides; Untagged keeps the usual face color | Checked in SketchUp: untagged geometry inside a tagged group shows the group's tag color. |
 | 2026-10-29 | Paint lives on kernel faces (`Face.paint`: a material id on the front and the back, opaque to the kernel), saved with the model (topology format still version 2: the field is optional). It follows faces through every edit in one place: a region rebuilt in a plane takes its owner face's paint, front and back swapped if it faces the other way; a region rule can give paint instead. Push/pull walls, pocket and hole walls and a lone face's bottom take the pushed face's paint as it is; merges keep the larger face's; folds, mirrors, placed copies, merges into another model and offsets keep it. `paintFaces` and `replacePaint` are kernel mutations | Plan step 3; every rule matches what SketchUp does ("Verified in SketchUp", 2026-10-29). Carrying paint where faces are rebuilt, rather than in a scene-level map by face id, keeps it right through splits. |
 | 2026-10-29 | Two kernel faults found by the new paint sweep (stress sweep 8) are fixed: a push/pull that stretched a face across its own boundary now builds walls instead (seed 8006); a rectangle, circle, polygon or arc that would land a hair from existing geometry (closer than a face can resolve, farther than vertices merge) and leave a sliver is refused with `tooClose` (seed 8368). Both seeds are pinned in `npm test` | Paint never changes geometry; the sweep reached shapes earlier sweeps did not (rectangles drawn off slanted folded faces). Refusing matches how moves are refused rather than making an invalid model. |
+| 2026-10-29 | Materials live in the scene (`Scene.materials`, ids from `scene.next` with prefix m, in the order added): a name, a #rrggbb color and an optional texture (the image as base64, PNG or JPEG, with the size of one tile in mm). Instances carry an optional material, shown on the faces inside them that have none, the nearest painted instance first (`inheritedMaterial`, `shownMaterial`). The starter set (birch ply, oak, walnut, white MDF, white melamine, four painted colors) is built in and copied into the file by `core.addMaterial` with `starter`. `core.paint` paints faces (either side) and instances of the open context; `core.deleteMaterial` takes the material off every face and instance; Explode gives the instance's material to every unpainted side of its faces, backs included, and to unpainted groups inside it | Plan step 4, approved; SketchUp's "In Model" materials, and its Explode (checked in SketchUp). |
+| 2026-10-29 | The autosave is kept in IndexedDB (database pushform, store autosave); local storage only where IndexedDB is missing or fails. A milestone 4 autosave in local storage is still recovered, and removed once IndexedDB holds a newer one | Local storage holds a few megabytes, too little for image textures (plan, approved). |
 
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.

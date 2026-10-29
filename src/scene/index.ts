@@ -9,4 +9,5 @@ export * from './query';
 export * from './guides';
 export * from './annotations';
 export * from './tags';
+export * from './materials';
 export { deserializeScene, sceneFromModel, serializeScene, type SerializedScene, type SerializedTransform } from './serialize';

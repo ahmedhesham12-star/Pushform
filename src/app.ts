@@ -277,7 +277,7 @@ export class App {
     this.tool = this.tools.rectangle;
 
     this.session.subscribe((e) => {
-      saveAutosave(this.session.doc);
+      void saveAutosave(this.session.doc);
       this.syncFile();
       this.refresh();
       if (e.reason === 'execute' || e.reason === 'amend') this.showAmendValues();

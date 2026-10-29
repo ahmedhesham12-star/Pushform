@@ -6,7 +6,9 @@ import {
   extractGeometry,
   hasEdge,
   hasFace,
+  listFaces,
   mergeGeometry,
+  paintFaces,
   snapPoint,
   transformGeometry,
   type Model,
@@ -235,12 +237,17 @@ export const explode: CommandDef<ExplodeInput, ExplodeOutput> = {
         if (!placed) return { ok: false, error: { code: 'explodeWouldSkew', detail: j.id } };
         nested.push([j, placed]);
       }
-      const merged = mergeGeometry(parent.model, placedModel(def.model, T));
+      // As in SketchUp, the instance's material goes to every unpainted side of its faces (backs too)
+      // and to the unpainted groups and components inside it.
+      const placedGeometry = placedModel(def.model, T);
+      const m = instance.material;
+      const source = m ? paintFaces(placedGeometry, listFaces(placedGeometry).map((f) => f.id), ['front', 'back'], m, { unpaintedOnly: true }) : placedGeometry;
+      const merged = mergeGeometry(parent.model, source);
       scene = removeInstance(setModel(scene, parent.id, merged.model), parent.id, id);
       for (const f of merged.faceIds) created.push({ parent: parent.id, face: f });
       for (const [j, placed] of nested) {
         let nid: InstanceId;
-        [nid, scene] = placeCopy(scene, parent.id, j, placed);
+        [nid, scene] = placeCopy(scene, parent.id, m && !j.material ? { ...j, material: m } : j, placed);
         instanceIds.push(nid);
       }
       for (const g of def.guides.values()) [, scene] = addGuide(scene, parent.id, transformGuide(T, g));

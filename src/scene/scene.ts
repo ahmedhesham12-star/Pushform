@@ -11,6 +11,7 @@
 import { bounds, type Bounds, type Model } from '../kernel';
 import type { Annotation, AnnotationId } from './annotations';
 import type { Guide, GuideId } from './guides';
+import type { Material, MaterialId } from './materials';
 import type { Tag, TagId } from './tags';
 import { AFFINE_IDENTITY, applyPoint, multiply, type Affine, type AnyTransform, type Transform } from './transform';
 
@@ -26,6 +27,8 @@ export interface Instance {
   readonly transform: Transform;
   /** Its tag; Untagged when absent. */
   readonly tag?: TagId;
+  /** Its material, shown on the faces inside it that have none. */
+  readonly material?: MaterialId;
 }
 
 export interface Definition {
@@ -52,13 +55,15 @@ export interface Scene {
   readonly definitions: ReadonlyMap<DefinitionId, Definition>;
   /** Tags, in the order they were made; Untagged is not one of them. */
   readonly tags: ReadonlyMap<TagId, Tag>;
-  /** Next id number for definitions, instances, guides, annotations and tags. */
+  /** The model's materials, in the order they were added. */
+  readonly materials: ReadonlyMap<MaterialId, Material>;
+  /** Next id number for definitions, instances, guides, annotations, tags and materials. */
   readonly next: number;
 }
 
 export function createScene(rootModel: Model): Scene {
   const root: Definition = { id: 'd1', kind: 'root', name: '', model: rootModel, instances: new Map(), guides: new Map(), annotations: new Map() };
-  return { rootId: root.id, definitions: new Map([[root.id, root]]), tags: new Map(), next: 2 };
+  return { rootId: root.id, definitions: new Map([[root.id, root]]), tags: new Map(), materials: new Map(), next: 2 };
 }
 
 export function rootDefinition(s: Scene): Definition {
@@ -167,7 +172,7 @@ export function setModel(s: Scene, id: DefinitionId, model: Model): Scene {
   return withDefinition(s, { ...d, model });
 }
 
-export const newId = (s: Scene, prefix: 'd' | 'i' | 'g' | 'a' | 't'): [string, Scene] => [`${prefix}${s.next}`, { ...s, next: s.next + 1 }];
+export const newId = (s: Scene, prefix: 'd' | 'i' | 'g' | 'a' | 't' | 'm'): [string, Scene] => [`${prefix}${s.next}`, { ...s, next: s.next + 1 }];
 
 export function addDefinition(s: Scene, def: NewDefinition): [DefinitionId, Scene] {
   const [id, next] = newId(s, 'd');

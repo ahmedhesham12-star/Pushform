@@ -1,4 +1,5 @@
-import { deserialize, serialize, type Model, type SerializedTopology } from '../kernel';
+import { deserialize, listFaces, serialize, type Model, type SerializedTopology } from '../kernel';
+import { MATERIAL_COLOR, type Material } from './materials';
 import type { Anchor, AnchorRef, Annotation } from './annotations';
 import { guideLine, guidePoint, type Guide } from './guides';
 import { contains, createScene, type Definition, type DefinitionKind, type Instance, type Scene } from './scene';
@@ -28,19 +29,21 @@ export type SerializedAnnotation = (
  * and the instances inside it. Version 4 (milestone 4) adds guides and
  * annotations, each left out when a definition has none. Version 5
  * (milestone 5) adds tags, in the order they were made, and the tag of each
- * instance, guide and annotation that has one.
+ * instance, guide and annotation that has one; and materials, with the
+ * material of each painted instance (faces carry theirs in the model).
  */
 export interface SerializedScene {
   root: string;
   next: number;
   tags?: Record<string, { name: string; color: string; visible: boolean }>;
+  materials?: Record<string, SerializedMaterial>;
   definitions: Record<
     string,
     {
       kind: DefinitionKind;
       name: string;
       model: SerializedTopology;
-      instances: Record<string, { definition: string; name: string; transform: SerializedTransform; tag?: string }>;
+      instances: Record<string, { definition: string; name: string; transform: SerializedTransform; tag?: string; material?: string }>;
       guides?: Record<string, SerializedGuide>;
       annotations?: Record<string, SerializedAnnotation>;
     }
@@ -57,6 +60,7 @@ export function serializeScene(s: Scene): SerializedScene {
         name: i.name,
         transform: { rotation: [...i.transform.rotation], translation: [...i.transform.translation], scale: [...i.transform.scale] },
         ...tagOf(i),
+        ...(i.material ? { material: i.material } : {}),
       };
     }
     definitions[id] = { kind: d.kind, name: d.name, model: serialize(d.model), instances };
@@ -75,10 +79,32 @@ export function serializeScene(s: Scene): SerializedScene {
   }
   const out: SerializedScene = { root: s.rootId, next: s.next, definitions };
   if (s.tags.size) out.tags = Object.fromEntries([...s.tags].map(([id, t]) => [id, { name: t.name, color: t.color, visible: t.visible }]));
+  if (s.materials.size) out.materials = Object.fromEntries([...s.materials].map(([id, m]) => [id, saveMaterial(m)]));
   return out;
 }
 
 const tagOf = (x: { readonly tag?: string }) => (x.tag ? { tag: x.tag } : {});
+
+export interface SerializedMaterial {
+  name: string;
+  color: string;
+  texture?: { data: string; mime: string; width: number; height: number };
+}
+
+function saveMaterial(m: Material): SerializedMaterial {
+  return { name: m.name, color: m.color, ...(m.texture ? { texture: { ...m.texture } } : {}) };
+}
+
+/** A material from a file, or null when it is not one: a name, a #rrggbb color, and a PNG or JPEG texture with a positive size. */
+function material(v: unknown): Material | null {
+  if (!isObject(v) || typeof v.name !== 'string' || !v.name.trim() || typeof v.color !== 'string' || !MATERIAL_COLOR.test(v.color.toLowerCase())) return null;
+  const out: Material = { name: v.name, color: v.color.toLowerCase() };
+  if (v.texture === undefined) return out;
+  const x = v.texture;
+  if (!isObject(x) || typeof x.data !== 'string' || !x.data || (x.mime !== 'image/png' && x.mime !== 'image/jpeg')) return null;
+  if (typeof x.width !== 'number' || typeof x.height !== 'number' || !(x.width > 0) || !(x.height > 0) || !Number.isFinite(x.width + x.height)) return null;
+  return { ...out, texture: { data: x.data, mime: x.mime, width: x.width, height: x.height } };
+}
 
 function saveAnchor(a: Anchor): SerializedAnchor {
   if (!a.ref) return { point: [...a.point] };
@@ -164,6 +190,16 @@ export function deserializeScene(data: unknown): Scene | null {
   if (!isObject(data) || typeof data.root !== 'string' || !Number.isInteger(data.next) || !isObject(data.definitions)) return null;
   const tagMap = tags(data.tags);
   if (!tagMap) return null;
+  const materials = new Map<string, Material>();
+  if (data.materials !== undefined) {
+    if (!isObject(data.materials)) return null;
+    for (const [id, raw] of Object.entries(data.materials)) {
+      const m = material(raw);
+      if (!m) return null;
+      materials.set(id, m);
+    }
+  }
+  const knownMaterial = (id: unknown) => typeof id === 'string' && materials.has(id);
   /** The tag an item names: undefined for Untagged, null when it names no tag there is. */
   const tagRef = (v: Record<string, unknown>): string | undefined | null => (v.tag === undefined ? undefined : typeof v.tag === 'string' && tagMap.has(v.tag) ? v.tag : null);
   const definitions = new Map<string, Definition>();
@@ -171,13 +207,16 @@ export function deserializeScene(data: unknown): Scene | null {
     if (!isObject(raw) || !KINDS.includes(raw.kind as DefinitionKind) || typeof raw.name !== 'string' || !isObject(raw.instances)) return null;
     const model = deserialize(raw.model);
     if (!model) return null;
+    // Paint on faces names materials of this file.
+    if (listFaces(model).some((f) => (f.paint?.front && !materials.has(f.paint.front)) || (f.paint?.back && !materials.has(f.paint.back)))) return null;
     const instances = new Map<string, Instance>();
     for (const [iid, ri] of Object.entries(raw.instances)) {
       if (!isObject(ri) || typeof ri.definition !== 'string' || typeof ri.name !== 'string') return null;
       const t = transform(ri.transform);
       const tag = tagRef(ri);
-      if (!t || tag === null) return null;
-      instances.set(iid, withTag<Instance>({ id: iid, definitionId: ri.definition, name: ri.name, transform: t }, tag));
+      if (!t || tag === null || (ri.material !== undefined && !knownMaterial(ri.material))) return null;
+      const placed = withTag<Instance>({ id: iid, definitionId: ri.definition, name: ri.name, transform: t }, tag);
+      instances.set(iid, ri.material ? { ...placed, material: ri.material as string } : placed);
     }
     const guides = new Map<string, Guide>();
     if (raw.guides !== undefined) {
@@ -203,7 +242,7 @@ export function deserializeScene(data: unknown): Scene | null {
   }
   const root = definitions.get(data.root);
   if (!root || root.kind !== 'root') return null;
-  const scene: Scene = { rootId: data.root, definitions, tags: tagMap, next: data.next as number };
+  const scene: Scene = { rootId: data.root, definitions, tags: tagMap, materials, next: data.next as number };
   // Every instance refers to an existing, non-root definition, and nothing contains itself.
   for (const d of definitions.values()) {
     for (const i of d.instances.values()) {

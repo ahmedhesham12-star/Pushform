@@ -122,7 +122,7 @@ describe('milestone 3 acceptance: a cabinet', () => {
     expect(t(c.drawers[0]!)).toEqual([20, 30, 20]);
   });
 
-  test('save and reload give back the same cabinet (file and autosave)', () => {
+  test('save and reload give back the same cabinet (file and autosave)', async () => {
     const text = documentToText(c.s.doc);
     const reopened = documentFromText(text)!;
     expect(reopened).not.toBeNull();
@@ -135,8 +135,8 @@ describe('milestone 3 acceptance: a cabinet', () => {
     expect(instanceCount(again.doc.scene, c.drawer.definitionId)).toBe(3);
     // Through the browser autosave too.
     localStorage.clear();
-    saveAutosave(c.s.doc);
-    expect(serializeDocument(loadAutosave()!)).toEqual(serializeDocument(c.s.doc));
+    await saveAutosave(c.s.doc);
+    expect(serializeDocument((await loadAutosave())!)).toEqual(serializeDocument(c.s.doc));
   });
 
   test('it exports: STL with every part placed, GLB with the drawer as one shared mesh', async () => {

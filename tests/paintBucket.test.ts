@@ -157,6 +157,7 @@ describe('the Materials panel', () => {
       rename: vi.fn((materialId, name) => void ok(s.execute('core.renameMaterial', { materialId, name }))),
       setColor: vi.fn((materialId, color) => void ok(s.execute('core.setMaterialColor', { materialId, color }))),
       setTexture: vi.fn((materialId, texture) => void ok(s.execute('core.setMaterialTexture', { materialId, texture }))),
+      setStock: vi.fn((materialId, stock) => void ok(s.execute('core.setMaterialStock', { materialId, stock }))),
       duplicate: vi.fn(),
       remove: vi.fn((materialId) => void ok(s.execute('core.deleteMaterial', { materialId }))),
       flash: vi.fn(),
@@ -204,5 +205,40 @@ describe('the Materials panel', () => {
     const del = [...p.element.querySelectorAll<HTMLButtonElement>('.materials-action')].find((b) => b.textContent === 'Delete')!;
     del.click();
     expect(s.doc.scene.materials.size).toBe(0);
+  });
+
+  test('the stock form: paint only, sheet goods with a typed thickness and price, solid wood priced per board foot', () => {
+    const s = createSession();
+    const id = ok(s.execute('core.addMaterial', {})).materialId;
+    ok(s.execute('core.setDisplayUnits', { unit: 'mm', precision: 1 }));
+    const { p, host } = panel(s);
+    host.choose({ materialId: id });
+    p.sync();
+    const kind = () => p.element.querySelector<HTMLSelectElement>('.materials-editor select')!;
+    expect(kind().value).toBe('none');
+    kind().value = 'sheet';
+    kind().dispatchEvent(new Event('change'));
+    p.sync();
+    expect(s.doc.scene.materials.get(id)!.stock).toEqual({ kind: 'sheet', thickness: 18, length: 2440, width: 1220, grain: false });
+    const field = (label: string) =>
+      [...p.element.querySelectorAll('.materials-field')].find((f) => f.firstChild!.textContent === label)!.querySelector('input') as HTMLInputElement;
+    expect(field('Thickness').getAttribute('list')).toBeTruthy();
+    field('Thickness').value = '3/4"';
+    field('Thickness').dispatchEvent(new Event('change'));
+    p.sync();
+    field('Price per sheet').value = '45,50';
+    field('Price per sheet').dispatchEvent(new Event('change'));
+    p.sync();
+    expect(s.doc.scene.materials.get(id)!.stock).toMatchObject({ thickness: 19.05, price: 45.5 });
+    field('Sheet width').value = 'wide';
+    field('Sheet width').dispatchEvent(new Event('change'));
+    expect(host.flash).toHaveBeenCalledWith('Type a length, such as 18mm or 3/4".', true);
+    kind().value = 'solid';
+    kind().dispatchEvent(new Event('change'));
+    p.sync();
+    const per = p.element.querySelectorAll<HTMLSelectElement>('.materials-editor select')[1]!;
+    per.value = 'boardFoot';
+    per.dispatchEvent(new Event('change'));
+    expect(s.doc.scene.materials.get(id)!.stock).toEqual({ kind: 'solid', thickness: 19.05, per: 'boardFoot', grain: true });
   });
 });

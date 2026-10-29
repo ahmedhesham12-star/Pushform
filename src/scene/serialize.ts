@@ -1,5 +1,5 @@
 import { deserialize, listFaces, serialize, type Model, type SerializedTopology } from '../kernel';
-import { MATERIAL_COLOR, type Material } from './materials';
+import { MATERIAL_COLOR, validStock, type Material, type Stock } from './materials';
 import type { Anchor, AnchorRef, Annotation } from './annotations';
 import { guideLine, guidePoint, type Guide } from './guides';
 import { contains, createScene, type Definition, type DefinitionKind, type Instance, type Scene } from './scene';
@@ -89,16 +89,22 @@ export interface SerializedMaterial {
   name: string;
   color: string;
   texture?: { data: string; mime: string; width: number; height: number };
+  stock?: Stock;
 }
 
 function saveMaterial(m: Material): SerializedMaterial {
-  return { name: m.name, color: m.color, ...(m.texture ? { texture: { ...m.texture } } : {}) };
+  return { name: m.name, color: m.color, ...(m.texture ? { texture: { ...m.texture } } : {}), ...(m.stock ? { stock: { ...m.stock } } : {}) };
 }
 
 /** A material from a file, or null when it is not one: a name, a #rrggbb color, and a PNG or JPEG texture with a positive size. */
 function material(v: unknown): Material | null {
   if (!isObject(v) || typeof v.name !== 'string' || !v.name.trim() || typeof v.color !== 'string' || !MATERIAL_COLOR.test(v.color.toLowerCase())) return null;
-  const out: Material = { name: v.name, color: v.color.toLowerCase() };
+  let out: Material = { name: v.name, color: v.color.toLowerCase() };
+  if (v.stock !== undefined) {
+    const stock = validStock(v.stock);
+    if (!stock) return null;
+    out = { ...out, stock };
+  }
   if (v.texture === undefined) return out;
   const x = v.texture;
   if (!isObject(x) || typeof x.data !== 'string' || !x.data || (x.mime !== 'image/png' && x.mime !== 'image/jpeg')) return null;

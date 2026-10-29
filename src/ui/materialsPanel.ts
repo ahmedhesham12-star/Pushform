@@ -1,8 +1,8 @@
 import { STARTER_MATERIALS, starterName, type StarterMaterial } from '../commands';
 import { t } from '../i18n';
-import type { Material, MaterialId, Scene, Texture } from '../scene';
+import type { Material, MaterialId, Scene, Stock, Texture } from '../scene';
 import type { PaintChoice } from '../tools';
-import { formatLength, parseLength, type UnitSettings } from '../units';
+import { formatLength, formatNumber, parseLength, type UnitSettings } from '../units';
 import { el } from './dom';
 
 export interface MaterialsHost {
@@ -16,6 +16,8 @@ export interface MaterialsHost {
   rename(id: MaterialId, name: string): void;
   setColor(id: MaterialId, color: string): void;
   setTexture(id: MaterialId, texture: Texture | null): void;
+  /** What the material is bought as, for the cut list; null for paint only. */
+  setStock(id: MaterialId, stock: Stock | null): void;
   duplicate(id: MaterialId): void;
   remove(id: MaterialId): void;
   /** Say something in the status bar (an image that could not be read). */
@@ -77,7 +79,7 @@ export class MaterialsPanel {
     for (const [id, m] of materials) this.inModel.append(this.swatch({ materialId: id }, m.name, m, current));
     const names = new Set([...materials.values()].map((m) => m.name));
     this.starters.replaceChildren(
-      ...STARTERS.filter((k) => !names.has(starterName(k))).map((k) => this.swatch({ starter: k }, starterName(k), { name: starterName(k), color: STARTER_MATERIALS[k].color }, current)),
+      ...STARTERS.filter((k) => !names.has(starterName(k))).map((k) => this.swatch({ starter: k }, starterName(k), { name: starterName(k), color: STARTER_MATERIALS[k]!.color }, current)),
     );
     const chosen = 'materialId' in current && current.materialId !== null ? materials.get(current.materialId) : undefined;
     const name = chosen ? chosen.name : 'starter' in current ? starterName(current.starter) : t('materials.default');
@@ -161,6 +163,7 @@ export class MaterialsPanel {
       });
       field(t('materials.tileWidth'), tile);
     }
+    this.stockFields(id, m.stock);
     const more = el('div', 'materials-actions');
     for (const [label, run] of [
       [t('materials.duplicate'), () => this.host.duplicate(id)],
@@ -172,6 +175,106 @@ export class MaterialsPanel {
       more.append(b);
     }
     this.editor.append(more);
+  }
+
+  /**
+   * What the material is bought as: none (paint only), sheet goods or solid
+   * wood, with a thickness (common ones suggested), the sheet size, a price
+   * and whether it has a grain. Every change sets the whole stock.
+   */
+  private stockFields(id: MaterialId, stock: Stock | undefined): void {
+    const units = this.host.units();
+    const length = (mm: number) => formatLength(mm, units);
+    const row = (label: string, input: HTMLElement) => {
+      const r = el('label', 'materials-field');
+      r.append(el('span', undefined, label), input);
+      this.editor.append(r);
+    };
+    const kind = el('select');
+    for (const [value, key] of [
+      ['none', 'materials.stockNone'],
+      ['sheet', 'materials.stockSheet'],
+      ['solid', 'materials.stockSolid'],
+    ] as const) {
+      const o = el('option', undefined, t(key));
+      o.value = value;
+      kind.append(o);
+    }
+    kind.value = stock?.kind ?? 'none';
+    kind.addEventListener('change', () => {
+      const imperial = units.unit === 'in' || units.unit === 'in-frac' || units.unit === 'ft-in';
+      if (kind.value === 'sheet') this.host.setStock(id, { kind: 'sheet', thickness: stock?.thickness ?? 18, length: 2440, width: 1220, grain: stock?.grain ?? false });
+      else if (kind.value === 'solid') this.host.setStock(id, { kind: 'solid', thickness: stock?.thickness ?? 18, per: imperial ? 'boardFoot' : 'cubicMeter', grain: true });
+      else this.host.setStock(id, null);
+    });
+    row(t('materials.stock'), kind);
+    if (!stock) return;
+    /** A length field: typed in the file's units, set when it reads as a positive length. */
+    const lengthField = (label: string, value: number, set: (mm: number) => Stock, list?: string) => {
+      const input = el('input');
+      input.value = length(value);
+      input.spellcheck = false;
+      if (list) input.setAttribute('list', list);
+      input.addEventListener('change', () => {
+        const r = parseLength(input.value, units.unit);
+        if (!r.ok || r.mm <= 0) {
+          input.value = length(value);
+          return this.host.flash(t('error.typeLength'), true);
+        }
+        this.host.setStock(id, set(r.mm));
+      });
+      row(label, input);
+    };
+    // Common sheet thicknesses: 12, 15, 18 and 25 mm, 1/2" and 3/4".
+    const list = el('datalist');
+    list.id = `materials-thicknesses-${id}`;
+    for (const mm of [12, 15, 18, 25, 12.7, 19.05]) {
+      const o = el('option');
+      o.value = mm === 12.7 ? '1/2"' : mm === 19.05 ? '3/4"' : `${mm}mm`;
+      list.append(o);
+    }
+    this.editor.append(list);
+    lengthField(t('materials.thickness'), stock.thickness, (mm) => ({ ...stock, thickness: mm }), list.id);
+    if (stock.kind === 'sheet') {
+      lengthField(t('materials.sheetLength'), stock.length, (mm) => ({ ...stock, length: mm }));
+      lengthField(t('materials.sheetWidth'), stock.width, (mm) => ({ ...stock, width: mm }));
+    }
+    const price = el('input');
+    price.inputMode = 'decimal';
+    price.value = stock.price === undefined ? '' : formatNumber(stock.price, 2);
+    price.addEventListener('change', () => {
+      const text = price.value.trim();
+      const { price: _old, ...rest } = stock;
+      if (!text) return this.host.setStock(id, rest);
+      const n = Number(text.replace(',', '.'));
+      if (!Number.isFinite(n) || n < 0) {
+        price.value = stock.price === undefined ? '' : formatNumber(stock.price, 2);
+        return this.host.flash(t('error.typePrice'), true);
+      }
+      this.host.setStock(id, { ...rest, price: n });
+    });
+    row(t(stock.kind === 'sheet' ? 'materials.pricePerSheet' : 'materials.price'), price);
+    if (stock.kind === 'solid') {
+      const per = el('select');
+      for (const [value, key] of [
+        ['cubicMeter', 'materials.perCubicMeter'],
+        ['boardFoot', 'materials.perBoardFoot'],
+      ] as const) {
+        const o = el('option', undefined, t(key));
+        o.value = value;
+        per.append(o);
+      }
+      per.value = stock.per;
+      per.addEventListener('change', () => this.host.setStock(id, { ...stock, per: per.value as 'boardFoot' | 'cubicMeter' }));
+      row(t('materials.pricePer'), per);
+    }
+    const grain = el('input');
+    grain.type = 'checkbox';
+    grain.checked = stock.grain;
+    grain.addEventListener('change', () => this.host.setStock(id, { ...stock, grain: grain.checked }));
+    const g = el('label', 'materials-check');
+    g.append(grain, el('span', undefined, t('materials.grain')));
+    this.editor.append(g);
   }
 
   /** Read an image, scale it down past MAX_TEXTURE_SIZE, and set it on a material with a tile DEFAULT_TILE wide. */

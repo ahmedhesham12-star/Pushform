@@ -1,25 +1,35 @@
 import { z } from 'zod';
 import { t, type MessageKey } from '../../i18n';
-import { paintFaces, replacePaint } from '../../kernel';
-import { addMaterial as addSceneMaterial, getDefinition, putInstance, setModel, updateMaterial, type Material, type Scene } from '../../scene';
+import { paintFaces, replacePaint, snapLength } from '../../kernel';
+import { addMaterial as addSceneMaterial, getDefinition, putInstance, setModel, updateMaterial, type Material, type Scene, type Stock } from '../../scene';
 import type { PushformDocument } from '../document';
 import type { CommandDef, RunResult } from '../types';
 import { definitionId } from './schemas';
 
-/** The starter set: built in, copied into a file the first time it is used. Plain colors, no textures. */
-export const STARTER_MATERIALS = {
-  birchPly: { color: '#e3cfa2' },
-  oak: { color: '#c8a165' },
-  walnut: { color: '#6b4a33' },
-  whiteMdf: { color: '#efeee9' },
-  whiteMelamine: { color: '#f7f7f4' },
+/**
+ * The starter set: built in, copied into a file the first time it is used.
+ * Plain colors, no textures; the woods and boards come with common stock
+ * (no prices: those depend on the supplier). Painted colors are paint only.
+ */
+export const STARTER_MATERIALS: Record<string, { readonly color: string; readonly stock?: Stock }> = {
+  birchPly: { color: '#e3cfa2', stock: { kind: 'sheet', thickness: 12, length: 1525, width: 1525, grain: true } },
+  oak: { color: '#c8a165', stock: { kind: 'solid', thickness: 18, per: 'cubicMeter', grain: true } },
+  walnut: { color: '#6b4a33', stock: { kind: 'solid', thickness: 20, per: 'cubicMeter', grain: true } },
+  whiteMdf: { color: '#efeee9', stock: { kind: 'sheet', thickness: 18, length: 2440, width: 1220, grain: false } },
+  whiteMelamine: { color: '#f7f7f4', stock: { kind: 'sheet', thickness: 18, length: 2440, width: 1220, grain: false } },
   paintedSage: { color: '#9aab8f' },
   paintedNavy: { color: '#2f3e57' },
   paintedCharcoal: { color: '#3b3f42' },
   paintedCream: { color: '#ece3cf' },
-} as const;
-export type StarterMaterial = keyof typeof STARTER_MATERIALS;
-const STARTERS = Object.keys(STARTER_MATERIALS) as [StarterMaterial, ...StarterMaterial[]];
+};
+const STARTERS = ['birchPly', 'oak', 'walnut', 'whiteMdf', 'whiteMelamine', 'paintedSage', 'paintedNavy', 'paintedCharcoal', 'paintedCream'] as const;
+export type StarterMaterial = (typeof STARTERS)[number];
+
+/** A starter material as it comes into a file. */
+function fromStarter(key: StarterMaterial): Material {
+  const s = STARTER_MATERIALS[key]!;
+  return { name: starterName(key), color: s.color, ...(s.stock ? { stock: s.stock } : {}) };
+}
 
 /** The name a starter material gets in the file, in the current language. */
 export const starterName = (key: StarterMaterial) => t(`materials.starter.${key}` as MessageKey);
@@ -63,11 +73,8 @@ export const addMaterial: CommandDef<AddMaterialInput, { materialId: string }> =
   title: () => t('command.addMaterial'),
   input: addMaterialInput,
   run(doc, input) {
-    const starter = input.starter && STARTER_MATERIALS[input.starter];
-    const material: Material = {
-      name: input.name ?? (input.starter ? starterName(input.starter) : freshName(doc.scene)),
-      color: input.color ?? starter?.color ?? '#b4b4b0',
-    };
+    const base: Material = input.starter ? fromStarter(input.starter) : { name: freshName(doc.scene), color: '#b4b4b0' };
+    const material: Material = { ...base, ...(input.name ? { name: input.name } : {}), ...(input.color ? { color: input.color } : {}) };
     const [id, scene] = addSceneMaterial(doc.scene, material);
     return done(doc, scene, { materialId: id });
   },
@@ -111,6 +118,29 @@ export const setMaterialTexture: CommandDef<SetMaterialTextureInput, Record<stri
     update(doc, input.materialId, (m) => {
       const { texture: _old, ...rest } = m;
       return input.texture ? { ...rest, texture: input.texture } : rest;
+    }),
+};
+
+/** A size in mm, rounded to the model's precision as lengths are (3/4" is 19.05). */
+const size = z.number().positive().transform(snapLength);
+const price = z.number().nonnegative().optional();
+const stock = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('sheet'), thickness: size, length: size, width: size, price, grain: z.boolean() }),
+  z.strictObject({ kind: z.literal('solid'), thickness: size, price, per: z.enum(['boardFoot', 'cubicMeter']), grain: z.boolean() }),
+]);
+
+export const setMaterialStockInput = z.strictObject({ materialId, stock: stock.nullable() });
+export type SetMaterialStockInput = z.infer<typeof setMaterialStockInput>;
+
+/** Say what a material is bought as (sheet goods or solid wood, with a thickness, sizes and a price), or null for paint only. */
+export const setMaterialStock: CommandDef<SetMaterialStockInput, Record<string, never>> = {
+  id: 'core.setMaterialStock',
+  title: () => t('command.setMaterialStock'),
+  input: setMaterialStockInput,
+  run: (doc, input) =>
+    update(doc, input.materialId, (m) => {
+      const { stock: _old, ...rest } = m;
+      return input.stock ? { ...rest, stock: input.stock as Stock } : rest;
     }),
 };
 
@@ -186,7 +216,7 @@ export const paint: CommandDef<PaintInput, { materialId: string | null }> = {
     if (!input.faceIds?.length && !input.instanceIds?.length) return { ok: false, error: { code: 'nothingSelected' } };
     let scene = doc.scene;
     let id = input.materialId ?? null;
-    if (input.starter) [id, scene] = addSceneMaterial(scene, { name: starterName(input.starter), color: STARTER_MATERIALS[input.starter].color });
+    if (input.starter) [id, scene] = addSceneMaterial(scene, fromStarter(input.starter));
     else if (id !== null && !scene.materials.has(id)) return noSuchMaterial(id);
     scene = setModel(scene, defId, paintFaces(def.model, input.faceIds ?? [], input.sides ?? ['front'], id));
     for (const instanceId of input.instanceIds ?? []) {

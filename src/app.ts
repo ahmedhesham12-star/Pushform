@@ -283,6 +283,7 @@ export class App {
       rename: (materialId, name) => this.run(this.session.execute('core.renameMaterial', { materialId, name })),
       setColor: (materialId, color) => this.run(this.session.execute('core.setMaterialColor', { materialId, color })),
       setTexture: (materialId, texture) => this.run(this.session.execute('core.setMaterialTexture', { materialId, texture })),
+      setStock: (materialId, stock) => this.run(this.session.execute('core.setMaterialStock', { materialId, stock })),
       duplicate: (materialId) => {
         const r = this.session.execute('core.duplicateMaterial', { materialId });
         if (r.ok) this.setPaintChoice({ materialId: r.output.materialId });

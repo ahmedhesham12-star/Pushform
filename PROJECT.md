@@ -202,11 +202,15 @@ Plugins call `registry.register(def)` and extend the typed `CommandMap` through 
 `.pushform` files are this JSON, version 5 (milestone 5): a scene of tags, materials and definitions, each definition holding a version 2 topology model, the instances placed in them, its guides and its annotations (dimensions and text). Instances, guides and annotations may name a tag; none means Untagged. Faces (in the model) and instances may name materials. Version 4 (milestone 4) is the same without tags, and version 3 (milestone 3) without guides and annotations; both still open.
 ```
 { format: 'pushform', version: 5, units: { unit, precision },
+  cutList?: { waste: fraction, currency: 'EUR' | null, includeHidden },
   scene: { root: definition id, next,
            tags?: { id: { name, color: '#rrggbb', visible } },
            materials?: { id: { name, color: '#rrggbb',
                                texture?: { data: base64, mime: 'image/png' | 'image/jpeg',
-                                           width: mm, height: mm } } },
+                                           width: mm, height: mm },
+                               stock?: { kind: 'sheet', thickness, length, width, price?, grain }
+                                     | { kind: 'solid', thickness, price?,
+                                         per: 'boardFoot' | 'cubicMeter', grain } } },
            definitions: { id: { kind: 'root' | 'group' | 'component', name,
                                 model: <version 2 model, below>,
                                 instances: { id: { definition, name,
@@ -357,6 +361,7 @@ Every level is validated on load: unit quaternions, scale with no zero component
 | 2026-10-29 | Materials in the viewport: each face side shows its own material, else the material of the nearest painted instance around it, else the usual front color or blue-grey back. Definitions are drawn with one draw group per material on each side, so all copies share their geometry and differ only in materials. Textures are tiled with face texture coordinates in mm along each face's longest edge (`faceTextureFrame`, in the definition's own coordinates, so a texture moves with its group) and repeat at the material's tile size; textured materials are untinted. Color by Tag and highlights show over materials | Plan step 5, approved (the longest-edge direction differs from SketchUp's default, which is aligned to the axes; recorded under "Verified in SketchUp"). |
 | 2026-10-29 | The Paint Bucket paints with the Materials panel's current material (Default removes paint); painting with a starter material copies it into the file in the same step (`core.paint` with `starter`), so one undo removes both. The Materials panel (in the tray) shows Default and the model's materials, then the starter set not yet in the model; the chosen model material can be renamed, recolored, duplicated, deleted, and given a PNG or JPEG image (scaled down past 2048 px, a 600 mm wide tile by default, height by the image's proportions). Entity Info shows a group's or component's material | Plan step 6, approved; SketchUp's Materials panel and Paint Bucket. |
 | 2026-10-29 | GLB export writes materials: one primitive per material in each mesh (a face's own front paint, else what the instances around it pass down, else the default color), base colors converted to linear light, textures embedded as PNG or JPEG with texture coordinates in tiles (v down the image, as glTF has it) and a repeating sampler. A definition gets one mesh per material its instances pass down, so copies with the same material still share a mesh. Every buffer view starts on a 4-byte boundary | Plan step 7, approved; checked with the Khronos validator (colors, an embedded texture, a mirrored copy). |
+| 2026-10-29 | Woodworking stock on materials (`core.setMaterialStock`): sheet goods (thickness, sheet length and width, price per sheet) or solid wood (thickness, price per board foot or per cubic meter), with a grain flag; sizes rounded to the model's precision like every length. The starter woods and boards come with common stock (birch ply 12 mm, 1525 x 1525; white melamine and white MDF 18 mm, 2440 x 1220; oak 18 mm and walnut 20 mm solid) and no prices; painted colors are paint only. Cut list settings (waste, default 15%; currency, an ISO code or none; include hidden parts) are kept in the file (`core.setCutListSettings`). The Materials panel suggests 12, 15, 18 and 25 mm, 1/2" and 3/4" for thickness | Plan step 8, approved. |
 
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.

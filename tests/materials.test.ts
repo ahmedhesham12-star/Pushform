@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { createSession, definitionModel, documentFromText, documentToText, serializeDocument, type CommandSession } from '../src/commands';
+import { createSession, cutListSettings, definitionModel, documentFromText, documentToText, serializeDocument, type CommandSession } from '../src/commands';
 import { getFace, listFaces } from '../src/kernel';
 import { findInstance, getDefinition, inheritedMaterial, shownMaterial } from '../src/scene';
 
@@ -36,7 +36,7 @@ describe('material commands', () => {
     ok(s.execute('core.setMaterialColor', { materialId: a, color: '#7a4a2a' }));
     expect(s.doc.scene.materials.get(a)).toEqual({ name: 'Sapele', color: '#7a4a2a' });
     const copy = ok(s.execute('core.duplicateMaterial', { materialId: oak })).materialId;
-    expect(s.doc.scene.materials.get(copy)).toEqual({ name: 'Oak copy', color: '#c8a165' });
+    expect(s.doc.scene.materials.get(copy)).toMatchObject({ name: 'Oak copy', color: '#c8a165' });
     expect(code(s.execute('core.renameMaterial', { materialId: b, name: '' }))).toBe('invalidInput');
     expect(code(s.execute('core.setMaterialColor', { materialId: 'm999', color: '#000000' }))).toBe('noSuchMaterial');
     const doc = s.doc;
@@ -157,5 +157,50 @@ describe('materials in files', () => {
     const bad = structuredClone(saved);
     bad.scene.materials[oak].texture = { data: 'x', mime: 'image/gif', width: 1, height: 1 };
     expect(documentFromText(JSON.stringify(bad))).toBeNull();
+  });
+});
+
+describe('woodworking stock (step 8)', () => {
+  test('starter woods and boards come with their stock; painted colors with none', () => {
+    const s = createSession();
+    const ply = ok(s.execute('core.addMaterial', { starter: 'birchPly' })).materialId;
+    const oak = ok(s.execute('core.addMaterial', { starter: 'oak' })).materialId;
+    const sage = ok(s.execute('core.addMaterial', { starter: 'paintedSage' })).materialId;
+    expect(s.doc.scene.materials.get(ply)!.stock).toEqual({ kind: 'sheet', thickness: 12, length: 1525, width: 1525, grain: true });
+    expect(s.doc.scene.materials.get(oak)!.stock).toEqual({ kind: 'solid', thickness: 18, per: 'cubicMeter', grain: true });
+    expect(s.doc.scene.materials.get(sage)!.stock).toBeUndefined();
+  });
+
+  test('stock is set, validated, saved and taken away', () => {
+    const s = createSession();
+    const id = ok(s.execute('core.addMaterial', {})).materialId;
+    const sheet = { kind: 'sheet' as const, thickness: 18, length: 2440, width: 1220, price: 58.5, grain: false };
+    ok(s.execute('core.setMaterialStock', { materialId: id, stock: sheet }));
+    expect(s.doc.scene.materials.get(id)!.stock).toEqual(sheet);
+    expect(code(s.execute('core.setMaterialStock', { materialId: id, stock: { ...sheet, thickness: 0 } }))).toBe('invalidInput');
+    expect(code(s.execute('core.setMaterialStock', { materialId: id, stock: { ...sheet, price: -1 } }))).toBe('invalidInput');
+    expect(code(s.execute('core.setMaterialStock', { materialId: id, stock: { kind: 'solid', thickness: 20, per: 'yard', grain: true } as never }))).toBe('invalidInput');
+    const back = documentFromText(documentToText(s.doc))!;
+    expect(back.scene.materials.get(id)!.stock).toEqual(sheet);
+    const saved = JSON.parse(documentToText(s.doc));
+    saved.scene.materials[id].stock.width = -5;
+    expect(documentFromText(JSON.stringify(saved))).toBeNull();
+    ok(s.execute('core.setMaterialStock', { materialId: id, stock: null }));
+    expect(s.doc.scene.materials.get(id)!.stock).toBeUndefined();
+  });
+
+  test('cut list settings: defaults, changes, saved in the file', () => {
+    const s = createSession();
+    expect(cutListSettings(s.doc)).toEqual({ waste: 0.15, currency: null, includeHidden: false });
+    const doc = s.doc;
+    ok(s.execute('core.setCutListSettings', { waste: 0.15 }));
+    expect(s.doc).toBe(doc);
+    ok(s.execute('core.setCutListSettings', { waste: 0.2, currency: 'eur', includeHidden: true }));
+    expect(cutListSettings(s.doc)).toEqual({ waste: 0.2, currency: 'EUR', includeHidden: true });
+    expect(code(s.execute('core.setCutListSettings', { currency: 'euro' }))).toBe('invalidInput');
+    expect(code(s.execute('core.setCutListSettings', { waste: -0.1 }))).toBe('invalidInput');
+    expect(cutListSettings(documentFromText(documentToText(s.doc))!)).toEqual({ waste: 0.2, currency: 'EUR', includeHidden: true });
+    ok(s.execute('core.setCutListSettings', { currency: null }));
+    expect(cutListSettings(s.doc).currency).toBeNull();
   });
 });

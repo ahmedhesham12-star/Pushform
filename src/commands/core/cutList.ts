@@ -1,0 +1,35 @@
+import { z } from 'zod';
+import { t } from '../../i18n';
+import { cutListSettings } from '../document';
+import type { CommandDef } from '../types';
+
+export const setCutListSettingsInput = z.strictObject({
+  /** Waste as a fraction (0.15 is 15%). */
+  waste: z.number().min(0).max(9).optional(),
+  /** An ISO 4217 code such as EUR, or null for plain numbers. */
+  currency: z
+    .string()
+    .regex(/^[A-Za-z]{3}$/)
+    .transform((c) => c.toUpperCase())
+    .nullable()
+    .optional(),
+  includeHidden: z.boolean().optional(),
+});
+export type SetCutListSettingsInput = z.infer<typeof setCutListSettingsInput>;
+
+/** Change the cut list's waste, currency or whether hidden parts are listed; saved in the file. */
+export const setCutListSettings: CommandDef<SetCutListSettingsInput, Record<string, never>> = {
+  id: 'core.setCutListSettings',
+  title: () => t('command.setCutListSettings'),
+  input: setCutListSettingsInput,
+  run(doc, input) {
+    const old = cutListSettings(doc);
+    const next = {
+      waste: input.waste ?? old.waste,
+      currency: input.currency === undefined ? old.currency : input.currency,
+      includeHidden: input.includeHidden ?? old.includeHidden,
+    };
+    if (next.waste === old.waste && next.currency === old.currency && next.includeHidden === old.includeHidden) return { ok: true, doc, output: {} };
+    return { ok: true, doc: { ...doc, cutList: next }, output: {} };
+  },
+};

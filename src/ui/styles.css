@@ -650,6 +650,24 @@ li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
   block-size: 24px;
   padding: 0;
 }
+.materials-field select {
+  min-inline-size: 0;
+  padding-block: 2px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--canvas);
+  color: inherit;
+  font: inherit;
+}
+.materials-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink-2);
+}
+.panel .materials-check input {
+  inline-size: auto;
+}
 .materials-actions {
   display: flex;
   flex-wrap: wrap;

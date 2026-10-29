@@ -17,11 +17,35 @@ export interface Texture {
   readonly height: number;
 }
 
+/**
+ * What a material is bought as, for the cut list (milestone 5): sheet goods
+ * (thickness and sheet size in mm, a price per sheet) or solid wood (a
+ * thickness, a price per board foot or per cubic meter). Prices are in the
+ * file's currency. `grain` says the material has a grain direction.
+ */
+export type Stock =
+  | { readonly kind: 'sheet'; readonly thickness: number; readonly length: number; readonly width: number; readonly price?: number; readonly grain: boolean }
+  | { readonly kind: 'solid'; readonly thickness: number; readonly price?: number; readonly per: 'boardFoot' | 'cubicMeter'; readonly grain: boolean };
+
 export interface Material {
   readonly name: string;
   /** #rrggbb; with a texture, the color shown where the image cannot be (and in lists). */
   readonly color: string;
   readonly texture?: Texture;
+  readonly stock?: Stock;
+}
+
+/** A stock read from a file or typed, or null when it is not one: positive sizes, a price of zero or more. */
+export function validStock(v: unknown): Stock | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const x = v as Record<string, unknown>;
+  const size = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n > 0;
+  const price = x.price === undefined || (typeof x.price === 'number' && Number.isFinite(x.price) && x.price >= 0);
+  if (!size(x.thickness) || !price || typeof x.grain !== 'boolean') return null;
+  const base = { thickness: x.thickness as number, grain: x.grain, ...(x.price === undefined ? {} : { price: x.price as number }) };
+  if (x.kind === 'sheet' && size(x.length) && size(x.width)) return { kind: 'sheet', ...base, length: x.length as number, width: x.width as number };
+  if (x.kind === 'solid' && (x.per === 'boardFoot' || x.per === 'cubicMeter')) return { kind: 'solid', ...base, per: x.per };
+  return null;
 }
 
 export const MATERIAL_COLOR = /^#[0-9a-f]{6}$/;

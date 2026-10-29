@@ -3,12 +3,13 @@ import { add, cleanNormal, cross, dot, length, normalize, planeAxes, scale, sub,
 import { Draft } from './draft';
 import { onPlane, planeBasis, planeThrough, samePlane, type Plane } from './geometry';
 import { insertSegment, rebuildPlane } from './planar';
+import { planeProblems } from './validate';
 import type { Curve, EdgeId, FaceId, Point3, Topology } from './types';
 
 export const GROUND: Plane = { n: [0, 1, 0], d: 0 };
 export const GROUND_NORMAL: Vec3 = [0, 1, 0];
 
-export type DrawError = 'noSuchFace' | 'tooSmall' | 'notOnPlane';
+export type DrawError = 'noSuchFace' | 'tooSmall' | 'notOnPlane' | 'tooClose';
 export type DrawResult =
   | { ok: true; topology: Topology; faceIds: FaceId[]; edgeIds: EdgeId[] }
   | { ok: false; error: DrawError };
@@ -39,14 +40,28 @@ export function drawLoop(
   normal: Vec3,
   points: readonly Point3[],
   curve: Omit<Curve, 'edges'> | null = null,
-): { topology: Topology; faceIds: FaceId[]; edgeIds: EdgeId[] } {
+): DrawnShape {
   const segments = points.map((a, i) => ({ a, b: points[(i + 1) % points.length]!, curve: curve !== null }));
   return drawSegments(t, plane, normal, segments, curve);
 }
 
+/** What drawing gives: the new topology, or `clash` when the shape would leave a malformed face (see drawSegments). */
+export interface DrawnShape {
+  topology: Topology;
+  faceIds: FaceId[];
+  edgeIds: EdgeId[];
+  clash: boolean;
+}
+
+/** A drawn shape as a DrawResult: refused with tooClose when it clashes. */
+export const drawResult = (r: DrawnShape): DrawResult => (r.clash ? { ok: false, error: 'tooClose' } : { ok: true, topology: r.topology, faceIds: r.faceIds, edgeIds: r.edgeIds });
+
 /**
  * Draw segments in a plane, as drawLoop does; those marked `curve` make up
- * one curve (an arc, with the straight radii of a pie beside it).
+ * one curve (an arc, with the straight radii of a pie beside it). A shape
+ * landing a hair away from existing geometry (closer than a face can resolve,
+ * farther than the vertices merge) can leave a sliver or a loop that touches
+ * itself; then `clash` is set and the caller refuses it.
  */
 export function drawSegments(
   t: Topology,
@@ -54,7 +69,7 @@ export function drawSegments(
   normal: Vec3,
   segments: readonly { a: Point3; b: Point3; curve: boolean }[],
   curve: Omit<Curve, 'edges'> | null = null,
-): { topology: Topology; faceIds: FaceId[]; edgeIds: EdgeId[] } {
+): DrawnShape {
   const d = new Draft(t);
   const curveId = curve ? d.addCurve(curve) : null;
   const drawn = new Set<EdgeId>();
@@ -75,7 +90,11 @@ export function drawSegments(
     for (const f of ro.created) created.add(f);
     for (const f of ro.removed) created.delete(f);
   }
-  return { topology: d.commit(), faceIds: [...created].filter((f) => d.faces.has(f)), edgeIds: [...drawn] };
+  const topology = d.commit();
+  const touched = [plane, ...others.map((o) => o.plane)];
+  const twice = [...topology.faces.values()].some((f) => [f.outer, ...f.holes].some((l) => new Set(l).size !== l.length));
+  const clash = twice || touched.some((pl) => planeProblems(topology, pl).length > 0);
+  return { topology, faceIds: [...created].filter((f) => d.faces.has(f)), edgeIds: [...drawn], clash };
 }
 
 /** A vector with its component along unit normal n removed, made unit length (zero when it was along n). */
@@ -158,7 +177,7 @@ export function drawRegularPolygon(t: Topology, spec: RegularPolygonSpec): DrawR
   if (!onPlane(target.plane, spec.center, 0.1)) return { ok: false, error: 'notOnPlane' };
   const pts = regularPolygonPoints(target.normal, spec.center, spec.radius, spec.segments, spec.direction);
   const curve = { kind: spec.kind, segments: spec.segments, center: snapPoint(spec.center), normal: target.normal, radius: spec.radius };
-  return { ok: true, ...drawLoop(t, target.plane, target.normal, pts, curve) };
+  return drawResult(drawLoop(t, target.plane, target.normal, pts, curve));
 }
 
 export function drawRectangle(t: Topology, spec: RectangleSpec): DrawResult {
@@ -167,5 +186,5 @@ export function drawRectangle(t: Topology, spec: RectangleSpec): DrawResult {
   if (!target) return { ok: false, error: 'noSuchFace' };
   if (!onPlane(target.plane, spec.corner, 0.1)) return { ok: false, error: 'notOnPlane' };
   const pts = rectangleCorners(target.normal, spec.corner, spec.width, spec.depth, spec.axis);
-  return { ok: true, ...drawLoop(t, target.plane, target.normal, pts) };
+  return drawResult(drawLoop(t, target.plane, target.normal, pts));
 }

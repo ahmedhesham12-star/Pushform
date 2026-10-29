@@ -1,6 +1,6 @@
 import { snapPoint, VERTEX_TOLERANCE } from './precision';
 import { dot, length, newell, sub } from './vec';
-import type { Curve, CurveId, Edge, EdgeId, Face, FaceId, Point3, Topology, Vertex, VertexId } from './types';
+import { paintField, type Curve, type CurveId, type Edge, type EdgeId, type Face, type FaceId, type Paint, type Point3, type Topology, type Vertex, type VertexId } from './types';
 import type { Vec3 } from './vec';
 
 const pairKey = (a: VertexId, b: VertexId) => (a < b ? `${a}|${b}` : `${b}|${a}`);
@@ -241,9 +241,9 @@ export class Draft {
    * Add a face. Loops are re-wound: outer counter-clockwise around the normal,
    * holes clockwise. Every consecutive vertex pair must already have an edge.
    */
-  addFace(normal: Vec3, outer: readonly VertexId[], holes: readonly (readonly VertexId[])[] = [], id?: FaceId): FaceId {
+  addFace(normal: Vec3, outer: readonly VertexId[], holes: readonly (readonly VertexId[])[] = [], id?: FaceId, paint?: Paint): FaceId {
     const fid = id ?? this.newId('f');
-    this.setFace(fid, { normal, outer: this.wind(outer, normal, true), holes: holes.map((h) => this.wind(h, normal, false)) });
+    this.setFace(fid, { normal, outer: this.wind(outer, normal, true), holes: holes.map((h) => this.wind(h, normal, false)), ...paintField(paint) });
     return fid;
   }
 

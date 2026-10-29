@@ -134,7 +134,8 @@ function applyRigid(d: Draft, target: ReadonlyMap<VertexId, Point3>, faces: read
   for (const [v, p] of target) d.moveVertex(v, p);
   for (const f of faces) {
     const face = d.face(f);
-    d.setFace(f, { normal: unit(face.normal), outer: reversed(face.outer), holes: face.holes.map(reversed) });
+    // Under a mirror the loops turn round so the front still faces out, with its paint.
+    d.setFace(f, { ...face, normal: unit(face.normal), outer: reversed(face.outer), holes: face.holes.map(reversed) });
   }
   const moved = new Set(edges);
   for (const [id, c] of d.curves) {

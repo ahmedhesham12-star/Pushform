@@ -23,7 +23,7 @@ import {
   type Plane,
   type Vec2,
 } from './geometry';
-import type { CurveId, EdgeId, FaceId, Point3, VertexId } from './types';
+import { orientPaint, type CurveId, type EdgeId, type FaceId, type Paint, type Point3, type VertexId } from './types';
 
 const inPlaneEdges = (d: Draft, pl: Plane) =>
   [...d.edges].filter(([, e]) => onPlane(pl, d.point(e.v[0])) && onPlane(pl, d.point(e.v[1])));
@@ -385,7 +385,7 @@ export function rebuildPlane(
   // Decide which regions are faces, and who owns them.
   const edgeOf = (a: VertexId, b: VertexId) => d.edgeBetween(a, b)!;
   // `key` is the id the region claims: its owner's, or one the caller asked for.
-  const faces: { region: Region; owner: FaceId | null; key: FaceId | null; normal: Vec3 }[] = [];
+  const faces: { region: Region; owner: FaceId | null; key: FaceId | null; normal: Vec3; paint: Paint | undefined }[] = [];
   for (const r of regions) {
     const sample = interiorPoint(r, P);
     const covers = old.filter((f) => pointInPolygon(sample, f.outer) && !f.holes.some((h) => pointInPolygon(sample, h)));
@@ -393,18 +393,25 @@ export function rebuildPlane(
     if (rule) {
       if ('drop' in rule) continue;
       const key = rule.id ?? (rule.owner ? ownerId(rule.owner) : null);
-      faces.push({ region: r, owner: rule.owner ? ownerId(rule.owner) : null, key, normal: rule.normal });
+      const owner = rule.owner ? ownerId(rule.owner) : null;
+      faces.push({ region: r, owner, key, normal: rule.normal, paint: rule.paint });
       continue;
     }
     const owner = covers[0];
     const isDrawn = r.outer.some((v, i) => drawn.has(edgeOf(v, r.outer[(i + 1) % r.outer.length]!)));
-    if (owner) faces.push({ region: r, owner: ownerId(owner.id), key: ownerId(owner.id), normal: owner.normal });
-    else if (isDrawn) faces.push({ region: r, owner: null, key: null, normal: newNormal });
+    if (owner) faces.push({ region: r, owner: ownerId(owner.id), key: ownerId(owner.id), normal: owner.normal, paint: undefined });
+    else if (isDrawn) faces.push({ region: r, owner: null, key: null, normal: newNormal, paint: undefined });
   }
   // A merge keeps the orientation of the face it merges into.
   if (merge) {
     const into = old.find((f) => f.id === merge.into);
     if (into) for (const f of faces) if (f.owner === merge.into) f.normal = into.normal;
+  }
+  // A region takes its owner's paint, on the same side of the plane, unless its rule gave one.
+  for (const f of faces) {
+    if (f.paint || !f.owner || !d.faces.has(f.owner)) continue;
+    const owner = d.face(f.owner);
+    f.paint = orientPaint(owner.paint, owner.normal, f.normal);
   }
 
   // The largest region claiming an id keeps it; the others get new ids.
@@ -420,7 +427,7 @@ export function rebuildPlane(
   const created: FaceId[] = [];
   for (const f of faces) {
     const keepId = f.key && keeps.get(f.key) === f ? f.key : undefined;
-    const id = d.addFace(f.normal, f.region.outer, f.region.holes, keepId);
+    const id = d.addFace(f.normal, f.region.outer, f.region.holes, keepId, f.paint);
     if (!keepId || !oldIds.has(keepId)) created.push(id);
   }
   const kept = new Set(keeps.keys());
@@ -437,4 +444,4 @@ export function rebuildPlane(
 export type RegionRule = (
   sample: Vec2,
   covers: FaceId[],
-) => { drop: true } | { owner: FaceId | null; normal: Vec3; id?: FaceId } | undefined;
+) => { drop: true } | { owner: FaceId | null; normal: Vec3; id?: FaceId; paint?: Paint | undefined } | undefined;

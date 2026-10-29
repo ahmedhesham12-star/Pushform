@@ -72,7 +72,7 @@ export function transformTopology(t: Topology, mapPoint: (p: Point3) => Point3, 
   const reversed = (loop: readonly VertexId[]) => (options.mirror ? [...loop].reverse() : loop);
   const vertices = new Map<VertexId, Vertex>([...t.vertices].map(([id, v]) => [id, { p: snapPoint(mapPoint(v.p)) }]));
   const faces = new Map<FaceId, Face>(
-    [...t.faces].map(([id, f]) => [id, { normal: unit(f.normal), outer: reversed(f.outer), holes: f.holes.map(reversed) }]),
+    [...t.faces].map(([id, f]) => [id, { ...f, normal: unit(f.normal), outer: reversed(f.outer), holes: f.holes.map(reversed) }]),
   );
   const curves = new Map<CurveId, Curve>([...t.curves].map(([id, c]) => [id, placeCurve(c, mapPoint, unit, options)]));
   return { vertices, edges: t.edges, faces, curves, next: t.next };
@@ -162,6 +162,7 @@ export function merge(target: Topology, source: Topology): MergeResult {
       const basis = planeBasis(pl.n);
       const regions = group.faces.map((f) => ({
         normal: f.normal,
+        paint: f.paint,
         outer: f.outer.map((v) => to2(basis, P(v))),
         holes: f.holes.map((h) => h.map((v) => to2(basis, P(v)))),
       }));
@@ -170,7 +171,7 @@ export function merge(target: Topology, source: Topology): MergeResult {
         const r = regions.find((x) => inside(sample, x));
         if (!r) return undefined;
         if (covers.length) return { owner: covers[0]!, normal: d.face(covers[0]!).normal };
-        return { owner: null, normal: r.normal };
+        return { owner: null, normal: r.normal, paint: r.paint };
       };
     }
     const res = rebuildPlane(d, pl, pl.n, new Set(), null, new Set(), rule);

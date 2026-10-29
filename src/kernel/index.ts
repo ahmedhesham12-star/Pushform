@@ -30,7 +30,8 @@ import {
   type RegularPolygonSpec,
 } from './shapes';
 import { faceMeshes as meshes, faceTriangles as triangles, type FaceMesh, type Triangle } from './triangulate';
-import { emptyTopology, type Point3, type Topology } from './types';
+import { paintFaces as paintTopology, replacePaint as replaceTopologyPaint, type PaintOptions } from './paint';
+import { emptyTopology, type FaceSide, type Point3, type Topology } from './types';
 import type { Vec3 } from './vec';
 import { validate } from './validate';
 
@@ -41,7 +42,8 @@ const data = (m: Model) => m as unknown as Topology;
 const wrap = (t: Topology) => t as unknown as Model;
 
 export type { Vec3 } from './vec';
-export type { Point3, FaceId, EdgeId, CurveId, CurveKind } from './types';
+export type { Point3, FaceId, EdgeId, CurveId, CurveKind, FaceSide, Paint } from './types';
+export type { PaintOptions };
 export type { FaceView, EdgeView, SnapPoint, SnapKind, Bounds } from './query';
 export type { MoveError, OffsetError, OffsetPath, PlaceOptions };
 export type { ArcGeometry, ArcSpec, DrawError, RectangleSpec, RegularPolygonSpec, SerializedTopology, FaceMesh, Triangle };
@@ -106,6 +108,19 @@ export function pushPull(m: Model, faceId: string, distance: number): PushPullRe
 }
 
 /** Erase faces and edges with SketchUp's rules. Returns the same model when nothing was erased. */
+/**
+ * Paint sides of faces with a material id, or remove it with null (the Paint
+ * Bucket). The same model when nothing changes.
+ */
+export function paintFaces(m: Model, faceIds: readonly string[], sides: readonly FaceSide[], id: string | null, options: PaintOptions = {}): Model {
+  return wrap(paintTopology(data(m), faceIds, sides, id, options));
+}
+
+/** Replace a material id on every face side (null removes it): deleting a material. The same model when none has it. */
+export function replacePaint(m: Model, from: string, to: string | null): Model {
+  return wrap(replaceTopologyPaint(data(m), from, to));
+}
+
 export function erase(m: Model, faceIds: readonly string[], edgeIds: readonly string[]): { model: Model; removedFaceIds: string[] } {
   const r = eraseTopology(data(m), faceIds, edgeIds);
   return { model: wrap(r.topology), removedFaceIds: r.removedFaceIds };

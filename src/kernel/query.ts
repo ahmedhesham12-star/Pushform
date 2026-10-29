@@ -1,6 +1,6 @@
 import { cross, dot, length, midpoint, newell, sub, type Vec3 } from './vec';
 import { faceTriangles } from './triangulate';
-import type { CurveId, EdgeId, FaceId, Point3, Topology, VertexId } from './types';
+import { paintField, type CurveId, type EdgeId, type FaceId, type Paint, type Point3, type Topology, type VertexId } from './types';
 
 export interface FacePoints {
   readonly outer: Point3[];
@@ -10,6 +10,8 @@ export interface FacePoints {
 export interface FaceView extends FacePoints {
   readonly id: FaceId;
   readonly normal: Vec3;
+  /** Material ids on its sides; absent when unpainted. */
+  readonly paint?: Paint;
 }
 
 export interface EdgeView {
@@ -45,7 +47,7 @@ export function facePoints(t: Topology, id: FaceId): FacePoints | undefined {
 export function getFace(t: Topology, id: FaceId): FaceView | undefined {
   const f = t.faces.get(id);
   const pts = facePoints(t, id);
-  return f && pts && { id, normal: f.normal, ...pts };
+  return f && pts && { id, normal: f.normal, ...pts, ...paintField(f.paint) };
 }
 
 export function listFaces(t: Topology): FaceView[] {
@@ -240,3 +242,4 @@ export function edgeThrough(t: Topology, p: Point3, tol: number): { a: VertexId;
   }
   return null;
 }
+

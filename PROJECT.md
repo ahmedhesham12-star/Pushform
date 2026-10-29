@@ -98,7 +98,7 @@ Data flow: a tool reads the viewport (picking, snapping) and calls `session.prev
 
 ### Layer rules (checked by `tests/architecture.test.ts`)
 - The kernel imports nothing outside `src/kernel` except the `earcut` package, uses no DOM globals, and is imported only through `src/kernel/index.ts`.
-- Only `src/commands` (and `src/scene`, which loads models) may call kernel mutations (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawArc`, `drawLine`, `pushPull`, `erase`, `extractGeometry`, `transformGeometry`, `mergeGeometry`, `moveGeometry`, `transformSelection`, `offset`, `deserialize`). Everything else uses the read-only queries, such as `listFaces`, `listEdges`, `edgeGroup`, `faceMeshes`, `snapPoints`, `bounds`, `solidVolume` and the preview helpers.
+- Only `src/commands` (and `src/scene`, which loads models) may call kernel mutations (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawArc`, `paintFaces`, `replacePaint`, `drawLine`, `pushPull`, `erase`, `extractGeometry`, `transformGeometry`, `mergeGeometry`, `moveGeometry`, `transformSelection`, `offset`, `deserialize`). Everything else uses the read-only queries, such as `listFaces`, `listEdges`, `edgeGroup`, `faceMeshes`, `snapPoints`, `bounds`, `solidVolume` and the preview helpers.
 - `src/scene` imports only the kernel; `src/export` only the kernel and the scene.
 - `src/kernel`, `src/scene`, `src/commands`, `src/units` and `src/export` use no DOM, so commands and exports can run headless for tests, plugins and MCP.
 
@@ -222,7 +222,8 @@ anchor: { point: [x, y, z],
 model: { kind: 'topology', version: 2, next,
          vertices: { id: [x, y, z] },
          edges: { id: { v: [a, b], soft?: true, curve?: id } },
-         faces: { id: { normal, outer: [vertex ids], holes: [[vertex ids]] } },
+         faces: { id: { normal, outer: [vertex ids], holes: [[vertex ids]],
+                        paint?: { front?: material id, back?: material id } } },
          curves: { id: { kind, edges, segments, center, normal, radius? } } }
 ```
 Every level is validated on load: unit quaternions, scale with no zero component (negative mirrors; milestone 4), instances only of existing non-root definitions, no nesting cycles, guide lines with a non-zero direction (stored as a unit vector), dimension and text anchors with a point and, when attached, a reference whose fraction lies strictly between 0 and 1, screen text positions between 0 and 1, tags with a name and a #rrggbb color, and tag references only to existing tags. **Version 2 documents** (milestone 2) load as the root definition; the conversion is tested against a milestone 2 autosave (`tests/fixtures/milestone2-autosave.json`).
@@ -345,6 +346,8 @@ Every level is validated on load: unit quaternions, scale with no zero component
 | 2026-10-29 | What a hidden tag hides is filtered once, in `placements()` (an instance on a hidden tag is left out with everything in it, in every copy) and in `worldGuides`/`worldAnnotations` (guides and annotations on hidden tags). Drawing, picking, snapping, window selection, Ctrl+A and both exports read from these, so hidden things are not drawn, picked, snapped to, selected or exported. The open editing context and the instances leading to it are always shown | One filter keeps every reader consistent; SketchUp checks show an item inside a definition hides on its own tag. Exporting what is shown matches what the user sees. |
 | 2026-10-29 | The right panel is a tray: Entity Info, Outliner and Tags one under another, each folded or opened by its heading (kept per device). The Tags panel lists Untagged first (always shown, not editable), then tags by name, each with an eye, a color swatch, a name renamed by double-click or F2, and a delete button; Entity Info has a Tag menu for groups, components, guides and annotations ("Mixed" when they differ) and, for loose geometry alone, the hint that it stays Untagged; the right-click menu has Tag, which opens a menu of tags with the selection's own greyed. The Outliner lists hidden groups and components greyed | Plan step 2; SketchUp's Tags panel and Entity Info. The right-click menu has no submenus, so Tag opens a second menu in place. |
 | 2026-10-29 | Color by Tag (Tags panel or View menu) is a per-device view setting. Faces take the color of the nearest tagged instance around them, both sides; Untagged keeps the usual face color | Checked in SketchUp: untagged geometry inside a tagged group shows the group's tag color. |
+| 2026-10-29 | Paint lives on kernel faces (`Face.paint`: a material id on the front and the back, opaque to the kernel), saved with the model (topology format still version 2: the field is optional). It follows faces through every edit in one place: a region rebuilt in a plane takes its owner face's paint, front and back swapped if it faces the other way; a region rule can give paint instead. Push/pull walls, pocket and hole walls and a lone face's bottom take the pushed face's paint as it is; merges keep the larger face's; folds, mirrors, placed copies, merges into another model and offsets keep it. `paintFaces` and `replacePaint` are kernel mutations | Plan step 3; every rule matches what SketchUp does ("Verified in SketchUp", 2026-10-29). Carrying paint where faces are rebuilt, rather than in a scene-level map by face id, keeps it right through splits. |
+| 2026-10-29 | Two kernel faults found by the new paint sweep (stress sweep 8) are fixed: a push/pull that stretched a face across its own boundary now builds walls instead (seed 8006); a rectangle, circle, polygon or arc that would land a hair from existing geometry (closer than a face can resolve, farther than vertices merge) and leave a sliver is refused with `tooClose` (seed 8368). Both seeds are pinned in `npm test` | Paint never changes geometry; the sweep reached shapes earlier sweeps did not (rectangles drawn off slanted folded faces). Refusing matches how moves are refused rather than making an invalid model. |
 
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
@@ -593,6 +596,8 @@ Decisions approved for milestone 4 (2026-10-26, product owner):
 5. **Out of scope** (see Next steps): sheet layout and cutting diagrams (milestone 6), edge banding, part labels, hardware import, solid tools, OBJ and DXF export.
 
 Checkpoints for the product owner's manual testing: (a) tags; (b) materials and the Paint Bucket; (c) the cut list.
+
+Checkpoint (a) passed (2026-10-29). The product owner approved both open choices: exports leave out what a hidden tag hides, and the Outliner can still select hidden groups and components.
 
 Progress (2026-10-29): ready for checkpoint (a). Done: the plan and the SketchUp checks (steps 0 and 0b), tag data, commands and visibility with document version 5 (step 1), and the tray, Tags panel, Tag field in Entity Info, right-click Tag menu and Color by Tag (step 2). 770 unit tests pass and the build succeeds.
 

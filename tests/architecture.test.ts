@@ -17,6 +17,8 @@ const KERNEL_MUTATIONS = [
   'drawRectangle',
   'drawRegularPolygon',
   'drawArc',
+  'paintFaces',
+  'replacePaint',
   'drawLine',
   'pushPull',
   'erase',

@@ -157,8 +157,8 @@ function push(t: Topology, faceId: FaceId, requested: number, stretch: boolean):
   };
   const softRails = new Set([...fvs].filter((v) => !movable.has(v) && smoothAt(v)));
 
-  // Bottom of a lone face, before anything moves.
-  if (free) created.add(d.addFace(distance > 0 ? negate(n) : n, F.outer, F.holes));
+  // Bottom of a lone face, before anything moves. Like the walls, it takes the pushed face's paint as it is (as SketchUp does).
+  if (free) created.add(d.addFace(distance > 0 ? negate(n) : n, F.outer, F.holes, undefined, F.paint));
 
   // Move what stretches; give every other vertex a moved copy (splitting any edge it lands on).
   const targets = new Map([...fvs].map((v) => [v, add(P(v), off)] as const));
@@ -225,7 +225,7 @@ function push(t: Topology, faceId: FaceId, requested: number, stretch: boolean):
     const rule: RegionRule = (sample, covers) => {
       const q = quads.find((x) => pointInPolygon(sample, x.poly));
       if (!q) return undefined;
-      if (!covers.length) return { owner: null, normal: q.normal };
+      if (!covers.length) return { owner: null, normal: q.normal, paint: F.paint };
       // Carving into the solid cuts the covered face away; adding beside it keeps the face as the shared one.
       if (inward) return { drop: true };
       return { owner: covers[0]!, normal: d.face(covers[0]!).normal };
@@ -253,7 +253,7 @@ function push(t: Topology, faceId: FaceId, requested: number, stretch: boolean):
     // Back-to-back with a face of the same solid: both go (a push through).
     if (covers.some((c) => dot(d.face(c).normal, newN) < 0)) return { drop: true };
     if (covers.length) return { owner: covers[0]!, normal: d.face(covers[0]!).normal };
-    return { owner: null, normal: newN, id: faceId };
+    return { owner: null, normal: newN, id: faceId, paint: F.paint };
   };
   record(rebuildPlane(d, target, newN, new Set(), null, new Set(), landRule));
 
@@ -282,17 +282,21 @@ function push(t: Topology, faceId: FaceId, requested: number, stretch: boolean):
   for (const v of [...ends, ...fvs]) if (d.vertices.has(v)) d.healVertex(v);
 
   // Stretching moves faces without the planar engine. If a stretched face now overlaps or
-  // runs into other geometry in its plane, build walls instead, which resolves it.
+  // runs into other geometry in its plane, or across its own boundary (its loop then
+  // passes a vertex twice), build walls instead, which resolves it.
   if (movable.size) {
     const planes: Plane[] = [];
+    let crossesItself = false;
     for (const v of movable) {
       if (!d.vertices.has(v)) continue;
       for (const f of d.facesOfVertex(v)) {
+        const face = d.face(f);
+        if ([face.outer, ...face.holes].some((l) => new Set(l).size !== l.length)) crossesItself = true;
         const pl = planeOf(d, f);
         if (!planes.some((x) => samePlane(x, pl))) planes.push(pl);
       }
     }
-    if (planes.some((pl) => planeProblems(d, pl).length)) return push(t, faceId, distance, false);
+    if (crossesItself || planes.some((pl) => planeProblems(d, pl).length)) return push(t, faceId, distance, false);
   }
 
   const faceIds = new Set(d.faces.keys());

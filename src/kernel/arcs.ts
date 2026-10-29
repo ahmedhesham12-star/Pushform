@@ -7,7 +7,7 @@
 import { MIN_RECT_SIDE, snapPoint } from './precision';
 import { add, cross, dot, length, normalize, scale, sub, type Vec3 } from './vec';
 import { onPlane } from './geometry';
-import { drawingPlane, drawSegments, MAX_SEGMENTS, type DrawResult } from './shapes';
+import { drawingPlane, drawResult, drawSegments, MAX_SEGMENTS, type DrawResult } from './shapes';
 import type { FaceId, Point3, Topology } from './types';
 
 export interface ArcSpec {
@@ -123,5 +123,5 @@ export function drawArc(t: Topology, spec: ArcSpec): DrawResult {
   const center = snapPoint(spec.center);
   if (spec.pie) segments.push({ a: pts.at(-1)!, b: center, curve: false }, { a: center, b: pts[0]!, curve: false });
   const curve = { kind: 'arc' as const, segments: spec.segments, center, normal: target.normal, radius };
-  return { ok: true, ...drawSegments(t, target.plane, target.normal, segments, curve) };
+  return drawResult(drawSegments(t, target.plane, target.normal, segments, curve));
 }

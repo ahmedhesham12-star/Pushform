@@ -38,7 +38,22 @@ export interface Face {
   readonly outer: readonly VertexId[];
   /** Clockwise around the normal. */
   readonly holes: readonly (readonly VertexId[])[];
+  /** What each side is painted with; absent when neither is. */
+  readonly paint?: Paint;
 }
+
+/**
+ * Paint on a face's front and back: material ids, opaque to the kernel (as
+ * curve ids are to the scene). Paint follows the face through edits: pieces
+ * of a split keep it, a merge keeps the larger face's, and push/pull walls
+ * take the pushed face's (all checked in SketchUp).
+ */
+export interface Paint {
+  readonly front?: string;
+  readonly back?: string;
+}
+
+export type FaceSide = 'front' | 'back';
 
 export type CurveKind = 'circle' | 'polygon' | 'arc';
 
@@ -59,6 +74,20 @@ export interface Curve {
 
 /** A curve's radius field, left out when it has none. */
 export const withRadius = (radius: number | undefined): { radius?: number } => (radius === undefined ? {} : { radius });
+
+/** A face's paint field, left out when neither side is painted. */
+export const paintField = (p: Paint | undefined): { paint?: Paint } =>
+  p && (p.front || p.back) ? { paint: { ...(p.front ? { front: p.front } : {}), ...(p.back ? { back: p.back } : {}) } } : {};
+
+/**
+ * Paint for a face facing `to` that takes it from a face facing `from` in the
+ * same plane: the same sides when they face the same way, swapped when not,
+ * so each color stays on the side of the plane it was on.
+ */
+export function orientPaint(p: Paint | undefined, from: readonly number[], to: readonly number[]): Paint | undefined {
+  if (!p || from[0]! * to[0]! + from[1]! * to[1]! + from[2]! * to[2]! >= 0) return p;
+  return { ...(p.back ? { front: p.back } : {}), ...(p.front ? { back: p.front } : {}) };
+}
 
 export interface Topology {
   readonly vertices: ReadonlyMap<VertexId, Vertex>;

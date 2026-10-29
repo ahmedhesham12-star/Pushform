@@ -1,7 +1,7 @@
 import { dot } from './vec';
 import { Draft } from './draft';
 import { parallel } from './geometry';
-import { emptyTopology, withRadius, type Curve, type CurveKind, type Edge, type Face, type Point3, type Topology, type Vertex } from './types';
+import { emptyTopology, paintField, withRadius, type Curve, type CurveKind, type Edge, type Face, type Point3, type Topology, type Vertex } from './types';
 
 /** On-disk form of the topology. Bump the version on any breaking change. */
 export interface SerializedTopology {
@@ -10,7 +10,7 @@ export interface SerializedTopology {
   next: number;
   vertices: Record<string, number[]>;
   edges: Record<string, { v: [string, string]; soft?: true; curve?: string }>;
-  faces: Record<string, { normal: number[]; outer: string[]; holes: string[][] }>;
+  faces: Record<string, { normal: number[]; outer: string[]; holes: string[][]; paint?: { front?: string; back?: string } }>;
   curves: Record<string, { kind: CurveKind; edges: string[]; segments: number; center: number[]; normal: number[]; radius?: number }>;
 }
 
@@ -20,7 +20,7 @@ export function serializeTopology(t: Topology): SerializedTopology {
   for (const [id, e] of t.edges) {
     out.edges[id] = { v: [e.v[0], e.v[1]], ...(e.soft ? { soft: true as const } : {}), ...(e.curve ? { curve: e.curve } : {}) };
   }
-  for (const [id, f] of t.faces) out.faces[id] = { normal: [...f.normal], outer: [...f.outer], holes: f.holes.map((h) => [...h]) };
+  for (const [id, f] of t.faces) out.faces[id] = { normal: [...f.normal], outer: [...f.outer], holes: f.holes.map((h) => [...h]), ...paintField(f.paint) };
   for (const [id, c] of t.curves) {
     out.curves[id] = { kind: c.kind, edges: [...c.edges], segments: c.segments, center: [...c.center], normal: [...c.normal], ...withRadius(c.radius) };
   }
@@ -61,7 +61,10 @@ export function deserializeTopology(data: unknown): Topology | null {
   for (const [id, f] of Object.entries(faces)) {
     if (!isObject(f) || !isPoint(f.normal) || !isIds(f.outer) || !Array.isArray(f.holes) || !f.holes.every(isIds)) return null;
     if (!loopOk(f.outer) || !f.holes.every(loopOk)) return null;
-    fs.set(id, { normal: f.normal, outer: f.outer, holes: f.holes });
+    const p = f.paint;
+    const side = (v: unknown) => v === undefined || (typeof v === 'string' && v.length > 0);
+    if (p !== undefined && (!isObject(p) || !side(p.front) || !side(p.back))) return null;
+    fs.set(id, { normal: f.normal, outer: f.outer, holes: f.holes, ...paintField(p as { front?: string; back?: string } | undefined) });
   }
   const cs = new Map<string, Curve>();
   for (const [id, c] of Object.entries(curves)) {

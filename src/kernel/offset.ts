@@ -287,7 +287,8 @@ export function offset(t: Topology, faceId: FaceId | null, edgeIds: readonly Edg
   const rule: RegionRule | undefined = path.faceId
     ? (sample, covers) => {
         if (covers.length) return undefined;
-        if (insideLoops(sample, outs)) return { owner: null, normal: path.normal };
+        // A new region (a ring where a hole shrank) takes the offset face's paint.
+        if (insideLoops(sample, outs)) return { owner: null, normal: path.normal, paint: t.faces.get(path.faceId!)?.paint };
         return pointInPolygon(sample, outs[0]!) ? { drop: true } : undefined;
       }
     : undefined;

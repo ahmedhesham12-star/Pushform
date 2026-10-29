@@ -97,6 +97,7 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
   scaleWouldSkew: 'error.scaleWouldSkew',
   scaleTooSmall: 'error.scaleTooSmall',
   arcRadiusTooSmall: 'error.arcRadiusTooSmall',
+  tooClose: 'error.tooClose',
   looseGeometryUntagged: 'info.looseUntagged',
   noSuchTag: 'error.noSuchTag',
 };

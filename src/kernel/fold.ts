@@ -131,7 +131,8 @@ export function foldFace(d: Draft, before: Topology, f: FaceId): Fold | null {
       });
     }
   }
-  const faceIds = pieces.map((pc, i) => d.addFace(pc.normal, pc.outer, pc.holes, i === 0 ? f : undefined));
+  // Every piece keeps the face's paint (they face the same side).
+  const faceIds = pieces.map((pc, i) => d.addFace(pc.normal, pc.outer, pc.holes, i === 0 ? f : undefined, was.paint));
   return { faceIds, edgeIds };
 }
 

@@ -201,6 +201,7 @@ export const en = {
   'error.typeArcAngle': 'Type an angle in degrees, or a segment count (12s).',
   'error.arcRadiusTooSmall': 'The radius is too small for the arc between these two points.',
   'error.noSuchTag': 'That tag no longer exists.',
+  'error.tooClose': 'It would land a hair away from existing geometry. Snap to a point or edge instead.',
   'error.badCount': 'Type a whole number from 3 to {max} with an s, like 24s.',
   'error.badArcCount': 'Type a whole number from 2 to {max} with an s, like 12s.',
   'error.typeArcCount': 'Type a segment count, like 12s.',

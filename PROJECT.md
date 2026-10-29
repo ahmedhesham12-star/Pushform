@@ -2,7 +2,7 @@
 
 Free, open-source 3D modeling in the browser, built around push/pull modeling. Draw shapes, push and pull them into solids, and export the result. No account and no install.
 
-Last updated: 2026-10-26.
+Last updated: 2026-10-29.
 
 ## Goals
 - A fast, precise push/pull modeler that runs as a static web page.
@@ -65,8 +65,9 @@ src/
   kernel/     pure geometry (mm): shared topology, planar engine, push/pull, erase,
               lines, shapes, triangulation, extract and merge; public API in index.ts,
               opaque Model type
-  scene/      definitions (each with its own kernel model) and instances with rigid
-              transforms; world-space snap points and edges; scene serialization
+  scene/      definitions (each with its own kernel model, guides and annotations) and
+              instances with rotation, translation and scale; affine world placements;
+              world-space snap points, edges, guides and annotations; scene serialization
   commands/   named commands, CommandSession (execute, preview, amend, undo/redo,
               change events), document
   units/      length settings, parsing and formatting (metric and imperial, Intl)
@@ -74,18 +75,22 @@ src/
   viewport/   three.js renderer, orbit camera, the scene with the open editing context
               (faded outside), face, edge and instance picking, snapping and axis
               inference across instances, previews, snap marker
-  tools/      one file per tool: select, line, rectangle, circle, polygon, pushPull,
-              erase, orbit, pan (circle and polygon share radial.ts)
-  ui/         tool bar, top actions, units menu, status bar, measurements box, intro,
-              right-click menu, Entity Info and Outliner
+  tools/      one file per tool: select, line, rectangle, circle, polygon, arc (2-Point
+              Arc, Arc, 3-Point Arc, Pie), pushPull, offset, move, rotate, scale,
+              erase, tape, protractor, dimension, text, orbit, pan; shared inference,
+              drawing planes, protractor geometry and shortcuts
+  ui/         tool bar, top actions, File and View menus, units menu, status bar,
+              measurements box, intro, right-click menu, text editor, Entity Info
+              and Outliner
   app.ts      wiring: input events, keyboard, selection, editing context, refresh on
               document change
   export/     STL and GLB writers (pure: kernel and scene only)
   files.ts    open and save on the device: File System Access API, or upload and download
   storage.ts  autosave to local storage (the recovery copy, with the file name)
-tests/        units, kernel (topology, planar, erase, push/pull, lines, shapes),
-              commands, precision, measurements box and architecture tests;
-              fixtures/ holds a real milestone 1 autosave
+tests/        units, kernel, scene, commands, tools (with stand-in viewports), DOM
+              components, export, acceptance tests per milestone and architecture
+              tests; helpers/ holds the randomized runs, stress/ the long sweeps
+              (`npm run test:stress`), fixtures/ real milestone 1 and 2 autosaves
 reference/    the original Blockout prototype (behavior spec for milestone 1)
 ```
 
@@ -338,7 +343,7 @@ Every level is validated on load: unit quaternions, scale with no zero component
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
 
-**In place now (milestones 2 and 3):**
+**In place now (milestones 2 to 4):**
 
 | Input | Action |
 | --- | --- |
@@ -488,7 +493,7 @@ Checked on 2026-10-26 in SketchUp 2023 (Windows), by scripts run through the Rub
   - Sweeps 5 and 6 found four kernel bugs, all fixed with the failing seeds pinned in `npm test`: a corner landing on a vertex during a stretch, a hole moved out of its face in one jump, and loose lines crossing in a plane that later got a face.
   - Scripted browser checks (not in the repo) cover instances and contexts, snapping to other instances and faded geometry, the menu and panels, selection, Move, Rotate, Offset, push to surface, rectangle alignment, files and export.
 
-**Milestone 4** (in progress, started 2026-10-26), on branch `milestone-4`: precise furniture and architectural work. The product owner could rebuild the cabinet carcass and dividers but had no way to mark exact positions for dividers and shelves, and no proper rounded tops. Scope, as specified by the product owner:
+**Milestone 4** (2026-10-26 to 2026-10-28), on branch `milestone-4`, complete; checkpoints (a), (b) and (c) passed. Merged into `main` and pushed on 2026-10-29 with the product owner's approval: precise furniture and architectural work. The product owner could rebuild the cabinet carcass and dividers but had no way to mark exact positions for dividers and shelves, and no proper rounded tops. Scope, as specified by the product owner:
 1. **Folding** (first)
    - A Move or Rotate of loose geometry that would bend a face out of its plane folds that face into planar pieces along a diagonal, as SketchUp does, instead of being refused. Moving a box's top edge up makes a sloped top; moving a corner makes folded faces.
    - Fold edges are soft (hidden, smooth shading) only where SketchUp makes them so; otherwise visible.
@@ -535,6 +540,46 @@ Decisions approved for milestone 4 (2026-10-26, product owner):
 - **SketchUp behavior is checked in SketchUp itself** (through the SketchUp connection, in a new empty model) where it is uncertain; results are listed under "Verified in SketchUp".
 - **The tool bar has two columns** of grouped buttons; labels are tooltips and shortcut keys stay on the buttons.
 
+**Milestone 5** (in progress, started 2026-10-29), on branch `milestone-5`: tags, materials and the cut list. The reference cabinet should produce shop information: every part has a material, and the model gives a cut list with sizes, quantities and material totals, as OpenCutList does for SketchUp. Scope, as specified by the product owner:
+1. **Tags** (SketchUp's layers)
+   - A Tags panel: create, rename, delete (contents move to Untagged), show and hide, a color swatch, and a "Color by Tag" view mode.
+   - Tags go on groups, components, guides, dimensions and text, through Entity Info and the right-click menu. Loose geometry stays Untagged, as SketchUp best practice recommends; a hint says so when the user tries to tag it.
+   - Hidden tags: their objects are not drawn, picked or snapped to. Visibility is saved in the file.
+   - Tags inside components follow SketchUp: an item inside a definition is hidden when its own tag is hidden.
+2. **Materials**
+   - A Materials panel: the model's materials and a starter set (birch ply, oak, walnut, white MDF, white melamine, painted colors); create, rename, duplicate, delete and edit color.
+   - Optional image textures with a real-world tile size (mm), mapped by planar projection on each face, along the face's longest edge by default. Textures are stored in the `.pushform` file. Texture positioning tools are a next step.
+   - Paint Bucket (B): click a face to paint it; clicking a group or component paints the instance (its material shows on unpainted faces inside it). Alt (Cmd on a Mac) samples a material; Ctrl paints connected faces; Shift paints all faces with the same material in the context.
+   - Front and back faces: a click paints the side clicked; "Paint Back" in the right-click menu.
+   - GLB export writes materials (base color and textures). STL ignores them.
+3. **Woodworking material properties**
+   - Sheet goods (thickness, sheet length and width, price per sheet) or solid wood (thickness, price per board foot or per cubic meter), with a grain flag.
+   - Common sheet thicknesses suggested: 12, 15, 18 and 25 mm; 1/2" and 3/4".
+4. **Parts and the cut list**
+   - A part is a group or component that holds geometry and no child groups or components; assemblies hold others. Leaf instances anywhere in the tree are parts.
+   - Part size: the part definition's bounding box in its own axes, with the instance's scale applied. Thickness is the smallest dimension, length the largest, width the middle, unless a grain direction (a per-part setting in Entity Info: along the part's red, green or blue) sets the length.
+   - Material: the instance's material, or the material of most of its faces when unpainted.
+   - Identical parts (same definition, size and material) are one row with a quantity; mirrored instances count as the same part.
+   - Warnings: thickness that does not match the material's, non-uniformly scaled instances, parts that are not solids, parts with no material.
+   - A Cut List panel grouped by material, with sortable columns (name, quantity, length, width, thickness, material, grain). Clicking a row selects and highlights its instances.
+   - Material totals: part area per sheet material, estimated sheets with a waste percentage (default 15%), board volume for solid wood, and cost.
+   - Export to CSV, and a print view (the browser's print to PDF makes the PDF). Units follow the file's unit and precision.
+5. **Out of scope** (see Next steps): sheet layout and cutting diagrams (milestone 6), edge banding, part labels, hardware import, solid tools, OBJ and DXF export.
+
+Checkpoints for the product owner's manual testing: (a) tags; (b) materials and the Paint Bucket; (c) the cut list.
+
+Decisions approved for milestone 5 (2026-10-29, product owner):
+- **Branching:** `main` was fast-forwarded to `milestone-4` and pushed; `milestone-5` starts from it.
+- **SketchUp checks** run in a new empty model that the product owner opens; nothing in another open model is touched.
+- **The Paint Bucket paints the side clicked**, as SketchUp does; "Paint Back" in the right-click menu paints the backs of a selection.
+- **Hidden parts in the cut list:** an "Include hidden parts" switch, off by default and saved in the file; the panel says how many hidden parts are left out.
+- **Tags:** Untagged is built in and cannot be renamed, deleted or hidden. Showing or hiding a tag is an undoable change saved in the file. Color by Tag is a per-device view setting. The open editing context stays visible when its own tag is hidden.
+- **Materials:** the starter set is built in; a starter material is copied into the file when first used. "Default" removes paint. Paint follows faces through edits (split pieces keep it, push/pull walls take the pushed face's, a merge keeps the larger face's, Explode moves an instance's material onto its unpainted faces), as checked in SketchUp. Ctrl is SketchUp's Adjacent Fill (connected faces with the same material as the one clicked); Shift paints every face in the context with the same material; Alt (Cmd on a Mac) samples; clicking a selected item paints the whole selection.
+- **Textures:** PNG or JPEG, at most 2048 px on the longest side (larger images are scaled down), stored as base64 in the file; the tile width is set in mm and the height follows the image. The texture runs along each face's longest edge, in the definition's own coordinates. The autosave moves to IndexedDB, which can hold textures.
+- **GLB** writes front materials only (glTF allows one material per primitive); back materials are not exported.
+- **Cut list:** currency is a file setting (none by default: plain numbers); solid wood shows board feet for imperial units and m³ for metric. Copied groups that still share their geometry count as the same part. Sheets = area × (1 + waste) / sheet area, rounded up. Clicking a row highlights all its instances, selects those in one context, and says how many are elsewhere. CSV is UTF-8 with a byte order mark. The print view is a printable page in the app. The cut list is a new pure layer, `src/cutlist`.
+- **Acceptance cabinet:** 800 x 500 x 720 mm with 18 mm white melamine panels (two sides as one mirrored component, a back and a bottom), an 18 mm oak top with 50 mm rounded corners, three drawers (one component) with 12 mm birch ply boxes (two sides, a front and a back, a bottom), and three 18 mm white MDF fronts. Expected at 15% waste: melamine 1 sheet, birch ply 2 sheets (1525 x 1525), MDF 1 sheet, oak 0.00939 m³.
+
 ### Known limitations
 - The differences from SketchUp listed above.
 - Each operation recomputes its whole plane and an adjacency index. That is fine for typical models; very large models may slow down.
@@ -547,13 +592,14 @@ Decisions approved for milestone 4 (2026-10-26, product owner):
 - Scale refuses a non-uniform scale that would skew a turned group or component (scale it along its own axes, which a lone selected one gets by default).
 
 ## Next steps (proposed, not yet approved)
-1. **After milestone 4** (out of its scope):
-   1. **Tags** (layers) for showing and hiding parts.
-   2. **Materials** (the Paint Bucket, B), carried into GLB export.
-   3. **Solid tools**: union, subtract and intersect for groups and components that are solids, and solid volume for groups holding other groups.
-   4. **Hardware import**: manufacturer models (STEP or glTF) placed as components.
-   5. **OBJ and DXF export.**
-   6. **Intersecting moved geometry** with what it lands on.
+1. **After milestone 5** (out of its scope):
+   1. **Sheet layout and cutting diagrams** (milestone 6).
+   2. **Edge banding** and **part labels** for the cut list.
+   3. **Texture positioning tools.**
+   4. **Solid tools**: union, subtract and intersect for groups and components that are solids, and solid volume for groups holding other groups.
+   5. **Hardware import**: manufacturer models (STEP or glTF) placed as components.
+   6. **OBJ and DXF export.**
+   7. **Intersecting moved geometry** with what it lands on.
 2. A stretch that lands a point on another point merges the two instead of being refused.
 3. **Dimension text** (product owner, checkpoint (b) feedback): replace a dimension's value with your own text or add to it, with `<>` standing for the measured length, as in SketchUp.
 4. **Copying dimensions and text** with Move and Rotate copies, as SketchUp does.

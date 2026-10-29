@@ -150,7 +150,7 @@ declare module '../types' {
     'core.setMaterialTexture': { input: SetMaterialTextureInput; output: Record<string, never> };
     'core.duplicateMaterial': { input: DuplicateMaterialInput; output: { materialId: string } };
     'core.deleteMaterial': { input: DeleteMaterialInput; output: Record<string, never> };
-    'core.paint': { input: PaintInput; output: Record<string, never> };
+    'core.paint': { input: PaintInput; output: { materialId: string | null } };
   }
 }
 

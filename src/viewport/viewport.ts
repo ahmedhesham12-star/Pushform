@@ -22,7 +22,7 @@ import {
   Vector3,
   WebGLRenderer,
 } from 'three';
-import { getFace, listFaces, planeAxes, type Bounds, type Model } from '../kernel';
+import { getFace, listFaces, planeAxes, type Bounds, type FaceSide, type Model } from '../kernel';
 import {
   applyPoint,
   contextRelation,
@@ -725,6 +725,26 @@ export class Viewport {
   }
 
   /** The face under the cursor (the context's, or any group's), or the context's ground when no face is hit. */
+  /**
+   * The face under the pointer anywhere, in the open context or inside a group
+   * or component, with its instance path and the side the pointer sees (the
+   * Paint Bucket paints and samples it).
+   */
+  faceUnderCursor(): { path: readonly InstanceId[]; faceId: string; side: FaceSide; model: Model } | null {
+    const hit = this.hits()[0];
+    if (!hit) return null;
+    const dir = this.picker.raycaster.ray.direction;
+    const faceId = hit.object.userData.faceId as string | undefined;
+    if (faceId) {
+      const n = this.normalOf(faceId);
+      return n && this.contextModel ? { path: this.context, faceId, side: n.dot(dir) < 0 ? 'front' : 'back', model: this.contextModel } : null;
+    }
+    const placed = this.instancesView.placementOf(hit);
+    if (!placed?.faceId) return null;
+    const side = toVector(placed.normal).normalize().dot(dir) < 0 ? 'front' : 'back';
+    return { path: placed.placement.path, faceId: placed.faceId, side, model: placed.placement.definition.model };
+  }
+
   planeUnderCursor(): PlaneHit | null {
     const hit = this.hits()[0];
     const faceId = hit?.object.userData.faceId as string | undefined;

@@ -53,6 +53,7 @@ import {
   selectionMode,
   shortcutFor,
   TOOL_SHORTCUTS,
+  type PaintChoice,
   type Selection,
   type Tool,
   type ToolContext,
@@ -60,6 +61,7 @@ import {
 } from './tools';
 import { ContextMenu, type MenuEntry } from './ui/contextMenu';
 import { EntityInfo, type EntityInfoData, type TagField } from './ui/entityInfo';
+import { MaterialsPanel } from './ui/materialsPanel';
 import { TagsPanel } from './ui/tagsPanel';
 import { Tray } from './ui/tray';
 import { TextEditor } from './ui/textEditor';
@@ -100,6 +102,7 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
   tooClose: 'error.tooClose',
   looseGeometryUntagged: 'info.looseUntagged',
   noSuchTag: 'error.noSuchTag',
+  noSuchMaterial: 'error.noSuchMaterial',
 };
 
 export class App {
@@ -134,6 +137,9 @@ export class App {
   private readonly entityInfo: EntityInfo;
   private readonly outliner: Outliner;
   private readonly tags: TagsPanel;
+  private readonly materials: MaterialsPanel;
+  /** What the Paint Bucket paints with (the Materials panel chooses it); Default (no paint) to start. */
+  private paintChoice: PaintChoice = { materialId: null };
   /**
    * Navigation in progress. A right-button press only starts orbiting once it
    * moves past DRAG_THRESHOLD; released before that, it opens the menu.
@@ -188,6 +194,7 @@ export class App {
     const toolSpecs: ToolButtonSpec<ToolId>[] = [
       { id: 'select', label: 'tool.select', icon: 'select', ...key('select') },
       { id: 'erase', label: 'tool.erase', icon: 'erase', ...key('erase') },
+      { id: 'paintBucket', label: 'tool.paintBucket', icon: 'paintBucket', ...key('paintBucket') },
       { id: 'line', label: 'tool.line', icon: 'line', ...key('line'), group: true },
       { id: 'rectangle', label: 'tool.rectangle', icon: 'rectangle', ...key('rectangle') },
       { id: 'circle', label: 'tool.circle', icon: 'circle', ...key('circle') },
@@ -261,11 +268,34 @@ export class App {
       remove: (tagId) => this.run(this.session.execute('core.deleteTag', { tagId })),
       setColorByTag: (on) => this.setColorByTag(on),
     });
+    this.materials = new MaterialsPanel({
+      scene: () => this.session.doc.scene,
+      units: () => this.session.doc.units,
+      current: () => this.paintChoice,
+      choose: (choice) => {
+        this.setPaintChoice(choice);
+        if (this.tool.id !== 'paintBucket') this.setTool('paintBucket');
+      },
+      add: () => {
+        const r = this.session.execute('core.addMaterial', {});
+        if (r.ok) this.setPaintChoice({ materialId: r.output.materialId });
+      },
+      rename: (materialId, name) => this.run(this.session.execute('core.renameMaterial', { materialId, name })),
+      setColor: (materialId, color) => this.run(this.session.execute('core.setMaterialColor', { materialId, color })),
+      setTexture: (materialId, texture) => this.run(this.session.execute('core.setMaterialTexture', { materialId, texture })),
+      duplicate: (materialId) => {
+        const r = this.session.execute('core.duplicateMaterial', { materialId });
+        if (r.ok) this.setPaintChoice({ materialId: r.output.materialId });
+      },
+      remove: (materialId) => this.run(this.session.execute('core.deleteMaterial', { materialId })),
+      flash: (message, isError) => this.status.flash(message, isError),
+    });
     const view0 = loadViewSettings();
     const tray = new Tray(new Set(view0.collapsed), (folded) => saveViewSettings({ ...loadViewSettings(), collapsed: [...folded] }));
     tray.add('entityInfo', this.entityInfo.element);
     tray.add('outliner', this.outliner.element);
     tray.add('tags', this.tags.element);
+    tray.add('materials', this.materials.element);
 
     root.append(top, this.toolbar.element, view, tray.element, footer, this.menu.element);
     this.viewport = new Viewport(view);
@@ -359,6 +389,15 @@ export class App {
     this.entityInfo.show(this.entityInfoData());
     this.outliner.sync();
     this.tags.sync();
+    // A material undone or deleted cannot stay the Paint Bucket's.
+    const c = this.paintChoice;
+    if ('materialId' in c && c.materialId !== null && !this.session.doc.scene.materials.has(c.materialId)) this.paintChoice = { materialId: null };
+    this.materials.sync();
+  }
+
+  private setPaintChoice(choice: PaintChoice): void {
+    this.paintChoice = choice;
+    this.materials.sync();
   }
 
   /** Flash a command's error; a successful command needs no message here. */
@@ -403,6 +442,7 @@ export class App {
           scale: scaled ? t('info.scaleValue', { red: size(sx), green: size(sz), blue: size(sy) }) : null,
           stretched: !even(sx, sy) || !even(sx, sz),
           tag: this.tagField([i]),
+          material: i.material ? (doc.scene.materials.get(i.material)?.name ?? t('materials.default')) : t('materials.default'),
         };
       }
     }
@@ -529,6 +569,7 @@ export class App {
   private toolContext(): ToolContext {
     return {
       session: this.session,
+      paint: { current: () => this.paintChoice, set: (choice) => this.setPaintChoice(choice) },
       viewport: this.viewport,
       selection: this.selection,
       units: () => this.session.doc.units,
@@ -790,6 +831,7 @@ export class App {
       { label: t('menu.explode'), enabled: this.selection.instances.size > 0, run: () => this.explodeSelected() },
       { label: t('menu.makeUnique'), enabled: this.canMakeUnique(), run: () => this.makeUniqueSelected() },
       { label: t('menu.tag'), enabled: any, run: () => this.tagMenu(x, y) },
+      { label: t('menu.paintBack'), enabled: faces.size > 0, run: () => this.paintBack() },
       null,
       { label: t('menu.delete'), shortcut: t('key.delete'), enabled: any, run: () => this.deleteSelected() },
       this.deleteGuidesEntry(),
@@ -829,6 +871,13 @@ export class App {
     for (const i of r.output.instanceIds) this.selection.instances.add(i);
     for (const a of r.output.annotationIds) this.selection.annotations.add(a);
     this.applyHighlights();
+  }
+
+  /** Paint the backs of the selected faces with the Paint Bucket's material (right-click Paint Back). */
+  private paintBack(): void {
+    const r = this.session.execute('core.paint', { definitionId: this.viewport.frame.definitionId, faceIds: [...this.selection.faces], sides: ['back'], ...this.paintChoice });
+    if (!r.ok) return this.flashError(r.error);
+    if ('starter' in this.paintChoice) this.setPaintChoice({ materialId: r.output.materialId });
   }
 
   /* ---------- tags ---------- */

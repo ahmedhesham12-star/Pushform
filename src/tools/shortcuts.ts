@@ -17,6 +17,7 @@ export const TOOL_SHORTCUTS: Readonly<Record<string, ToolId>> = {
   p: 'pushPull',
   f: 'offset',
   e: 'erase',
+  b: 'paintBucket',
   t: 'tape',
   o: 'orbit',
   h: 'pan',
@@ -24,11 +25,10 @@ export const TOOL_SHORTCUTS: Readonly<Record<string, ToolId>> = {
 
 /**
  * Keys reserved for SketchUp tools we have not built yet, so they keep their
- * SketchUp meaning when we do. Never assign them to anything else.
+ * SketchUp meaning when we do. Never assign them to anything else. None are
+ * left since the Paint Bucket (B) came in milestone 5.
  */
-export const RESERVED_SHORTCUTS: Readonly<Record<string, string>> = {
-  b: 'Paint Bucket',
-};
+export const RESERVED_SHORTCUTS: Readonly<Record<string, string>> = {};
 
 export type ActionId = 'makeComponent';
 

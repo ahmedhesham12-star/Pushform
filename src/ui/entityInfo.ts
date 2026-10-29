@@ -32,6 +32,8 @@ export type EntityInfoData =
       /** Scaled more one way than another, so its parts no longer have their real size. */
       stretched: boolean;
       tag: TagField;
+      /** The name of its material, or Default. */
+      material: string;
     }
   | { kind: 'dimension'; length: string; tag: TagField }
   | { kind: 'text'; text: string; tag: TagField }
@@ -90,6 +92,7 @@ export class EntityInfo {
         }
         this.input(t('info.instance'), data.instanceName, (name) => this.host.renameInstance(data.instanceId, name), true);
         this.tagRow(data.tag);
+        this.row(t('info.material'), data.material);
         if (data.volume) this.row(t('info.volume'), data.volume);
         if (data.scale) this.row(t('info.scale'), data.scale);
         if (data.stretched) this.body.append(el('dd', 'entity-info-warning', t('info.stretched')));

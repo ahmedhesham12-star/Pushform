@@ -1,4 +1,4 @@
-import type { CommandError, CommandSession, PushformDocument } from '../commands';
+import type { CommandError, CommandSession, PushformDocument, StarterMaterial } from '../commands';
 import type { InstanceId } from '../scene';
 import type { UnitSettings } from '../units';
 import type { Highlight, Picked, Viewport } from '../viewport';
@@ -19,6 +19,7 @@ export type ToolId =
   | 'pushPull'
   | 'offset'
   | 'erase'
+  | 'paintBucket'
   | 'tape'
   | 'protractor'
   | 'dimension'
@@ -53,8 +54,13 @@ export const sameEntity = (a: EntityRef | null, b: EntityRef | null) =>
   a === b || (!!a && !!b && a.kind === b.kind && a.id === b.id);
 
 /** What a tool can reach. Tools change the model only through `session`. */
+/** What the Paint Bucket paints with: a material of the file, a starter one not yet in it, or the default (null, no paint). */
+export type PaintChoice = { readonly materialId: string | null } | { readonly starter: StarterMaterial };
+
 export interface ToolContext {
   readonly session: CommandSession;
+  /** The Paint Bucket's material, shared with the Materials panel. */
+  readonly paint: { current(): PaintChoice; set(choice: PaintChoice): void };
   readonly viewport: Viewport;
   readonly selection: Selection;
   units(): UnitSettings;

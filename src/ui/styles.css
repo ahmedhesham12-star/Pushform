@@ -552,6 +552,123 @@ li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
   font-style: italic;
 }
 
+/* ---------- materials panel ---------- */
+.materials {
+  overflow: auto;
+  max-block-size: 45vh;
+}
+.materials-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-block: 6px 2px;
+  padding-inline: 8px 12px;
+}
+.materials-current {
+  color: var(--ink-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.panel h3 {
+  margin: 0;
+  padding-block: 6px 2px;
+  padding-inline: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+.materials-swatches {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding-block: 2px 6px;
+  padding-inline: 8px;
+}
+.materials-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-inline-size: 0;
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.materials-swatch:hover {
+  background: var(--ui-2);
+}
+.materials-swatch[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--ui-2);
+}
+.materials-swatch:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.materials-chip {
+  inline-size: 36px;
+  block-size: 28px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background-size: cover;
+}
+/* Default (no paint): an empty chip. */
+.materials-chip.materials-default {
+  border-style: dashed;
+  background: var(--ui);
+}
+.materials-name {
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.materials-editor {
+  display: grid;
+  gap: 6px;
+  padding-block: 4px 8px;
+  padding-inline: 12px;
+}
+.materials-editor:empty {
+  display: none;
+}
+.materials-field {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink-2);
+}
+.materials-field input[type='color'] {
+  inline-size: 40px;
+  block-size: 24px;
+  padding: 0;
+}
+.materials-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.materials-action {
+  padding-block: 3px;
+  padding-inline: 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--ui);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.materials-action:hover {
+  background: var(--ui-2);
+}
+
 /* ---------- tags panel ---------- */
 .tags-bar {
   display: flex;

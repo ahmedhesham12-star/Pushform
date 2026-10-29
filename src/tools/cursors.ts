@@ -17,3 +17,12 @@ export function copyCursor(base: keyof typeof SHAPES): string {
     `<path d="${d}" stroke="#fff" stroke-width="3.5"/><path d="${d}" stroke="#000" stroke-width="1.5"/></svg>`;
   return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 12 12, ${base}`;
 }
+
+/** The Paint Bucket's cursor: a tipped bucket pouring at the hotspot (bottom left), as in SketchUp. */
+export function bucketCursor(): string {
+  const d = 'M3 21L6 15M8 4L17 13L11 19L2 10ZM8 4L10 2M17 13C19 13 21 15 21 17C21 19 19 19 19 17';
+  const svg =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" fill="none" stroke-linecap="round" stroke-linejoin="round">` +
+    `<path d="${d}" stroke="#fff" stroke-width="3.5"/><path d="${d}" stroke="#000" stroke-width="1.5"/></svg>`;
+  return `url("data:image/svg+xml,${encodeURIComponent(svg)}") 3 21, crosshair`;
+}

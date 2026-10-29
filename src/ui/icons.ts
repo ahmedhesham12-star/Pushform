@@ -55,6 +55,10 @@ export const ICONS = {
     '<path d="M4 15.5 12.5 7l5.5 5.5-6.5 6.5H8z"/><path d="M8.5 11 14 16.5M13 19.5h7"/>',
     'stroke-linejoin="round" stroke-linecap="round"',
   ),
+  paintBucket: svg(
+    '<path d="M9 3.5 18 12.5 11.5 19 2.5 10z"/><path d="M9 3.5 11 1.5M2.5 10h15.5"/><path d="M18 12.5c1.6 1.4 2.5 2.9 2.5 4.2a2 2 0 0 1-4 0c0-1 .5-2.2 1.5-4.2z"/>',
+    'stroke-linejoin="round" stroke-linecap="round"',
+  ),
   tape: svg(
     '<rect x="3" y="6" width="12" height="12" rx="3"/><circle cx="9" cy="12" r="2.2"/><path d="M15 15.5h6v2.5h-6M18 15.5v1.2"/>',
     'stroke-linejoin="round"',

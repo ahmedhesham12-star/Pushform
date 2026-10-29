@@ -15,6 +15,7 @@ describe('tool shortcuts match SketchUp defaults', () => {
       p: 'pushPull',
       f: 'offset',
       e: 'erase',
+      b: 'paintBucket',
       t: 'tape',
       o: 'orbit',
       h: 'pan',
@@ -25,8 +26,8 @@ describe('tool shortcuts match SketchUp defaults', () => {
     expect(shortcutFor('polygon')).toBeNull();
   });
 
-  test('keys reserved for later SketchUp tools are not assigned', () => {
-    expect(Object.keys(RESERVED_SHORTCUTS).sort()).toEqual(['b']);
+  test('keys reserved for later SketchUp tools are not assigned; none are left', () => {
+    expect(Object.keys(RESERVED_SHORTCUTS)).toEqual([]);
     for (const key of Object.keys(RESERVED_SHORTCUTS)) {
       expect(TOOL_SHORTCUTS[key], key).toBeUndefined();
       expect(ACTION_SHORTCUTS[key], key).toBeUndefined();

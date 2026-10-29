@@ -164,8 +164,10 @@ export const paintInput = z.strictObject({
   sides: z.array(z.enum(['front', 'back'])).min(1).optional(),
   instanceIds: ids,
   /** The material, or null for the default (no paint). */
-  materialId: materialId.nullable(),
-});
+  materialId: materialId.nullable().optional(),
+  /** A starter material instead, copied into the file first, so painting with it is one step. */
+  starter: z.enum(STARTERS).optional(),
+}).refine((x) => (x.materialId === undefined) !== (x.starter === undefined), 'give a material or a starter');
 export type PaintInput = z.infer<typeof paintInput>;
 
 /**
@@ -173,7 +175,7 @@ export type PaintInput = z.infer<typeof paintInput>;
  * groups and components placed in it: their material shows on the faces
  * inside them that have none. Null removes the paint.
  */
-export const paint: CommandDef<PaintInput, Record<string, never>> = {
+export const paint: CommandDef<PaintInput, { materialId: string | null }> = {
   id: 'core.paint',
   title: () => t('command.paint'),
   input: paintInput,
@@ -181,15 +183,18 @@ export const paint: CommandDef<PaintInput, Record<string, never>> = {
     const defId = input.definitionId ?? doc.scene.rootId;
     const def = getDefinition(doc.scene, defId);
     if (!def) return { ok: false, error: { code: 'noSuchDefinition', detail: defId } };
-    if (input.materialId !== null && !doc.scene.materials.has(input.materialId)) return noSuchMaterial(input.materialId);
     if (!input.faceIds?.length && !input.instanceIds?.length) return { ok: false, error: { code: 'nothingSelected' } };
-    let scene = setModel(doc.scene, defId, paintFaces(def.model, input.faceIds ?? [], input.sides ?? ['front'], input.materialId));
-    for (const id of input.instanceIds ?? []) {
-      const i = def.instances.get(id);
-      if (!i || (i.material ?? null) === input.materialId) continue;
+    let scene = doc.scene;
+    let id = input.materialId ?? null;
+    if (input.starter) [id, scene] = addSceneMaterial(scene, { name: starterName(input.starter), color: STARTER_MATERIALS[input.starter].color });
+    else if (id !== null && !scene.materials.has(id)) return noSuchMaterial(id);
+    scene = setModel(scene, defId, paintFaces(def.model, input.faceIds ?? [], input.sides ?? ['front'], id));
+    for (const instanceId of input.instanceIds ?? []) {
+      const i = def.instances.get(instanceId);
+      if (!i || (i.material ?? null) === id) continue;
       const { material: _old, ...rest } = i;
-      scene = putInstance(scene, defId, input.materialId ? { ...rest, material: input.materialId } : rest);
+      scene = putInstance(scene, defId, id ? { ...rest, material: id } : rest);
     }
-    return done(doc, scene, {});
+    return done(doc, scene, { materialId: id });
   },
 };

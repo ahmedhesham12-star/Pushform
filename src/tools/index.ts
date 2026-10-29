@@ -1,6 +1,7 @@
 import { createCenterArcTool, createThreePointArcTool, createTwoPointArcTool } from './arc';
 import { createCircleTool } from './circle';
 import { createEraseTool } from './erase';
+import { createPaintBucketTool } from './paintBucket';
 import { createPolygonTool } from './polygon';
 import { createDimensionTool } from './dimension';
 import { createProtractorTool } from './protractor';
@@ -18,7 +19,7 @@ import { createSelectTool } from './select';
 import { createTapeTool } from './tape';
 import type { Tool, ToolContext, ToolId } from './tool';
 
-export type { Selection, Tool, ToolContext, ToolId } from './tool';
+export type { PaintChoice, Selection, Tool, ToolContext, ToolId } from './tool';
 export { arrayBeforeCopy } from './transformSelection';
 export {
   ACTION_SHORTCUTS,
@@ -52,6 +53,7 @@ export function createTools(ctx: ToolContext): Record<ToolId, Tool> {
     pushPull: createPushPullTool(ctx),
     offset: createOffsetTool(ctx),
     erase: createEraseTool(ctx),
+    paintBucket: createPaintBucketTool(ctx),
     orbit: createOrbitTool(),
     pan: createPanTool(),
   };

@@ -91,7 +91,7 @@ src/
   storage.ts  autosave to IndexedDB, or local storage where it is missing (the recovery
               copy), the file name and per-device view settings
 tests/        units, kernel, scene, commands, tools (with stand-in viewports), DOM
-              components, export, acceptance tests per milestone and architecture
+              components, export, cut list, acceptance tests per milestone and architecture
               tests; helpers/ holds the randomized runs, stress/ the long sweeps
               (`npm run test:stress`), fixtures/ real milestone 1 and 2 autosaves
 reference/    the original Blockout prototype (behavior spec for milestone 1)
@@ -617,6 +617,8 @@ Decisions approved for milestone 4 (2026-10-26, product owner):
 
 Checkpoints for the product owner's manual testing: (a) tags; (b) materials and the Paint Bucket; (c) the cut list.
 
+Progress (2026-11-02): milestone 5 complete on the branch, waiting for the product owner. Done since checkpoint (c): tags, materials, painting, grain and cut list settings in the mixed random run, with stress sweep 8 running 200 such seeds beside the 400 paint runs (step 11; the run found that stock was saved in a different key order than loading builds it, now fixed); the milestone 5 acceptance test (`tests/acceptance5.test.ts`): the reference cabinet painted, giving the approved rows, quantities, sheet estimates, board volume and costs, with hidden fronts, CSV, save and reopen, and GLB through the validator. 849 unit tests pass and the build succeeds.
+
 Progress (2026-10-29, evening): ready for checkpoint (c). Done since checkpoint (b): sheet and solid wood stock on materials and the cut list settings (step 8), the cut list engine in `src/cutlist` with grain directions and CSV (step 9), the Cut List panel, row selection, CSV export, print view and the Grain menu in Entity Info (step 10). 837 unit tests pass and the build succeeds.
 
 Progress (2026-10-29, later): ready for checkpoint (b). Done since checkpoint (a): paint on kernel faces through every edit (step 3), materials, painting commands and the IndexedDB autosave (step 4), materials and textures in the viewport (step 5), the Paint Bucket (B) and the Materials panel (step 6), materials in GLB export (step 7). 815 unit tests pass and the build succeeds; `npm run test:stress` passes (sweeps 1 to 8, 3290 cases). The new paint sweep (8) found two kernel faults, fixed and pinned (seeds 8006 and 8368).
@@ -648,6 +650,10 @@ Decisions approved for milestone 5 (2026-10-29, product owner):
 - While moving loose geometry, its own endpoints and midpoints at the original position are still inference targets (its faces and edges are not).
 - A segment count typed after an arc (or circle) amends that one only; the next one starts from the count typed in the tool.
 - Scale refuses a non-uniform scale that would skew a turned group or component (scale it along its own axes, which a lone selected one gets by default).
+- Textures always run along each face's longest edge from its start; there are no tools to move, turn or scale them on a face yet.
+- The Paint Bucket paints faces inside a group or component only with it open; a click on a closed one paints it whole.
+- The cut list has no edge banding, part labels or sheet layout (next steps), sizes parts by their box (a round top is listed by its rectangle) and counts each row's parts by their shown material only.
+- Selecting a cut list row whose parts sit in several groups opens the group holding most of them; the others are marked with boxes, not selected.
 
 ## Next steps (proposed, not yet approved)
 1. **After milestone 5** (out of its scope):

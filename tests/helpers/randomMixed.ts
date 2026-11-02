@@ -1,16 +1,37 @@
-import { createSession, documentFromText, documentToText, type CommandSession } from '../../src/commands';
+import { createSession, documentFromText, documentToText, STARTER_MATERIALS, type CommandSession } from '../../src/commands';
+import { cutList } from '../../src/cutlist';
 import { checkModel, listFaces, snapPoints } from '../../src/kernel';
 import { findInstance, followAnchors, instanceCount, placedInstances, type Scene } from '../../src/scene';
 import { rng } from './randomRun';
 
 /**
  * Problems with a scene: each model's invariants, single-instance groups,
- * nothing orphaned, and dimensions and text already following their geometry
- * (the session follows after every command, so following again changes nothing).
+ * nothing orphaned, dimensions and text already following their geometry
+ * (the session follows after every command, so following again changes
+ * nothing), tags and materials named only where they exist, and a cut list
+ * that builds with a part for every listed instance.
  */
 export function sceneProblems(s: Scene): string[] {
   const out: string[] = [];
   if (followAnchors(s) !== s) out.push('anchors do not follow their geometry');
+  const tag = (where: string, id: string | undefined) => id !== undefined && !s.tags.has(id) && out.push(`${where} names missing tag ${id}`);
+  const material = (where: string, id: string | undefined) => id !== undefined && !s.materials.has(id) && out.push(`${where} names missing material ${id}`);
+  for (const d of s.definitions.values()) {
+    for (const [id, i] of d.instances) {
+      tag(id, i.tag);
+      material(id, i.material);
+    }
+    for (const [id, g] of d.guides) tag(id, g.tag);
+    for (const [id, a] of d.annotations) tag(id, a.tag);
+    for (const f of listFaces(d.model)) {
+      material(`${d.id} ${f.id}`, f.paint?.front);
+      material(`${d.id} ${f.id}`, f.paint?.back);
+    }
+  }
+  const list = cutList(s, { waste: 0.15, includeHidden: true });
+  const listed = list.rows.reduce((n, r) => n + r.quantity, 0);
+  if (list.rows.some((r) => r.quantity !== r.paths.length || !(r.thickness <= r.width + 1e-9 || r.grain))) out.push('cut list rows do not add up');
+  if (listed !== list.totals.reduce((n, t) => n + t.quantity, 0)) out.push('cut list totals do not add up');
   for (const d of s.definitions.values()) {
     for (const p of checkModel(d.model)) out.push(`${d.id}: ${p}`);
     const n = instanceCount(s, d.id);
@@ -37,9 +58,12 @@ const AXES: [number, number, number][] = [
  * text unchanged. Returns the session and how many of each command changed it.
  * With `milestone4`, also: corners moved on their own (folding), scale and
  * flip of instances and loose geometry, arcs and pies, guides, dimensions and
- * text. Without it, a seed runs exactly as it did in milestone 3.
+ * text. With milestone 5, also: tags (added, put on things, hidden and
+ * shown, deleted), materials (added, with stock, painted on faces and
+ * instances, deleted), grain directions and cut list settings. A seed run
+ * at an earlier milestone runs exactly as it did then.
  */
-export function randomMixedRun(seed: number, steps: number, milestone4 = false): { session: CommandSession; counts: Record<string, number> } {
+export function randomMixedRun(seed: number, steps: number, milestone: 3 | 4 | 5 = 3): { session: CommandSession; counts: Record<string, number> } {
   const r = rng(seed);
   const s = createSession();
   const counts: Record<string, number> = {};
@@ -70,7 +94,7 @@ export function randomMixedRun(seed: number, steps: number, milestone4 = false):
 
   for (let step = 0; step < steps; step++) {
     const root = s.doc.scene.definitions.get(s.doc.scene.rootId)!;
-    const op = Math.floor(r() * (milestone4 ? 23 : 16));
+    const op = Math.floor(r() * (milestone === 5 ? 29 : milestone === 4 ? 23 : 16));
     last = '';
     const where = () => `seed ${seed}, step ${step}, op ${op}${last}`;
     if (op <= 1 || !listFaces(root.model).length) {
@@ -177,6 +201,40 @@ export function randomMixedRun(seed: number, steps: number, milestone4 = false):
       const annotationIds = [...def.annotations.keys()].filter(() => r() < 0.5);
       const faceIds = listFaces(def.model).map((f) => f.id).filter(() => r() < 0.3);
       if (annotationIds.length) run('core.move', { definitionId: def.kind === 'root' ? undefined : def.id, annotationIds, faceIds, direction: pick(AXES), distance: 50 + grid(4) });
+    } else if (op === 23) {
+      run('core.addTag', {});
+    } else if (op === 24) {
+      // Instances, guides and annotations of one definition onto a tag, or Untagged.
+      const def = pick([...s.doc.scene.definitions.values()])!;
+      const some = <T>(m: ReadonlyMap<string, T>) => [...m.keys()].filter(() => r() < 0.5);
+      const tagId = r() < 0.2 ? null : (pick([...s.doc.scene.tags.keys()]) ?? null);
+      run('core.setTag', { definitionId: def.kind === 'root' ? undefined : def.id, instanceIds: some(def.instances), guideIds: some(def.guides), annotationIds: some(def.annotations), tagId });
+    } else if (op === 25) {
+      const tagId = pick([...s.doc.scene.tags.keys()]);
+      if (tagId && r() < 0.25) run('core.deleteTag', { tagId });
+      else if (tagId) run('core.setTagVisible', { tagId, visible: !s.doc.scene.tags.get(tagId)!.visible });
+    } else if (op === 26) {
+      const starter = pick(Object.keys(STARTER_MATERIALS));
+      const out = run('core.addMaterial', r() < 0.6 ? { starter } : {});
+      if (out.ok && r() < 0.5) {
+        const materialId = (out.output as { materialId: string }).materialId;
+        const stock = r() < 0.5 ? { kind: 'sheet', thickness: pick([12, 15, 18])!, length: 2440, width: 1220, price: 40, grain: r() < 0.5 } : { kind: 'solid', thickness: 20, price: 900, per: 'cubicMeter', grain: true };
+        run('core.setMaterialStock', { materialId, stock });
+      }
+    } else if (op === 27) {
+      // Paint faces (a side or both) or instances of one definition, with a material or none.
+      const def = pick([...s.doc.scene.definitions.values()])!;
+      const materialId = r() < 0.2 ? null : (pick([...s.doc.scene.materials.keys()]) ?? null);
+      const faceIds = listFaces(def.model).map((f) => f.id).filter(() => r() < 0.4);
+      const instanceIds = [...def.instances.keys()].filter(() => r() < 0.5);
+      const sides = pick([['front'], ['back'], ['front', 'back']])!;
+      if (faceIds.length || instanceIds.length) run('core.paint', { definitionId: def.kind === 'root' ? undefined : def.id, faceIds, instanceIds, sides, materialId });
+    } else if (op === 28) {
+      const materialId = pick([...s.doc.scene.materials.keys()]);
+      const def = pick([...s.doc.scene.definitions.values()].filter((d) => d.kind !== 'root'));
+      if (def && r() < 0.6) run('core.setGrain', { definitionId: def.id, grain: pick(['red', 'green', 'blue', 'red', 'green', 'blue', null]) });
+      else if (materialId && r() < 0.3) run('core.deleteMaterial', { materialId });
+      else run('core.setCutListSettings', { waste: pick([0, 0.1, 0.15, 0.3]), includeHidden: r() < 0.5 });
     } else if (s.canUndo) {
       const before = s.doc;
       s.undo();

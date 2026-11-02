@@ -93,8 +93,9 @@ export interface SerializedMaterial {
   stock?: Stock;
 }
 
+/** A material as saved; stock in the order loading builds it, so a file saves the same after it is opened. */
 function saveMaterial(m: Material): SerializedMaterial {
-  return { name: m.name, color: m.color, ...(m.texture ? { texture: { ...m.texture } } : {}), ...(m.stock ? { stock: { ...m.stock } } : {}) };
+  return { name: m.name, color: m.color, ...(m.texture ? { texture: { ...m.texture } } : {}), ...(m.stock ? { stock: validStock(m.stock)! } : {}) };
 }
 
 /** A material from a file, or null when it is not one: a name, a #rrggbb color, and a PNG or JPEG texture with a positive size. */

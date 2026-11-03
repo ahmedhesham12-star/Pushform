@@ -34,8 +34,8 @@ export type EntityInfoData =
       tag: TagField;
       /** The name of its material, or Default. */
       material: string;
-      /** Its grain direction for the cut list (shared by component copies); null for the longest side. */
-      grain: GrainAxis | null;
+      /** Its grain direction for the cut list (shared by component copies); null for the longest side; absent outside the Woodworking workspace. */
+      grain?: GrainAxis | null;
     }
   | { kind: 'dimension'; length: string; tag: TagField }
   | { kind: 'text'; text: string; tag: TagField }
@@ -97,7 +97,7 @@ export class EntityInfo {
         this.input(t('info.instance'), data.instanceName, (name) => this.host.renameInstance(data.instanceId, name), true);
         this.tagRow(data.tag);
         this.row(t('info.material'), data.material);
-        this.grainRow(data.definitionId, data.grain);
+        if (data.grain !== undefined) this.grainRow(data.definitionId, data.grain);
         if (data.volume) this.row(t('info.volume'), data.volume);
         if (data.scale) this.row(t('info.scale'), data.scale);
         if (data.stretched) this.body.append(el('dd', 'entity-info-warning', t('info.stretched')));

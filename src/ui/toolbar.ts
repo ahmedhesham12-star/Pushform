@@ -10,8 +10,8 @@ export interface ToolButtonSpec<Id extends string> {
   keyLabel?: string;
   /** Name of the key for the tooltip. */
   keyName?: string;
-  /** Start a new group (separator before this button). */
-  group?: boolean;
+  /** The group it belongs to; a separator comes before each new group. */
+  group: string;
 }
 
 /** The tool palette: icon buttons in two columns, named by their tooltips. */
@@ -21,9 +21,16 @@ export class ToolBar<Id extends string> {
 
   constructor(specs: readonly ToolButtonSpec<Id>[], onSelect: (id: Id) => void) {
     this.element.setAttribute('aria-label', t('toolbar.label'));
+    let group: string | null = null;
     for (const s of specs) {
-      if (s.group) this.element.append(el('hr'));
+      if (group !== null && s.group !== group) {
+        const hr = el('hr');
+        hr.dataset.group = s.group;
+        this.element.append(hr);
+      }
+      group = s.group;
       const b = el('button');
+      b.dataset.group = s.group;
       b.type = 'button';
       b.title = s.keyName ? t('action.withShortcut', { name: t(s.label), key: s.keyName }) : t(s.label);
       b.setAttribute('aria-label', t(s.label));
@@ -38,6 +45,11 @@ export class ToolBar<Id extends string> {
 
   setActive(id: Id): void {
     for (const [bid, b] of this.buttons) b.setAttribute('aria-pressed', String(bid === id));
+  }
+
+  /** Show only these groups' buttons (a workspace's), with the separator before each. */
+  showGroups(groups: readonly string[]): void {
+    for (const x of this.element.querySelectorAll<HTMLElement>('[data-group]')) x.hidden = !groups.includes(x.dataset.group!);
   }
 }
 

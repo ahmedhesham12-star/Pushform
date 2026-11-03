@@ -132,7 +132,7 @@ describe('guides in files', () => {
     ok(s.execute('core.addGuideLine', { point: [10, 20, 30], direction: [0, 1, 0] }));
     ok(s.execute('core.addGuidePoint', { from: [0, 0, 0], direction: [1, 0, 0], distance: 50 }));
     const text = documentToText(s.doc);
-    expect(JSON.parse(text).version).toBe(5);
+    expect(JSON.parse(text).version).toBe(6);
     const back = documentFromText(text)!;
     expect(serializeDocument(back)).toEqual(serializeDocument(s.doc));
     expect(getDefinition(back.scene, back.scene.rootId)!.guides).toEqual(guidesOf(s));

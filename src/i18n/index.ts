@@ -60,6 +60,16 @@ export function setLocale(locale: Locale): void {
   current = locale;
 }
 
+/** The region of the browser's language (US for en-US; the likely one for a bare "en"), or null when unknown. */
+export function browserRegion(): string | null {
+  try {
+    const language = typeof navigator === 'undefined' ? '' : navigator.language;
+    return language ? (new Intl.Locale(language).maximize().region ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Apply lang and dir to a document root (the html element). */
 export function applyLocaleToDocument(root: HTMLElement): void {
   root.lang = LOCALES[current].tag;

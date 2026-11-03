@@ -8,6 +8,10 @@ import { el } from './dom';
 export interface MaterialsHost {
   scene(): Scene;
   units(): UnitSettings;
+  /** The starter materials the file's workspace offers. */
+  starters(): readonly StarterMaterial[];
+  /** Whether materials show what they are bought as (the Woodworking workspace). */
+  stock(): boolean;
   /** The Paint Bucket's material. */
   current(): PaintChoice;
   /** Make a material the Paint Bucket's, and pick the Paint Bucket. */
@@ -30,22 +34,22 @@ export const MAX_TEXTURE_SIZE = 2048;
 /** How wide one tile of a new texture is, in mm; its height follows the image. */
 const DEFAULT_TILE = 600;
 
-const STARTERS = Object.keys(STARTER_MATERIALS) as StarterMaterial[];
 const same = (a: PaintChoice, b: PaintChoice) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
  * Materials, as SketchUp's Materials panel: Default (no paint) and the
- * model's own materials ("In Model"), then the starter set not yet in it.
- * Clicking a swatch makes it the Paint Bucket's material and picks the
- * Paint Bucket. Below, the chosen model material can be renamed, recolored,
- * given an image with its tile size, duplicated or deleted.
+ * model's own materials ("In Model"), then the workspace's starter set not
+ * yet in it. Clicking a swatch makes it the Paint Bucket's material and
+ * picks the Paint Bucket. Below, the chosen model material can be renamed,
+ * recolored, given an image with its tile size, duplicated or deleted, and
+ * in the Woodworking workspace given its stock.
  */
 export class MaterialsPanel {
   readonly element = el('section', 'materials');
   private readonly inModel = el('div', 'materials-swatches');
   private readonly starters = el('div', 'materials-swatches');
   private readonly editor = el('div', 'materials-editor');
-  private shown: { materials: Scene['materials'] | null; current: string; unit: string } = { materials: null, current: '', unit: '' };
+  private shown: { materials: Scene['materials'] | null; current: string; unit: string; offer: string } = { materials: null, current: '', unit: '', offer: '' };
 
   constructor(private readonly host: MaterialsHost) {
     const heading = el('h2', undefined, t('panel.materials'));
@@ -77,8 +81,9 @@ export class MaterialsPanel {
     const materials = this.host.scene().materials;
     const current = JSON.stringify(this.host.current());
     const unit = JSON.stringify(this.host.units());
-    if (materials === this.shown.materials && current === this.shown.current && unit === this.shown.unit) return;
-    this.shown = { materials, current, unit };
+    const offer = JSON.stringify([this.host.starters(), this.host.stock()]);
+    if (materials === this.shown.materials && current === this.shown.current && unit === this.shown.unit && offer === this.shown.offer) return;
+    this.shown = { materials, current, unit, offer };
     this.render(materials);
   }
 
@@ -88,7 +93,10 @@ export class MaterialsPanel {
     for (const [id, m] of materials) this.inModel.append(this.swatch({ materialId: id }, m.name, m, current));
     const names = new Set([...materials.values()].map((m) => m.name));
     this.starters.replaceChildren(
-      ...STARTERS.filter((k) => !names.has(starterName(k))).map((k) => this.swatch({ starter: k }, starterName(k), { name: starterName(k), color: STARTER_MATERIALS[k]!.color }, current)),
+      ...this.host
+        .starters()
+        .filter((k) => !names.has(starterName(k)))
+        .map((k) => this.swatch({ starter: k }, starterName(k), { name: starterName(k), color: STARTER_MATERIALS[k]!.color }, current)),
     );
     const chosen = 'materialId' in current && current.materialId !== null ? materials.get(current.materialId) : undefined;
     const name = chosen ? chosen.name : 'starter' in current ? starterName(current.starter) : t('materials.default');
@@ -172,7 +180,7 @@ export class MaterialsPanel {
       });
       field(t('materials.tileWidth'), tile);
     }
-    this.stockFields(id, m.stock);
+    if (this.host.stock()) this.stockFields(id, m.stock);
     const more = el('div', 'materials-actions');
     for (const [label, run] of [
       [t('materials.duplicate'), () => this.host.duplicate(id)],

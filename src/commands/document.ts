@@ -12,7 +12,8 @@ import {
   type Scene,
   type SerializedScene,
 } from '../scene';
-import { DEFAULT_UNIT_SETTINGS, isValidSettings, LENGTH_UNITS, type LengthUnit, type UnitSettings } from '../units';
+import { isValidSettings, LENGTH_UNITS, type LengthUnit, type UnitSettings } from '../units';
+import { WORKSPACES, workspaceUnits, type Workspace } from './workspaces';
 
 /** Everything saved in a Pushform file. Immutable; commands return new documents. */
 export interface PushformDocument {
@@ -20,6 +21,8 @@ export interface PushformDocument {
   readonly scene: Scene;
   /** Per-file display units and precision. */
   readonly units: UnitSettings;
+  /** What the file is for (milestone 6): which materials, panels and tools are offered. */
+  readonly workspace: Workspace;
   /** Cut list settings (milestone 5); the defaults when absent. */
   readonly cutList?: CutListSettings;
 }
@@ -49,23 +52,30 @@ function readCutList(v: unknown): CutListSettings | null {
 }
 
 /**
- * Version 5 (milestone 5) holds a scene of definitions and instances, with
- * guides, dimensions and text, and tags. Version 4 (milestone 4) is the same
- * without tags, and version 3 (milestone 3) without guides. Version 2
- * (milestone 2) held one topology model and version 1 (milestone 1) a
- * face-loop model; both are converted when loaded, becoming the root
- * definition.
+ * Version 6 (milestone 6) adds the workspace. Version 5 (milestone 5) holds a
+ * scene of definitions and instances, with guides, dimensions and text, and
+ * tags. Version 4 (milestone 4) is the same without tags, and version 3
+ * (milestone 3) without guides. Version 2 (milestone 2) held one topology
+ * model and version 1 (milestone 1) a face-loop model; both are converted
+ * when loaded, becoming the root definition.
  */
 export interface SerializedDocument {
   format: 'pushform';
-  version: 5;
+  version: 6;
   units: UnitSettings;
+  workspace: Workspace;
   scene: SerializedScene;
   cutList?: CutListSettings;
 }
 
-export function newDocument(): PushformDocument {
-  return { scene: createScene(createModel()), units: { ...DEFAULT_UNIT_SETTINGS } };
+/** An empty document for a workspace, in its units (`region`, such as US, picks feet and inches for architecture). */
+export function newDocument(workspace: Workspace = 'general', region: string | null = null): PushformDocument {
+  return { scene: createScene(createModel()), units: workspaceUnits(workspace, region), workspace };
+}
+
+/** Files from before workspaces: Woodworking when they hold woodworking data (stock or cut list settings), else General. */
+function guessWorkspace(scene: Scene, cutList: CutListSettings | undefined): Workspace {
+  return cutList || [...scene.materials.values()].some((m) => m.stock) ? 'woodworking' : 'general';
 }
 
 /** The root definition's geometry: the model outside any group or component. */
@@ -91,16 +101,23 @@ export function followDocument(doc: PushformDocument): PushformDocument {
 }
 
 export function serializeDocument(doc: PushformDocument): SerializedDocument {
-  return { format: 'pushform', version: 5, units: { ...doc.units }, scene: serializeScene(doc.scene), ...(doc.cutList ? { cutList: { ...doc.cutList } } : {}) };
+  return {
+    format: 'pushform',
+    version: 6,
+    units: { ...doc.units },
+    workspace: doc.workspace,
+    scene: serializeScene(doc.scene),
+    ...(doc.cutList ? { cutList: { ...doc.cutList } } : {}),
+  };
 }
 
-/** Validate and load a saved document (version 1 to 5). Returns null when the data is not a valid document. */
+/** Validate and load a saved document (version 1 to 6). Returns null when the data is not a valid document. */
 export function deserializeDocument(data: unknown): PushformDocument | null {
   if (typeof data !== 'object' || data === null) return null;
-  const d = data as { format?: unknown; version?: unknown; model?: unknown; scene?: unknown; units?: Partial<UnitSettings>; cutList?: unknown };
-  if (d.format !== 'pushform' || ![1, 2, 3, 4, 5].includes(d.version as number)) return null;
+  const d = data as { format?: unknown; version?: unknown; model?: unknown; scene?: unknown; units?: Partial<UnitSettings>; workspace?: unknown; cutList?: unknown };
+  if (d.format !== 'pushform' || ![1, 2, 3, 4, 5, 6].includes(d.version as number)) return null;
   let scene: Scene | null;
-  if (d.version === 3 || d.version === 4 || d.version === 5) {
+  if ((d.version as number) >= 3) {
     scene = deserializeScene(d.scene);
   } else {
     const model = deserialize(d.model);
@@ -110,9 +127,15 @@ export function deserializeDocument(data: unknown): PushformDocument | null {
   if (!scene || !u || !LENGTH_UNITS.includes(u.unit as LengthUnit)) return null;
   const units = { unit: u.unit, precision: u.precision } as UnitSettings;
   if (!isValidSettings(units)) return null;
-  if (d.cutList === undefined) return { scene, units };
-  const cutList = readCutList(d.cutList);
-  return cutList && { scene, units, cutList };
+  let cutList: CutListSettings | undefined;
+  if (d.cutList !== undefined) {
+    const read = readCutList(d.cutList);
+    if (!read) return null;
+    cutList = read;
+  }
+  if (d.version === 6 && !WORKSPACES.includes(d.workspace as Workspace)) return null;
+  const workspace = d.version === 6 ? (d.workspace as Workspace) : guessWorkspace(scene, cutList);
+  return { scene, units, workspace, ...(cutList ? { cutList } : {}) };
 }
 
 /** The contents of a .pushform file: the serialized document as JSON. */

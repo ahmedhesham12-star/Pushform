@@ -8,13 +8,19 @@ import {
   newDocument,
   matchTypedValues,
   rootModel,
+  showsWoodworking,
+  WORKSPACE_STARTERS,
+  WORKSPACE_TOOL_GROUPS,
+  WORKSPACES,
   type CommandError,
   type CommandSession,
   type MakeInstanceOutput,
   type PushformDocument,
+  type ToolGroup,
+  type Workspace,
 } from './commands';
 import { cutList, toCsv } from './cutlist';
-import { t, tCount, type MessageKey } from './i18n';
+import { browserRegion, t, tCount, type MessageKey } from './i18n';
 import {
   edgeCount,
   edgeGroup,
@@ -67,6 +73,7 @@ import { ContextMenu, type MenuEntry } from './ui/contextMenu';
 import { EntityInfo, type EntityInfoData, type TagField } from './ui/entityInfo';
 import { CutListPanel } from './ui/cutListPanel';
 import { NameDialog } from './ui/nameDialog';
+import { WorkspaceDialog } from './ui/workspaceDialog';
 import { MaterialsPanel } from './ui/materialsPanel';
 import { TagsPanel } from './ui/tagsPanel';
 import { Tray } from './ui/tray';
@@ -150,6 +157,13 @@ export class App {
   private readonly cutListPanel: CutListPanel;
   /** Asks for a new component's name, as SketchUp's Create Component. */
   private readonly nameDialog = new NameDialog();
+  /** Asks what a new model is for. */
+  private readonly workspaceDialog = new WorkspaceDialog();
+  private readonly fileButton = el('button', 'file-button', t('file.menu'));
+  /** The Cut List button in the top bar, shown in the Woodworking workspace. */
+  private readonly cutListButton = el('button', 'file-button', t('cutlist.open'));
+  /** The workspace whose panels and tools are shown. */
+  private shownWorkspace: Workspace | null = null;
   /** Parts of the chosen cut list row outside the open context, marked with boxes until the selection changes. */
   private marked: (readonly InstanceId[])[] = [];
   /**
@@ -170,7 +184,7 @@ export class App {
     const brand = el('div', 'brand');
     brand.innerHTML = ICONS.brand;
     brand.append(el('b', undefined, t('app.name')), el('span', undefined, t('app.tagline')));
-    const fileButton = el('button', 'file-button', t('file.menu'));
+    const fileButton = this.fileButton;
     fileButton.type = 'button';
     fileButton.setAttribute('aria-haspopup', 'menu');
     fileButton.addEventListener('click', () => {
@@ -194,7 +208,7 @@ export class App {
       },
       [this.unitsMenu.element],
     );
-    const cutListButton = el('button', 'file-button', t('cutlist.open'));
+    const cutListButton = this.cutListButton;
     cutListButton.type = 'button';
     cutListButton.addEventListener('click', () => this.setCutListOpen(!this.cutListPanel.open));
     top.append(brand, fileButton, viewButton, cutListButton, this.fileLabel, this.actions.element);
@@ -206,29 +220,30 @@ export class App {
       return k === ' ' ? { keyLabel: t('key.spaceSymbol'), keyName: t('key.space') } : { keyLabel: k.toUpperCase(), keyName: k.toUpperCase() };
     };
     // Grouped as in SketchUp's large tool set: select and erase, draw, arcs, edit, construction, view.
+    const spec = (id: ToolId, group: ToolGroup): ToolButtonSpec<ToolId> => ({ id, label: `tool.${id}`, icon: id, group, ...key(id) });
     const toolSpecs: ToolButtonSpec<ToolId>[] = [
-      { id: 'select', label: 'tool.select', icon: 'select', ...key('select') },
-      { id: 'erase', label: 'tool.erase', icon: 'erase', ...key('erase') },
-      { id: 'paintBucket', label: 'tool.paintBucket', icon: 'paintBucket', ...key('paintBucket') },
-      { id: 'line', label: 'tool.line', icon: 'line', ...key('line'), group: true },
-      { id: 'rectangle', label: 'tool.rectangle', icon: 'rectangle', ...key('rectangle') },
-      { id: 'circle', label: 'tool.circle', icon: 'circle', ...key('circle') },
-      { id: 'polygon', label: 'tool.polygon', icon: 'polygon', ...key('polygon') },
-      { id: 'arc', label: 'tool.arc', icon: 'arc', ...key('arc'), group: true },
-      { id: 'centerArc', label: 'tool.centerArc', icon: 'centerArc', ...key('centerArc') },
-      { id: 'threePointArc', label: 'tool.threePointArc', icon: 'threePointArc', ...key('threePointArc') },
-      { id: 'pie', label: 'tool.pie', icon: 'pie', ...key('pie') },
-      { id: 'pushPull', label: 'tool.pushPull', icon: 'pushPull', ...key('pushPull'), group: true },
-      { id: 'offset', label: 'tool.offset', icon: 'offset', ...key('offset') },
-      { id: 'move', label: 'tool.move', icon: 'move', ...key('move') },
-      { id: 'rotate', label: 'tool.rotate', icon: 'rotate', ...key('rotate') },
-      { id: 'scale', label: 'tool.scale', icon: 'scale', ...key('scale') },
-      { id: 'tape', label: 'tool.tape', icon: 'tape', ...key('tape'), group: true },
-      { id: 'protractor', label: 'tool.protractor', icon: 'protractor', ...key('protractor') },
-      { id: 'dimension', label: 'tool.dimension', icon: 'dimension', ...key('dimension') },
-      { id: 'text', label: 'tool.text', icon: 'text', ...key('text') },
-      { id: 'orbit', label: 'tool.orbit', icon: 'orbit', ...key('orbit'), group: true },
-      { id: 'pan', label: 'tool.pan', icon: 'pan', ...key('pan') },
+      spec('select', 'select'),
+      spec('erase', 'select'),
+      spec('paintBucket', 'select'),
+      spec('line', 'draw'),
+      spec('rectangle', 'draw'),
+      spec('circle', 'draw'),
+      spec('polygon', 'draw'),
+      spec('arc', 'arcs'),
+      spec('centerArc', 'arcs'),
+      spec('threePointArc', 'arcs'),
+      spec('pie', 'arcs'),
+      spec('pushPull', 'edit'),
+      spec('offset', 'edit'),
+      spec('move', 'edit'),
+      spec('rotate', 'edit'),
+      spec('scale', 'edit'),
+      spec('tape', 'construction'),
+      spec('protractor', 'construction'),
+      spec('dimension', 'construction'),
+      spec('text', 'construction'),
+      spec('orbit', 'view'),
+      spec('pan', 'view'),
     ];
     this.toolbar = new ToolBar(toolSpecs, (id) => this.setTool(id));
 
@@ -245,7 +260,7 @@ export class App {
       close: () => this.setCutListOpen(false),
       flash: (message, isError) => this.status.flash(message, isError),
     });
-    view.append(this.cutListPanel.element, this.nameDialog.element);
+    view.append(this.cutListPanel.element, this.nameDialog.element, this.workspaceDialog.element);
 
     const footer = el('footer', 'status');
     this.status = new StatusBar(() => this.tool.hint());
@@ -299,6 +314,8 @@ export class App {
     this.materials = new MaterialsPanel({
       scene: () => this.session.doc.scene,
       units: () => this.session.doc.units,
+      starters: () => WORKSPACE_STARTERS[this.session.doc.workspace],
+      stock: () => showsWoodworking(this.session.doc.workspace),
       current: () => this.paintChoice,
       choose: (choice) => {
         this.setPaintChoice(choice);
@@ -361,6 +378,7 @@ export class App {
     const doc = this.session.doc;
     // Undo can remove the group or component being edited: close up to what still exists.
     while (this.context.length && !pathDefinition(doc.scene, this.context)) this.context = this.context.slice(0, -1);
+    this.syncWorkspace();
     this.viewport.setUnits(doc.units);
     this.viewport.showScene(doc.scene, this.context);
     this.viewport.setSnapTargets(doc.scene);
@@ -473,7 +491,7 @@ export class App {
           stretched: !even(sx, sy) || !even(sx, sz),
           tag: this.tagField([i]),
           material: i.material ? (doc.scene.materials.get(i.material)?.name ?? t('materials.default')) : t('materials.default'),
-          grain: def.grain ?? null,
+          ...(showsWoodworking(doc.workspace) ? { grain: def.grain ?? null } : {}),
         };
       }
     }
@@ -1018,8 +1036,9 @@ export class App {
       this.deleteGuidesEntry(),
       null,
       { label: t(byTag ? 'view.plainColors' : 'view.colorByTag'), enabled: true, run: () => this.setColorByTag(!byTag) },
-      null,
-      { label: t(this.cutListPanel.open ? 'cutlist.hide' : 'cutlist.open'), enabled: true, run: () => this.setCutListOpen(!this.cutListPanel.open) },
+      ...(showsWoodworking(this.session.doc.workspace)
+        ? [null, { label: t(this.cutListPanel.open ? 'cutlist.hide' : 'cutlist.open'), enabled: true, run: () => this.setCutListOpen(!this.cutListPanel.open) }]
+        : []),
     ];
   }
 
@@ -1071,6 +1090,8 @@ export class App {
       { label: t('file.save'), shortcut: t('key.save'), enabled: true, run: () => void this.saveFile(false) },
       { label: t('file.saveAs'), shortcut: t('key.saveAs'), enabled: true, run: () => void this.saveFile(true) },
       null,
+      { label: t('file.workspace', { name: t(`workspace.${this.session.doc.workspace}`) }), enabled: true, run: () => this.workspaceMenu() },
+      null,
       { label: t('file.exportStl'), enabled: !this.isEmpty(), run: () => void this.exportFile('stl') },
       { label: t('file.exportGlb'), enabled: !this.isEmpty(), run: () => void this.exportFile('glb') },
     ];
@@ -1093,10 +1114,58 @@ export class App {
     this.zoomToFit();
   }
 
+  /** A new model, for the workspace the user picks (the last one picked comes first). */
   private newFile(): void {
     if (!this.discardOk()) return;
-    this.replaceDocument(newDocument(), null, null);
-    this.status.flash(t('message.newFile'));
+    this.cancel(true);
+    this.workspaceDialog.open(loadViewSettings().workspace ?? 'woodworking', (workspace) => {
+      if (!workspace) return;
+      saveViewSettings({ ...loadViewSettings(), workspace });
+      this.replaceDocument(newDocument(workspace, browserRegion()), null, null);
+      this.status.flash(t('message.newFile'));
+    });
+  }
+
+  /**
+   * The first run asks once what models are for; the empty model it starts
+   * with is replaced by one for that workspace. Cancelling keeps General.
+   */
+  askFirstWorkspace(): void {
+    this.workspaceDialog.open('woodworking', (chosen) => {
+      const workspace = chosen ?? 'general';
+      saveViewSettings({ ...loadViewSettings(), workspace });
+      if (workspace !== this.session.doc.workspace) this.replaceDocument(newDocument(workspace, browserRegion()), null, null);
+    });
+  }
+
+  /** File > Workspace: the three workspaces, the file's own greyed. Switching keeps everything in the file. */
+  private workspaceMenu(): void {
+    const r = this.fileButton.getBoundingClientRect();
+    const current = this.session.doc.workspace;
+    this.menu.open(
+      r.left,
+      r.bottom + 2,
+      WORKSPACES.map((w) => ({
+        label: t(`workspace.${w}`),
+        enabled: w !== current,
+        run: () => {
+          const res = this.session.execute('core.setWorkspace', { workspace: w });
+          if (!res.ok) return this.flashError(res.error);
+          this.status.flash(t('message.workspace', { name: t(`workspace.${w}`) }));
+        },
+      })),
+    );
+  }
+
+  /** Show the panels, tools and buttons of the file's workspace; the Cut List closes outside Woodworking. */
+  private syncWorkspace(): void {
+    const workspace = this.session.doc.workspace;
+    if (workspace === this.shownWorkspace) return;
+    this.shownWorkspace = workspace;
+    const woodworking = showsWoodworking(workspace);
+    this.cutListButton.hidden = !woodworking;
+    if (!woodworking && this.cutListPanel.open) this.setCutListOpen(false);
+    this.toolbar.showGroups(WORKSPACE_TOOL_GROUPS[workspace]);
   }
 
   private async openFile(): Promise<void> {

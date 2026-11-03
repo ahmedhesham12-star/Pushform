@@ -7,9 +7,11 @@ import type { CommandDef, RunResult } from '../types';
 import { definitionId } from './schemas';
 
 /**
- * The starter set: built in, copied into a file the first time it is used.
- * Plain colors, no textures; the woods and boards come with common stock
- * (no prices: those depend on the supplier). Painted colors are paint only.
+ * The starter sets: built in, copied into a file the first time it is used;
+ * each workspace offers its own (see WORKSPACE_STARTERS). Plain colors, no
+ * textures; the woods and boards come with common stock (no prices: those
+ * depend on the supplier). Painted colors and building materials are paint
+ * only; glass is a pale tint, not see-through.
  */
 export const STARTER_MATERIALS: Record<string, { readonly color: string; readonly stock?: Stock }> = {
   birchPly: { color: '#e3cfa2', stock: { kind: 'sheet', thickness: 12, length: 1525, width: 1525, grain: true } },
@@ -21,8 +23,46 @@ export const STARTER_MATERIALS: Record<string, { readonly color: string; readonl
   paintedNavy: { color: '#2f3e57' },
   paintedCharcoal: { color: '#3b3f42' },
   paintedCream: { color: '#ece3cf' },
+  concrete: { color: '#a8a7a1' },
+  brick: { color: '#9c5641' },
+  plaster: { color: '#e6e0d4' },
+  glass: { color: '#c3dadb' },
+  ceramicTile: { color: '#d8d5cd' },
+  woodFlooring: { color: '#b88a5c' },
+  wallWhite: { color: '#f1efe9' },
+  wallGreige: { color: '#cdc6ba' },
+  wallBlue: { color: '#a7b6c2' },
+  white: { color: '#f4f4f2' },
+  lightGrey: { color: '#c6c6c2' },
+  darkGrey: { color: '#5d5f63' },
+  black: { color: '#202123' },
+  wood: { color: '#b48a5a' },
 };
-const STARTERS = ['birchPly', 'oak', 'walnut', 'whiteMdf', 'whiteMelamine', 'paintedSage', 'paintedNavy', 'paintedCharcoal', 'paintedCream'] as const;
+const STARTERS = [
+  'birchPly',
+  'oak',
+  'walnut',
+  'whiteMdf',
+  'whiteMelamine',
+  'paintedSage',
+  'paintedNavy',
+  'paintedCharcoal',
+  'paintedCream',
+  'concrete',
+  'brick',
+  'plaster',
+  'glass',
+  'ceramicTile',
+  'woodFlooring',
+  'wallWhite',
+  'wallGreige',
+  'wallBlue',
+  'white',
+  'lightGrey',
+  'darkGrey',
+  'black',
+  'wood',
+] as const;
 export type StarterMaterial = (typeof STARTERS)[number];
 
 /** A starter material as it comes into a file. */

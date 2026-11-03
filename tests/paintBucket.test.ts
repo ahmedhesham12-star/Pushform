@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { Vector3 } from 'three';
 import { describe, expect, test, vi } from 'vitest';
-import { createSession, definitionModel, type CommandSession } from '../src/commands';
+import { createSession, definitionModel, newDocument, showsWoodworking, WORKSPACE_STARTERS, type CommandSession } from '../src/commands';
 import { getFace, listFaces, type FaceSide } from '../src/kernel';
 import { findInstance } from '../src/scene';
 import { createPaintBucketTool } from '../src/tools/paintBucket';
@@ -151,6 +151,8 @@ describe('the Materials panel', () => {
     const host: MaterialsHost = {
       scene: () => s.doc.scene,
       units: () => s.doc.units,
+      starters: () => WORKSPACE_STARTERS[s.doc.workspace],
+      stock: () => showsWoodworking(s.doc.workspace),
       current: () => choice,
       choose: vi.fn((c: PaintChoice) => void (choice = c)),
       add: vi.fn(() => void ok(s.execute('core.addMaterial', {}))),
@@ -170,7 +172,7 @@ describe('the Materials panel', () => {
   }
 
   test('Default and the model materials, then starters not yet in the model; a click chooses one', () => {
-    const s = createSession();
+    const s = createSession(newDocument('woodworking'));
     ok(s.execute('core.addMaterial', { starter: 'oak' }));
     const { p, host, swatches } = panel(s);
     expect(swatches(0)).toEqual(['Default', 'Oak']);
@@ -183,7 +185,7 @@ describe('the Materials panel', () => {
   });
 
   test('the chosen model material can be renamed, recolored, given a tile size and deleted', () => {
-    const s = createSession();
+    const s = createSession(newDocument('woodworking'));
     const id = ok(s.execute('core.addMaterial', { starter: 'oak' })).materialId;
     ok(s.execute('core.setDisplayUnits', { unit: 'mm', precision: 0 }));
     ok(s.execute('core.setMaterialTexture', { materialId: id, texture: { data: 'iVBORw0KGgo=', mime: 'image/png', width: 600, height: 300 } }));
@@ -208,7 +210,7 @@ describe('the Materials panel', () => {
   });
 
   test('the stock form: paint only, sheet goods with a typed thickness and price, solid wood priced per board foot', () => {
-    const s = createSession();
+    const s = createSession(newDocument('woodworking'));
     const id = ok(s.execute('core.addMaterial', {})).materialId;
     ok(s.execute('core.setDisplayUnits', { unit: 'mm', precision: 1 }));
     const { p, host } = panel(s);

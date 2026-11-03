@@ -160,7 +160,7 @@ describe('documents', () => {
     const s = createSession();
     s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 1000, depth: 500 });
     const saved = JSON.parse(JSON.stringify(serializeDocument(s.doc)));
-    expect(saved.version).toBe(5);
+    expect(saved.version).toBe(6);
     expect(serializeDocument(deserializeDocument(saved)!)).toEqual(saved);
   });
 
@@ -175,14 +175,14 @@ describe('documents', () => {
     expect(faceCount(rootModel(doc))).toBe(Object.keys(v2.model.faces).length);
     expect(checkModel(rootModel(doc))).toEqual([]);
     const saved = serializeDocument(doc);
-    expect(saved.version).toBe(5);
+    expect(saved.version).toBe(6);
     expect(saved.scene.definitions[saved.scene.root]!.model).toEqual(v2.model);
   });
 
   test('a milestone 1 (version 1) autosave converts through to version 4', () => {
     const v1 = JSON.parse(readFileSync(join(__dirname, 'fixtures/milestone1-autosave.json'), 'utf8'));
     const doc = deserializeDocument(v1)!;
-    expect(serializeDocument(doc).version).toBe(5);
+    expect(serializeDocument(doc).version).toBe(6);
     expect(faceCount(rootModel(doc))).toBe(Object.keys(v1.model.faces).length);
   });
 

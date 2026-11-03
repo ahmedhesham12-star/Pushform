@@ -89,6 +89,7 @@ import { offset, type OffsetInput, type OffsetOutput } from './offset';
 import { pushPull, type PushPullInput, type PushPullOutput } from './pushPull';
 import { flip, scale, type FlipInput, type ScaleInput } from './scale';
 import { setDisplayUnits, type SetDisplayUnitsInput } from './setDisplayUnits';
+import { setWorkspace, type SetWorkspaceInput } from './workspace';
 import {
   addTag,
   deleteTag,
@@ -157,6 +158,7 @@ declare module '../types' {
     'core.setMaterialStock': { input: SetMaterialStockInput; output: Record<string, never> };
     'core.setCutListSettings': { input: SetCutListSettingsInput; output: Record<string, never> };
     'core.setGrain': { input: SetGrainInput; output: Record<string, never> };
+    'core.setWorkspace': { input: SetWorkspaceInput; output: Record<string, never> };
   }
 }
 
@@ -211,6 +213,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
   registry.register(setMaterialStock);
   registry.register(setCutListSettings);
   registry.register(setGrain);
+  registry.register(setWorkspace);
 }
 
 export { selectionBox, type ScaleBox } from './scale';

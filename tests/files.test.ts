@@ -34,7 +34,7 @@ describe('.pushform files', () => {
     const s = createSession();
     s.execute('core.drawRectangle', { faceId: null, corner: [0, 0, 0], width: 600, depth: 400 });
     const text = documentToText(s.doc);
-    expect(JSON.parse(text).version).toBe(5);
+    expect(JSON.parse(text).version).toBe(6);
     expect(serializeDocument(documentFromText(text)!)).toEqual(serializeDocument(s.doc));
   });
 

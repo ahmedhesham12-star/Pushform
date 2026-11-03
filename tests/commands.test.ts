@@ -81,7 +81,7 @@ describe('undo and redo through commands', () => {
     s.execute('core.setDisplayUnits', { unit: 'ft-in', precision: 16 });
     expect(s.doc.units).toEqual({ unit: 'ft-in', precision: 16 });
     s.undo();
-    expect(s.doc.units).toEqual({ unit: 'm', precision: 2 });
+    expect(s.doc.units).toEqual({ unit: 'mm', precision: 0 });
   });
 
   test('history is capped', () => {
@@ -106,7 +106,7 @@ describe('undo and redo through commands', () => {
 describe('no-op commands record nothing', () => {
   test.each([
     ['clearing an empty model', (s: CommandSession) => s.execute('core.clearModel', {})],
-    ['setting the same units', (s: CommandSession) => s.execute('core.setDisplayUnits', { unit: 'm', precision: 2 })],
+    ['setting the same units', (s: CommandSession) => s.execute('core.setDisplayUnits', { unit: 'mm', precision: 0 })],
   ])('%s', (_, run) => {
     const s = createSession();
     const r = run(s);
@@ -268,7 +268,7 @@ describe('loading milestone 1 documents', () => {
     expect(checkModel(rootModel(doc))).toEqual([]);
     expect(listFaces(rootModel(doc)).map((f) => f.id).sort()).toEqual(Object.keys(v1.model.faces).sort());
     const saved = serializeDocument(doc);
-    expect(saved.version).toBe(5);
+    expect(saved.version).toBe(6);
     expect(saved.scene.definitions[saved.scene.root]!.model.kind).toBe('topology');
     expect(serializeDocument(deserializeDocument(JSON.parse(JSON.stringify(saved)))!)).toEqual(saved);
   });
@@ -595,7 +595,8 @@ describe('document serialization', () => {
     const good = serializeDocument(newDocument());
     expect(deserializeDocument(good)).not.toBeNull();
     expect(deserializeDocument({ ...good, format: 'other' })).toBeNull();
-    expect(deserializeDocument({ ...good, version: 6 })).toBeNull();
+    expect(deserializeDocument({ ...good, version: 7 })).toBeNull();
+    expect(deserializeDocument({ ...good, workspace: 'kitchen' })).toBeNull();
     expect(deserializeDocument({ ...good, units: { unit: 'km', precision: 2 } })).toBeNull();
     expect(deserializeDocument({ ...good, units: { unit: 'mm', precision: 16 } })).toBeNull();
     expect(deserializeDocument({ faces: {}, next: 1 })).toBeNull();

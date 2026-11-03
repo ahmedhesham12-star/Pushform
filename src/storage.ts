@@ -1,4 +1,4 @@
-import { deserializeDocument, serializeDocument, type PushformDocument } from './commands';
+import { deserializeDocument, serializeDocument, WORKSPACES, type PushformDocument, type Workspace } from './commands';
 
 /**
  * The autosave lives in this browser's IndexedDB, which holds image textures
@@ -116,9 +116,11 @@ export interface ViewSettings {
   colorByTag: boolean;
   /** Panels folded shut in the tray, by name. */
   collapsed: string[];
+  /** The workspace last chosen for a new model on this device; null until the first run has asked (milestone 6). */
+  workspace: Workspace | null;
 }
 
-const DEFAULT_VIEW: ViewSettings = { guides: true, colorByTag: false, collapsed: [] };
+const DEFAULT_VIEW: ViewSettings = { guides: true, colorByTag: false, collapsed: [], workspace: null };
 
 export function loadViewSettings(): ViewSettings {
   try {
@@ -129,6 +131,7 @@ export function loadViewSettings(): ViewSettings {
         guides: typeof raw.guides === 'boolean' ? raw.guides : DEFAULT_VIEW.guides,
         colorByTag: typeof raw.colorByTag === 'boolean' ? raw.colorByTag : DEFAULT_VIEW.colorByTag,
         collapsed: Array.isArray(raw.collapsed) ? raw.collapsed.filter((x): x is string => typeof x === 'string') : [],
+        workspace: WORKSPACES.includes(raw.workspace as Workspace) ? (raw.workspace as Workspace) : null,
       };
     }
   } catch {

@@ -218,6 +218,10 @@ input {
   border-block-start: 1px solid var(--line);
   margin: 6px 0;
 }
+/* Tools of groups the workspace does not show. */
+.tools [hidden] {
+  display: none;
+}
 
 /* ---------- viewport ---------- */
 .view {
@@ -1172,4 +1176,35 @@ li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
 .name-dialog-create:disabled {
   opacity: 0.5;
   cursor: default;
+}
+.workspace-dialog {
+  max-inline-size: 360px;
+}
+.workspace-prompt {
+  margin: 0;
+  color: var(--ink-2);
+}
+.workspace-choices {
+  display: grid;
+  gap: 6px;
+}
+.workspace-choice {
+  display: grid;
+  gap: 2px;
+  padding-block: 8px;
+  padding-inline: 10px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--canvas);
+  color: var(--ink);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.workspace-choice span {
+  color: var(--ink-2);
+}
+.workspace-choice:hover,
+.workspace-choice:focus-visible {
+  border-color: var(--accent);
 }

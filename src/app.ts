@@ -75,6 +75,7 @@ import { CutListPanel } from './ui/cutListPanel';
 import { NameDialog } from './ui/nameDialog';
 import { WorkspaceDialog } from './ui/workspaceDialog';
 import { applyTheme, THEMES, type Theme } from './ui/theme';
+import { flipMessage } from './ui/messages';
 import { MaterialsPanel } from './ui/materialsPanel';
 import { TagsPanel } from './ui/tagsPanel';
 import { Tray } from './ui/tray';
@@ -922,8 +923,16 @@ export class App {
 
   private flipSelected(axis: 'red' | 'green' | 'blue'): void {
     this.cancel(true);
+    const { faces, edges, instances, annotations } = this.selection;
+    const count = faces.size + edges.size + instances.size + annotations.size;
+    // A lone group or component flips along its own axis, as the menu said.
+    const scene = this.session.doc.scene;
+    const only = count === 1 && instances.size === 1 ? pathDefinition(scene, this.context)?.instances.get([...instances][0]!) : undefined;
+    const kind = only && scene.definitions.get(only.definitionId)?.kind;
+    const lone = kind === 'group' || kind === 'component' ? kind : null;
     const r = this.session.execute('core.flip', { ...this.selectionInput(), axis });
     if (!r.ok) return this.flashError(r.error);
+    this.status.flash(flipMessage(axis, lone, count));
     // Loose geometry can come back with new ids when it lands on other geometry.
     this.clearSelection();
     for (const f of r.output.faceIds) this.selection.faces.add(f);

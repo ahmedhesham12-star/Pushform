@@ -678,6 +678,13 @@ Decisions approved for milestone 5 (2026-10-29, product owner):
 
 Checkpoints for the product owner's manual testing: (a) workspaces, theme and flip feedback; (b) cutting diagrams; (c) edge banding and labels; (d) hardware import, the library and the hardware list.
 
+Progress (2026-11-03, later): ready for checkpoint (a). Done:
+- Workspaces (step 1): document version 6, the chooser on File > New and on the first run, File > Workspace, and per-workspace units, starter materials and panels.
+- Themes (step 2): Light, Dark and Follow System in the View menu, with a light and a dark palette for the 3D view, checked for contrast. This fixed colors that were shown darker than written: color management was switched off only after the view modules had made their materials.
+- Flip feedback (step 3).
+
+881 unit tests pass and the build succeeds.
+
 Progress (2026-11-03): plan approved; branch `milestone-6` created from `main` (step 0).
 
 Decisions approved for milestone 6 (2026-11-03, product owner):
@@ -710,6 +717,7 @@ Decisions approved for milestone 6 (2026-11-03, product owner):
 - The Paint Bucket paints faces inside a group or component only with it open; a click on a closed one paints it whole.
 - The cut list has no edge banding, part labels or sheet layout (next steps), sizes parts by their box (a round top is listed by its rectangle) and counts each row's parts by their shown material only.
 - Selecting a cut list row whose parts sit in several groups opens the group holding most of them; the others are marked with boxes, not selected.
+- In the dark theme, edges are a mid tone, so they show on the default faces and the dark canvas alike, but faintly on back faces and on mid-tone materials.
 
 ## Next steps (proposed, not yet approved)
 1. **After milestone 6** (out of its scope; milestones 7 and 8 are under "Roadmap after milestone 6"):

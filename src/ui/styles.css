@@ -1062,6 +1062,15 @@ li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
   padding-block: 8px 3px;
   font-weight: 600;
 }
+.cutlist-material {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
 .cutlist-row {
   cursor: pointer;
 }
@@ -1114,4 +1123,53 @@ li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
   body.printing-cutlist .cutlist-controls {
     display: none;
   }
+}
+
+/* ---------- name dialog (Create Component) ---------- */
+.name-dialog {
+  position: absolute;
+  inset-block: 0;
+  inset-inline: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(0 0 0 / 0.12);
+}
+.name-dialog[hidden] {
+  display: none;
+}
+.name-dialog-box {
+  display: grid;
+  gap: 8px;
+  min-inline-size: 280px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--ui);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 0.12);
+}
+.name-dialog h2 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.name-dialog label {
+  color: var(--ink-2);
+}
+.name-dialog input {
+  padding-block: 4px;
+  padding-inline: 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--canvas);
+  color: var(--ink);
+  font: inherit;
+}
+.name-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.name-dialog-create:disabled {
+  opacity: 0.5;
+  cursor: default;
 }

@@ -214,6 +214,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
 }
 
 export { selectionBox, type ScaleBox } from './scale';
+export { defaultComponentName } from './instances';
 export { STARTER_MATERIALS, starterName, type StarterMaterial } from './materials';
 
 export type {

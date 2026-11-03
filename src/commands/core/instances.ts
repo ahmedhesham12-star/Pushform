@@ -58,6 +58,9 @@ import { definitionId, faceId, point3, targetModel } from './schemas';
 const instanceId = z.string().min(1);
 const name = z.string().trim().max(200);
 
+/** The name Make Component gives when none is given: the first "Component#n" no definition has yet. */
+export const defaultComponentName = (s: Scene): string => uniqueName(s, t('scene.component'));
+
 /** The first "Base#n" no definition is called yet. */
 function uniqueName(s: Scene, base: string): string {
   const used = new Set([...s.definitions.values()].map((d) => d.name));
@@ -157,7 +160,7 @@ function encapsulate(
     moved.set(id, { ...i, transform: snapTransform({ ...i.transform, translation: toLocal(i.transform.translation) }) });
     scene = removeInstance(scene, contextId, id);
   }
-  const defName = kind === 'component' ? (definitionName ?? uniqueName(scene, t('scene.component'))) : '';
+  const defName = kind === 'component' ? (definitionName ?? defaultComponentName(scene)) : '';
   let defId: DefinitionId;
   [defId, scene] = addDefinition(scene, { kind, name: defName, model, instances: moved });
   if (annotationIds.length) {

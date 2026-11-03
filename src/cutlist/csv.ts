@@ -1,7 +1,7 @@
 import { t, type MessageKey } from '../i18n';
 import type { Scene } from '../scene';
 import { formatLength, MM_PER, type UnitSettings } from '../units';
-import type { CutList, PartWarning } from './cutList';
+import type { CutList, CutListRow, PartWarning } from './cutList';
 
 /** The text of each warning, for the CSV and the panel. */
 export const WARNING_KEYS: Record<PartWarning, MessageKey> = {
@@ -11,6 +11,16 @@ export const WARNING_KEYS: Record<PartWarning, MessageKey> = {
   notSolid: 'cutlist.warning.notSolid',
   noMaterial: 'cutlist.warning.noMaterial',
 };
+
+/** A row's warnings as text, for the CSV and the panel; a thickness warning says both thicknesses. */
+export function warningText(row: CutListRow, scene: Scene, units: UnitSettings): string {
+  const stock = row.materialId ? scene.materials.get(row.materialId)?.stock : undefined;
+  return row.warnings
+    .map((w) =>
+      w === 'thickness' && stock ? t('cutlist.warning.thickness', { part: formatLength(row.thickness, units), material: formatLength(stock.thickness, units) }) : t(WARNING_KEYS[w]),
+    )
+    .join('; ');
+}
 
 /** A CSV field: quoted when it holds a comma, a quote or a line break. */
 const field = (v: string | number) => {
@@ -35,7 +45,7 @@ export function toCsv(list: CutList, scene: Scene, units: UnitSettings): string 
   for (const r of list.rows) {
     const material = r.materialId ? scene.materials.get(r.materialId)!.name : t('cutlist.noMaterial');
     const grain = r.grain ? t(`cutlist.grain.${r.grain}` as MessageKey) : '';
-    const warnings = r.warnings.map((w) => t(WARNING_KEYS[w])).join('; ');
+    const warnings = warningText(r, scene, units);
     lines.push([material, r.name, r.quantity, length(r.length), length(r.width), length(r.thickness), grain, warnings].map(field).join(','));
   }
   return `﻿${lines.join('\r\n')}\r\n`;

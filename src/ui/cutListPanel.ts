@@ -1,7 +1,7 @@
 import type { CutListSettings } from '../commands';
-import { boardFeet, cutList, WARNING_KEYS, type CutList, type CutListRow, type MaterialTotal } from '../cutlist';
+import { boardFeet, cutList, warningText, type CutList, type CutListRow, type MaterialTotal } from '../cutlist';
 import { localeTag, t, tCount, type MessageKey } from '../i18n';
-import type { InstanceId, Scene } from '../scene';
+import type { InstanceId, MaterialId, Scene } from '../scene';
 import { formatArea, formatLength, formatNumber, isImperial, type UnitSettings } from '../units';
 import { el } from './dom';
 
@@ -12,6 +12,8 @@ export interface CutListHost {
   setSettings(patch: Partial<CutListSettings>): void;
   /** Select and show the parts of a row. */
   select(paths: readonly (readonly InstanceId[])[]): void;
+  /** Open a material in the Materials panel (to fix its stock thickness). */
+  showMaterial(id: MaterialId): void;
   exportCsv(): void;
   close(): void;
   /** Say something in the status bar (a setting that could not be read). */
@@ -170,10 +172,23 @@ export class CutListPanel {
           tr.tabIndex = 0;
           const cells = [r.name, formatNumber(r.quantity), length(r.length), length(r.width), length(r.thickness), materialName(r.materialId), r.grain ? t(`cutlist.grain.${r.grain}` as MessageKey) : ''];
           cells.forEach((text, i) => {
-            const td = el('td', COLUMNS[i]!.numeric ? 'numeric' : undefined, text);
+            const td = el('td', COLUMNS[i]!.numeric ? 'numeric' : undefined);
+            const materialId = r.materialId;
+            // With a thickness off its stock, the material name opens it, to fix the stock's thickness.
+            if (COLUMNS[i]!.id === 'material' && materialId && r.warnings.includes('thickness')) {
+              const b = el('button', 'cutlist-material', text);
+              b.type = 'button';
+              b.title = t('cutlist.editMaterial', { name: text });
+              b.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.host.showMaterial(materialId);
+              });
+              b.addEventListener('keydown', (e) => e.stopPropagation());
+              td.append(b);
+            } else td.textContent = text;
             tr.append(td);
           });
-          const w = el('td', r.warnings.length ? 'cutlist-warning' : undefined, r.warnings.map((x) => t(WARNING_KEYS[x])).join('; '));
+          const w = el('td', r.warnings.length ? 'cutlist-warning' : undefined, warningText(r, scene, units));
           tr.append(w);
           tr.addEventListener('click', () => this.host.select(r.paths));
           tr.addEventListener('keydown', (e) => {

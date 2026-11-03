@@ -1,6 +1,7 @@
 import {
   createSession,
   cutListSettings,
+  defaultComponentName,
   definitionModel,
   documentFromText,
   documentToText,
@@ -9,6 +10,7 @@ import {
   rootModel,
   type CommandError,
   type CommandSession,
+  type MakeInstanceOutput,
   type PushformDocument,
 } from './commands';
 import { cutList, toCsv } from './cutlist';
@@ -64,6 +66,7 @@ import {
 import { ContextMenu, type MenuEntry } from './ui/contextMenu';
 import { EntityInfo, type EntityInfoData, type TagField } from './ui/entityInfo';
 import { CutListPanel } from './ui/cutListPanel';
+import { NameDialog } from './ui/nameDialog';
 import { MaterialsPanel } from './ui/materialsPanel';
 import { TagsPanel } from './ui/tagsPanel';
 import { Tray } from './ui/tray';
@@ -141,9 +144,12 @@ export class App {
   private readonly outliner: Outliner;
   private readonly tags: TagsPanel;
   private readonly materials: MaterialsPanel;
+  private readonly tray: Tray;
   /** What the Paint Bucket paints with (the Materials panel chooses it); Default (no paint) to start. */
   private paintChoice: PaintChoice = { materialId: null };
   private readonly cutListPanel: CutListPanel;
+  /** Asks for a new component's name, as SketchUp's Create Component. */
+  private readonly nameDialog = new NameDialog();
   /** Parts of the chosen cut list row outside the open context, marked with boxes until the selection changes. */
   private marked: (readonly InstanceId[])[] = [];
   /**
@@ -234,11 +240,12 @@ export class App {
       settings: () => cutListSettings(this.session.doc),
       setSettings: (patch) => this.run(this.session.execute('core.setCutListSettings', patch)),
       select: (paths) => this.selectParts(paths),
+      showMaterial: (materialId) => this.showMaterial(materialId),
       exportCsv: () => void this.exportCutList(),
       close: () => this.setCutListOpen(false),
       flash: (message, isError) => this.status.flash(message, isError),
     });
-    view.append(this.cutListPanel.element);
+    view.append(this.cutListPanel.element, this.nameDialog.element);
 
     const footer = el('footer', 'status');
     this.status = new StatusBar(() => this.tool.hint());
@@ -313,7 +320,7 @@ export class App {
       flash: (message, isError) => this.status.flash(message, isError),
     });
     const view0 = loadViewSettings();
-    const tray = new Tray(new Set(view0.collapsed), (folded) => saveViewSettings({ ...loadViewSettings(), collapsed: [...folded] }));
+    const tray = (this.tray = new Tray(new Set(view0.collapsed), (folded) => saveViewSettings({ ...loadViewSettings(), collapsed: [...folded] })));
     tray.add('entityInfo', this.entityInfo.element);
     tray.add('outliner', this.outliner.element);
     tray.add('tags', this.tags.element);
@@ -739,11 +746,18 @@ export class App {
   }
 
   /** Make the selection a group or a component, and select the new instance. */
+  /** Make Group at once; Make Component after its name is given (or the suggested Component#n kept). */
   private makeInstance(kind: 'group' | 'component'): void {
     if (!this.hasGroupable()) return this.status.flash(t('error.nothingSelected'), true);
     this.cancel(true);
-    const input = this.selectionInput();
-    const r = kind === 'group' ? this.session.execute('core.makeGroup', input) : this.session.execute('core.makeComponent', input);
+    if (kind === 'group') return this.finishInstance(kind, this.session.execute('core.makeGroup', this.selectionInput()));
+    const keys = { title: 'dialog.componentTitle', field: 'dialog.componentName', action: 'dialog.create' } as const;
+    this.nameDialog.open(keys, defaultComponentName(this.session.doc.scene), (name) => {
+      if (name !== null) this.finishInstance(kind, this.session.execute('core.makeComponent', { ...this.selectionInput(), name }));
+    });
+  }
+
+  private finishInstance(kind: 'group' | 'component', r: { ok: true; output: MakeInstanceOutput } | { ok: false; error: CommandError }): void {
     if (!r.ok) return this.flashError(r.error);
     this.selectOnly([], [r.output.instanceId]);
     const name = getDefinition(this.session.doc.scene, r.output.definitionId)?.name ?? '';
@@ -936,6 +950,13 @@ export class App {
     this.applyHighlights();
     const count = formatNumber(here.length);
     this.status.flash(this.marked.length ? t('cutlist.selectedElsewhere', { count, elsewhere: formatNumber(this.marked.length) }) : tCount('cutlist.selected', here.length, count));
+  }
+
+  /** Open a material in the Materials panel (from the cut list, to fix its stock thickness), without changing tool. */
+  private showMaterial(materialId: string): void {
+    this.setPaintChoice({ materialId });
+    this.tray.open('materials');
+    this.materials.focusThickness();
   }
 
   /** Save the cut list as CSV. */

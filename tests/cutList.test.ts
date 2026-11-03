@@ -272,3 +272,27 @@ describe('paint on the group or component counts (the usual SketchUp way)', () =
     expect(rows.every((r) => !r.warnings.includes('noMaterial'))).toBe(true);
   });
 });
+
+describe('part names', () => {
+  test("the definition name, or the instance's name when it has one", () => {
+    const s = createSession();
+    const side = part(s, 0, 18, 500, 720, 'Side');
+    const [copy] = ok(s.execute('core.copyInstances', { instanceIds: [side.instanceId], translation: [782, 0, 0] })).instanceIds;
+    expect(list(s).rows.map((r) => [r.name, r.quantity])).toEqual([['Side', 2]]);
+    ok(s.execute('core.renameInstance', { instanceId: copy!, name: 'Right side' }));
+    expect(list(s).rows.map((r) => [r.name, r.quantity])).toEqual([
+      ['Right side', 1],
+      ['Side', 1],
+    ]);
+  });
+
+  test('the CSV says both thicknesses', () => {
+    const s = createSession();
+    ok(s.execute('core.setDisplayUnits', { unit: 'mm', precision: 0 }));
+    const oak = ok(s.execute('core.addMaterial', { starter: 'oak' })).materialId;
+    const p = part(s, 0, 600, 300, 18, 'Top');
+    ok(s.execute('core.paint', { instanceIds: [p.instanceId], materialId: oak }));
+    ok(s.execute('core.setMaterialStock', { materialId: oak, stock: { kind: 'solid', thickness: 20, per: 'cubicMeter', grain: true } }));
+    expect(toCsv(list(s), s.doc.scene, s.doc.units).split('\r\n')[1]).toBe('Oak,Top,1,600,300,18,,"Thickness 18 mm, material is 20 mm"');
+  });
+});

@@ -36,6 +36,7 @@ function setup() {
     settings: () => cutListSettings(s.doc),
     setSettings: vi.fn((patch: Partial<CutListSettings>) => void ok(s.execute('core.setCutListSettings', patch))),
     select,
+    showMaterial: vi.fn(),
     exportCsv: vi.fn(),
     close: vi.fn(),
     flash: vi.fn(),
@@ -124,5 +125,25 @@ describe('the several boards tip', () => {
     expect(p.element.querySelector('.cutlist-tip')!.textContent).toBe(
       'The cut list counts each group or component holding faces as one board. Model each board on its own: draw it, push/pull it to its thickness, and make it a group before drawing the next. Then put the boards of one cabinet inside one component.',
     );
+  });
+});
+
+describe('a thickness off the material stock', () => {
+  test('the warning says both thicknesses; the material name opens the material, without selecting the row', () => {
+    const { s, p, host } = setup();
+    // A 15 mm board in 12 mm birch ply.
+    const shelf = part(s, 6000, 600, 300, 15, 'Shelf');
+    const ply = [...s.doc.scene.materials.keys()][0]!;
+    ok(s.execute('core.paint', { instanceIds: [shelf.instanceId], materialId: ply }));
+    p.sync();
+    const row = [...p.element.querySelectorAll<HTMLElement>('.cutlist-row')].find((r) => r.textContent!.startsWith('Shelf'))!;
+    expect(row.lastElementChild!.textContent).toBe('Thickness 15 mm, material is 12 mm');
+    const button = row.querySelector<HTMLButtonElement>('.cutlist-material')!;
+    expect(button.textContent).toBe('Birch ply');
+    button.click();
+    expect(host.showMaterial).toHaveBeenCalledWith(ply);
+    expect(host.select).not.toHaveBeenCalled();
+    // Rows without the warning keep the name as plain text.
+    expect([...p.element.querySelectorAll('.cutlist-material')]).toHaveLength(1);
   });
 });

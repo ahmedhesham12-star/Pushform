@@ -62,6 +62,15 @@ export class MaterialsPanel {
     this.element.append(heading, bar, el('h3', undefined, t('materials.inModel')), this.inModel, this.editor, el('h3', undefined, t('materials.starters')), this.starters);
   }
 
+  /** Put the cursor in the chosen material's thickness field, when it has stock. */
+  focusThickness(): void {
+    this.sync();
+    const label = [...this.editor.querySelectorAll('.materials-field')].find((f) => f.firstChild?.textContent === t('materials.thickness'));
+    const input = label?.querySelector('input');
+    input?.focus();
+    input?.select();
+  }
+
   /** Redraw when the materials, the current material or the units changed, unless a field is being edited. */
   sync(): void {
     if (this.element.contains(document.activeElement) && document.activeElement instanceof HTMLInputElement) return;

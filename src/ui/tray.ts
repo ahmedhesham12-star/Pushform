@@ -38,4 +38,12 @@ export class Tray {
     section.dataset.panel = name;
     this.element.append(section);
   }
+
+  /** Open a panel that may be folded, and bring it into view. */
+  open(name: string): void {
+    const section = this.element.querySelector<HTMLElement>(`[data-panel="${name}"]`);
+    if (!section) return;
+    if (section.classList.contains('folded')) section.querySelector<HTMLButtonElement>('.panel-toggle')!.click();
+    section.scrollIntoView?.({ block: 'nearest' });
+  }
 }

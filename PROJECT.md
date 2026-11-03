@@ -592,7 +592,7 @@ Decisions approved for milestone 4 (2026-10-26, product owner):
 - **SketchUp behavior is checked in SketchUp itself** (through the SketchUp connection, in a new empty model) where it is uncertain; results are listed under "Verified in SketchUp".
 - **The tool bar has two columns** of grouped buttons; labels are tooltips and shortcut keys stay on the buttons.
 
-**Milestone 5** (in progress, started 2026-10-29), on branch `milestone-5`: tags, materials and the cut list. The reference cabinet should produce shop information: every part has a material, and the model gives a cut list with sizes, quantities and material totals, as OpenCutList does for SketchUp. Scope, as specified by the product owner:
+**Milestone 5** (2026-10-29 to 2026-11-03), on branch `milestone-5`, complete; checkpoints (a), (b) and (c) passed, (c) after the fixes below. Merged into `main` and pushed on 2026-11-03 with the product owner's approval: tags, materials and the cut list. The reference cabinet should produce shop information: every part has a material, and the model gives a cut list with sizes, quantities and material totals, as OpenCutList does for SketchUp. Scope, as specified by the product owner:
 1. **Tags** (SketchUp's layers)
    - A Tags panel: create, rename, delete (contents move to Untagged), show and hide, a color swatch, and a "Color by Tag" view mode.
    - Tags go on groups, components, guides, dimensions and text, through Entity Info and the right-click menu. Loose geometry stays Untagged, as SketchUp best practice recommends; a hint says so when the user tries to tag it.
@@ -619,6 +619,8 @@ Decisions approved for milestone 4 (2026-10-26, product owner):
 5. **Out of scope** (see Next steps): sheet layout and cutting diagrams (milestone 6), edge banding, part labels, hardware import, solid tools, OBJ and DXF export.
 
 Checkpoints for the product owner's manual testing: (a) tags; (b) materials and the Paint Bucket; (c) the cut list.
+
+Progress (2026-11-03): checkpoint (c) feedback done: Make Component asks for the name first; the thickness warning gives both values and its material opens in the Materials panel; one clear warning, with a tip, when a whole cabinet is one part; paint on groups confirmed as part material. 860 unit tests pass, the build succeeds, and `npm run test:stress` passes (3490 cases).
 
 Progress (2026-11-02): milestone 5 complete on the branch, waiting for the product owner. Done since checkpoint (c): tags, materials, painting, grain and cut list settings in the mixed random run, with stress sweep 8 running 200 such seeds beside the 400 paint runs (step 11; the run found that stock was saved in a different key order than loading builds it, now fixed); the milestone 5 acceptance test (`tests/acceptance5.test.ts`): the reference cabinet painted, giving the approved rows, quantities, sheet estimates, board volume and costs, with hidden fronts, CSV, save and reopen, and GLB through the validator. 849 unit tests pass and the build succeeds. `npm run test:stress` passes (sweeps 1 to 8, 3490 cases, about 7 minutes); its per-seed limit is now 60 s, as the slowest seed (sweep 6, 4169: about 21 s alone, the same as on milestone 4) went past 30 s with the longer sweep 8 running beside it.
 

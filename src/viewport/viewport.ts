@@ -1,7 +1,6 @@
 import {
   BufferGeometry,
   Color,
-  ColorManagement,
   DirectionalLight,
   DoubleSide,
   GridHelper,
@@ -50,10 +49,9 @@ import { InstancesView, tagColor } from './instancesView';
 import { SnapMarker, type MarkerKind } from './marker';
 import { MaterialLibrary } from './materials';
 import { colorMaterials, ModelView, type EdgeHighlight, type FaceLook } from './modelView';
+import { DARK_PALETTE, LIGHT_PALETTE, setPalette, themedColor } from './palette';
 import { Picker, type FaceHit } from './picking';
 
-// Match the r128 prototype: colors are used as given, with no sRGB conversion.
-ColorManagement.enabled = false;
 
 /** Lengths in mm. */
 const AXIS_LENGTH = 60_000;
@@ -65,17 +63,10 @@ const EDGE_PICK_PX = 6;
 /** Lines this close (pixels) to the pointer are tried for intersection points. */
 const INTERSECT_PX = 24;
 
-const PREVIEW_COLOR = 0x1d5c86;
-const previewFill = new MeshBasicMaterial({
-  color: PREVIEW_COLOR,
-  transparent: true,
-  opacity: 0.22,
-  side: DoubleSide,
-  depthWrite: false,
-});
-const previewLine = new LineBasicMaterial({ color: PREVIEW_COLOR });
+const previewFill = themedColor(new MeshBasicMaterial({ transparent: true, opacity: 0.22, side: DoubleSide, depthWrite: false }), (p) => p.preview);
+const previewLine = themedColor(new LineBasicMaterial(), (p) => p.preview);
 /** An arc tangent to an edge, as SketchUp shows it. */
-const tangentLine = new LineBasicMaterial({ color: 0x14a3c7 });
+const tangentLine = themedColor(new LineBasicMaterial(), (p) => p.tangent);
 
 export type Axis = 'x' | 'y' | 'z';
 /** Red is X, green is Z and blue is Y (up), as drawn by the axis lines. */
@@ -84,17 +75,13 @@ export const AXIS_DIRECTION: Record<Axis, Vector3> = {
   y: new Vector3(0, 1, 0),
   z: new Vector3(0, 0, 1),
 };
-const AXIS_COLOR: Record<Axis, number> = { x: 0xc4443b, y: 0x3a62c2, z: 0x3e9a4c };
-const AXIS_LINE: Record<Axis, LineBasicMaterial> = {
-  x: new LineBasicMaterial({ color: AXIS_COLOR.x }),
-  y: new LineBasicMaterial({ color: AXIS_COLOR.y }),
-  z: new LineBasicMaterial({ color: AXIS_COLOR.z }),
-};
+const axisLine = (a: Axis) => themedColor(new LineBasicMaterial(), (p) => p.axis[a]);
+const AXIS_LINE: Record<Axis, LineBasicMaterial> = { x: axisLine('x'), y: axisLine('y'), z: axisLine('z') };
 /** Scale grips: green squares of a fixed size in pixels; the active one red, as in SketchUp. */
 const GRIP_PX = 7;
 const ACTIVE_GRIP_PX = 10;
-const gripMaterial = new PointsMaterial({ color: AXIS_COLOR.z, size: GRIP_PX, sizeAttenuation: false, depthTest: false });
-const activeGripMaterial = new PointsMaterial({ color: AXIS_COLOR.x, size: ACTIVE_GRIP_PX, sizeAttenuation: false, depthTest: false });
+const gripMaterial = themedColor(new PointsMaterial({ size: GRIP_PX, sizeAttenuation: false, depthTest: false }), (p) => p.axis.z);
+const activeGripMaterial = themedColor(new PointsMaterial({ size: ACTIVE_GRIP_PX, sizeAttenuation: false, depthTest: false }), (p) => p.axis.x);
 /** How close (pixels) the pointer must be to an axis line through the start point to lock onto it. */
 const AXIS_PICK_PX = 10;
 
@@ -232,9 +219,9 @@ export class Viewport {
     sun.position.set(4, 10, 7);
     this.scene.add(sun);
     this.scene.add(
-      axis(AXIS_COLOR.x, new Vector3(1, 0, 0)),
-      axis(AXIS_COLOR.z, new Vector3(0, 0, -1)),
-      axis(AXIS_COLOR.y, new Vector3(0, 1, 0)),
+      axis('x', new Vector3(1, 0, 0)),
+      axis('z', new Vector3(0, 0, -1)),
+      axis('y', new Vector3(0, 1, 0)),
     );
     this.scene.add(this.modelView.group, this.instancesView.group, this.previewModel.group, this.previewInstances.group, this.guidesView.group, this.annotationsView.group, this.preview);
     this.showPreviewMeshes(false);
@@ -955,10 +942,15 @@ export class Viewport {
     this.camera.setAspect(w, h);
   }
 
+  /** Called after the theme changed, so highlights drawn in its colors can be drawn again. */
+  onThemeChange: (() => void) | null = null;
+
+  /** The canvas and grid from the page's colors; lines and highlights from the palette of its color scheme. */
   private readTheme(): void {
     const cs = getComputedStyle(document.documentElement);
     const color = (name: string) => new Color(cs.getPropertyValue(name).trim() || '#888');
     this.scene.background = color('--canvas');
+    if (setPalette(cs.colorScheme.includes('dark') ? DARK_PALETTE : LIGHT_PALETTE)) this.onThemeChange?.();
     if (this.grid) {
       this.scene.remove(this.grid);
       this.grid.geometry.dispose();
@@ -974,13 +966,13 @@ export class Viewport {
 }
 
 /** Axis line: solid on the positive side, dashed on the negative side. */
-function axis(color: number, dir: Vector3): Group {
+function axis(a: Axis, dir: Vector3): Group {
   const g = new Group();
   const solid = new BufferGeometry().setFromPoints([new Vector3(), dir.clone().multiplyScalar(AXIS_LENGTH)]);
-  g.add(new Line(solid, new LineBasicMaterial({ color })));
+  g.add(new Line(solid, AXIS_LINE[a]));
   const dashed = new Line(
     new BufferGeometry().setFromPoints([new Vector3(), dir.clone().multiplyScalar(-AXIS_LENGTH)]),
-    new LineDashedMaterial({ color, dashSize: 250, gapSize: 180 }),
+    themedColor(new LineDashedMaterial({ dashSize: 250, gapSize: 180 }), (p) => p.axis[a]),
   );
   dashed.computeLineDistances();
   g.add(dashed);

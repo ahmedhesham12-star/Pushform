@@ -6,8 +6,10 @@ import { App } from './app';
 import { newDocument } from './commands';
 import { applyLocaleToDocument, browserRegion, t } from './i18n';
 import { loadAutosave, loadFileState, loadViewSettings } from './storage';
+import { applyTheme } from './ui/theme';
 
 applyLocaleToDocument(document.documentElement);
+applyTheme(document.documentElement, loadViewSettings().theme);
 document.title = t('app.title');
 
 // The autosave is the recovery copy: the model as it was, with the file name it had.

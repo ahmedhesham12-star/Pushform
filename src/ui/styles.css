@@ -846,6 +846,10 @@ li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
   color: var(--ink-2);
   opacity: 0.6;
 }
+.context-menu button svg {
+  flex: none;
+  align-self: center;
+}
 .context-menu kbd {
   font: inherit;
   font-size: 13px;

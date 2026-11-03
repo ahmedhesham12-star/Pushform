@@ -1,4 +1,5 @@
 import { deserializeDocument, serializeDocument, WORKSPACES, type PushformDocument, type Workspace } from './commands';
+import { THEMES, type Theme } from './ui/theme';
 
 /**
  * The autosave lives in this browser's IndexedDB, which holds image textures
@@ -118,9 +119,11 @@ export interface ViewSettings {
   collapsed: string[];
   /** The workspace last chosen for a new model on this device; null until the first run has asked (milestone 6). */
   workspace: Workspace | null;
+  /** Light, Dark or the system's (milestone 6). */
+  theme: Theme;
 }
 
-const DEFAULT_VIEW: ViewSettings = { guides: true, colorByTag: false, collapsed: [], workspace: null };
+const DEFAULT_VIEW: ViewSettings = { guides: true, colorByTag: false, collapsed: [], workspace: null, theme: 'system' };
 
 export function loadViewSettings(): ViewSettings {
   try {
@@ -132,6 +135,7 @@ export function loadViewSettings(): ViewSettings {
         colorByTag: typeof raw.colorByTag === 'boolean' ? raw.colorByTag : DEFAULT_VIEW.colorByTag,
         collapsed: Array.isArray(raw.collapsed) ? raw.collapsed.filter((x): x is string => typeof x === 'string') : [],
         workspace: WORKSPACES.includes(raw.workspace as Workspace) ? (raw.workspace as Workspace) : null,
+        theme: THEMES.includes(raw.theme as Theme) ? (raw.theme as Theme) : DEFAULT_VIEW.theme,
       };
     }
   } catch {

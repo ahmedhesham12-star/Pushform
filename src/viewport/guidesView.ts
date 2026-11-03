@@ -2,6 +2,7 @@ import { BufferGeometry, Float32BufferAttribute, Group, LineBasicMaterial, LineD
 import type { Guide, InstanceId } from '../scene';
 import { toVector } from './convert';
 import type { EdgeHighlight } from './modelView';
+import { themedColor, type Palette } from './palette';
 
 /** A guide to draw, in world coordinates. */
 export interface ShownGuide {
@@ -12,8 +13,6 @@ export interface ShownGuide {
   readonly guide: Guide;
 }
 
-const GUIDE_COLOR = 0x5b6670;
-const COLORS: Record<EdgeHighlight, number> = { selected: 0x1d5c86, hover: 0x4f8fc0, erase: 0xc0392b };
 /** Guide lines reach this many camera distances each way; dashes and crosses scale with the view. */
 const REACH = 40;
 /** Drawn guide lines stay this many camera distances in front of the camera (lines through it vanish). */
@@ -23,21 +22,22 @@ const GAP = 0.009;
 const CROSS = 0.008;
 
 type Style = 'normal' | 'faded' | EdgeHighlight;
-const dashed = (color: number, opacity = 1) => new LineDashedMaterial({ color, dashSize: 1, gapSize: 1, transparent: opacity < 1, opacity });
-const solid = (color: number, opacity = 1) => new LineBasicMaterial({ color, transparent: opacity < 1, opacity });
+type Pick = (p: Palette) => number;
+const dashed = (pick: Pick, opacity = 1) => themedColor(new LineDashedMaterial({ dashSize: 1, gapSize: 1, transparent: opacity < 1, opacity }), pick);
+const solid = (pick: Pick, opacity = 1) => themedColor(new LineBasicMaterial({ transparent: opacity < 1, opacity }), pick);
 const LINES: Record<Style, LineDashedMaterial> = {
-  normal: dashed(GUIDE_COLOR),
-  faded: dashed(GUIDE_COLOR, 0.3),
-  selected: dashed(COLORS.selected),
-  hover: dashed(COLORS.hover),
-  erase: dashed(COLORS.erase),
+  normal: dashed((p) => p.guide),
+  faded: dashed((p) => p.guide, 0.3),
+  selected: dashed((p) => p.selected),
+  hover: dashed((p) => p.hover),
+  erase: dashed((p) => p.erase),
 };
 const POINTS: Record<Style, LineBasicMaterial> = {
-  normal: solid(GUIDE_COLOR),
-  faded: solid(GUIDE_COLOR, 0.3),
-  selected: solid(COLORS.selected),
-  hover: solid(COLORS.hover),
-  erase: solid(COLORS.erase),
+  normal: solid((p) => p.guide),
+  faded: solid((p) => p.guide, 0.3),
+  selected: solid((p) => p.selected),
+  hover: solid((p) => p.hover),
+  erase: solid((p) => p.erase),
 };
 
 /**

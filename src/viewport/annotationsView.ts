@@ -2,6 +2,7 @@ import { BufferGeometry, Float32BufferAttribute, Group, LineBasicMaterial, LineS
 import type { Annotation, Dimension, InstanceId } from '../scene';
 import { toVector } from './convert';
 import type { EdgeHighlight } from './modelView';
+import { themedColor, type Palette } from './palette';
 
 /** An annotation to draw, in world coordinates, with its text already formatted. */
 export interface ShownAnnotation {
@@ -21,19 +22,17 @@ export interface LabelBox {
   readonly height: number;
 }
 
-const LINE_COLOR = 0x262c31;
-const COLORS: Record<EdgeHighlight, number> = { selected: 0x1d5c86, hover: 0x4f8fc0, erase: 0xc0392b };
 /** Tick marks and the extension past the dimension line, in camera distances to the point. */
 const TICK = 0.008;
 
 type Style = 'normal' | 'faded' | EdgeHighlight;
-const line = (color: number, opacity = 1) => new LineBasicMaterial({ color, transparent: opacity < 1, opacity });
+const line = (pick: (p: Palette) => number, opacity = 1) => themedColor(new LineBasicMaterial({ transparent: opacity < 1, opacity }), pick);
 const LINES: Record<Style, LineBasicMaterial> = {
-  normal: line(LINE_COLOR),
-  faded: line(LINE_COLOR, 0.3),
-  selected: line(COLORS.selected),
-  hover: line(COLORS.hover),
-  erase: line(COLORS.erase),
+  normal: line((p) => p.edge),
+  faded: line((p) => p.edge, 0.3),
+  selected: line((p) => p.selected),
+  hover: line((p) => p.hover),
+  erase: line((p) => p.erase),
 };
 
 /** A dimension's lines in world coordinates: where its line runs, and the side it is offset to. */

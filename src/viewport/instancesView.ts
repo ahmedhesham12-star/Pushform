@@ -18,7 +18,8 @@ import {
   type Scene,
 } from '../scene';
 import { FACE_COLOR, FADED_OPACITY, faceMaterial, faceUVs, MaterialLibrary } from './materials';
-import { EDGE_COLORS, type EdgeHighlight } from './modelView';
+import { edgeColor, type EdgeHighlight } from './modelView';
+import { themedColor } from './palette';
 
 /** Both sides in a tag's color (Color by Tag), normal or faded, made once per color. */
 const colored = new Map<string, readonly [MeshLambertMaterial, MeshLambertMaterial]>();
@@ -35,8 +36,8 @@ export const tagColor = (s: Scene, path: readonly InstanceId[]): number => {
   return tag ? parseInt(s.tags.get(tag)!.color.slice(1), 16) : FACE_COLOR;
 };
 const EDGES = {
-  normal: new LineBasicMaterial({ color: 0x262c31 }),
-  faded: new LineBasicMaterial({ color: 0x262c31, transparent: true, opacity: FADED_OPACITY, depthWrite: false }),
+  normal: themedColor(new LineBasicMaterial(), (p) => p.edge),
+  faded: themedColor(new LineBasicMaterial({ transparent: true, opacity: FADED_OPACITY, depthWrite: false }), (p) => p.edge),
 };
 
 /**
@@ -194,7 +195,7 @@ export class InstancesView {
       const b = definitionBounds(scene, definitionId);
       if (!b) return;
       const corner = (x: number, y: number, z: number) => applyPoint(world, [x ? b.max[0] : b.min[0], y ? b.max[1] : b.min[1], z ? b.max[2] : b.min[2]]);
-      const c = EDGE_COLORS[kind];
+      const c = edgeColor(kind);
       // The twelve edges of the box: along x, y and z from each corner on the low side.
       for (const [a, d] of BOX_EDGES) {
         pos.push(...corner(a[0], a[1], a[2]), ...corner(d[0], d[1], d[2]));

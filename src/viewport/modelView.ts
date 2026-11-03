@@ -14,6 +14,7 @@ import {
 } from 'three';
 import { faceMeshes, listEdges, listFaces, type FaceSide, type Model } from '../kernel';
 import { BACK_COLOR, FACE_COLOR, faceUVs } from './materials';
+import { palette, rgb, themedColor, type Palette } from './palette';
 
 export type Highlight = 'normal' | 'hover' | 'selected' | 'erase';
 
@@ -21,14 +22,20 @@ function faceMaterial(color: number, side: Side): MeshLambertMaterial {
   return new MeshLambertMaterial({ color, side, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 });
 }
 
-/** Front and back face colors, as in the prototype. */
+/** Both sides of a highlighted face, in the theme's colors. */
+const highlighted = (pick: (p: Palette) => readonly [number, number]): [MeshLambertMaterial, MeshLambertMaterial] => [
+  themedColor(faceMaterial(0, FrontSide), (p) => pick(p)[0]),
+  themedColor(faceMaterial(0, BackSide), (p) => pick(p)[1]),
+];
+
+/** Front and back face colors, as in the prototype, and the highlights. */
 const MATERIALS: Record<Highlight, [MeshLambertMaterial, MeshLambertMaterial]> = {
   normal: [faceMaterial(FACE_COLOR, FrontSide), faceMaterial(BACK_COLOR, BackSide)],
-  hover: [faceMaterial(0xd5e5f1, FrontSide), faceMaterial(0xa9bed2, BackSide)],
-  selected: [faceMaterial(0x8fbde0, FrontSide), faceMaterial(0x6f9dc4, BackSide)],
-  erase: [faceMaterial(0xf1c3ba, FrontSide), faceMaterial(0xd29a90, BackSide)],
+  hover: highlighted((p) => p.faceHover),
+  selected: highlighted((p) => p.faceSelected),
+  erase: highlighted((p) => p.faceErase),
 };
-const EDGE_MATERIAL = new LineBasicMaterial({ color: 0x262c31 });
+const EDGE_MATERIAL = themedColor(new LineBasicMaterial(), (p) => p.edge);
 
 /** Both sides in one color (Color by Tag), made once per color. */
 const colored = new Map<number, [MeshLambertMaterial, MeshLambertMaterial]>();
@@ -43,12 +50,8 @@ export type FaceLook = (faceId: string, side: FaceSide) => MeshLambertMaterial;
 const PLAIN: FaceLook = (_f, side) => MATERIALS.normal[side === 'front' ? 0 : 1];
 
 export type EdgeHighlight = 'hover' | 'selected' | 'erase';
-/** Linear RGB, as color management is off (see viewport.ts). */
-export const EDGE_COLORS: Record<EdgeHighlight, [number, number, number]> = {
-  selected: [0x1d / 255, 0x5c / 255, 0x86 / 255],
-  hover: [0x4f / 255, 0x8f / 255, 0xc0 / 255],
-  erase: [0xc0 / 255, 0x39 / 255, 0x2b / 255],
-};
+/** A highlight's color in the theme in use, as vertex colors (shown as given: color management is off). */
+export const edgeColor = (kind: EdgeHighlight): [number, number, number] => rgb(palette()[kind]);
 const HIGHLIGHT_EDGE_MATERIAL = new LineBasicMaterial({ vertexColors: true });
 
 /**
@@ -127,7 +130,7 @@ export class ModelView {
     for (const e of this.edges) {
       const kind = edges.get(e.id);
       if (!kind) continue;
-      const c = EDGE_COLORS[kind];
+      const c = edgeColor(kind);
       pos.push(e.a.x, e.a.y, e.a.z, e.b.x, e.b.y, e.b.z);
       col.push(...c, ...c);
     }

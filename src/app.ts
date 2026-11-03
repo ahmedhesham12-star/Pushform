@@ -74,6 +74,7 @@ import { EntityInfo, type EntityInfoData, type TagField } from './ui/entityInfo'
 import { CutListPanel } from './ui/cutListPanel';
 import { NameDialog } from './ui/nameDialog';
 import { WorkspaceDialog } from './ui/workspaceDialog';
+import { applyTheme, THEMES, type Theme } from './ui/theme';
 import { MaterialsPanel } from './ui/materialsPanel';
 import { TagsPanel } from './ui/tagsPanel';
 import { Tray } from './ui/tray';
@@ -346,6 +347,8 @@ export class App {
     root.append(top, this.toolbar.element, view, tray.element, footer, this.menu.element);
     this.viewport = new Viewport(view);
     this.textEditor = new TextEditor(view);
+    // Highlights are drawn in the theme's colors: draw them again when it changes.
+    this.viewport.onThemeChange = () => this.applyHighlights();
     this.viewport.setGuidesVisible(view0.guides);
     this.viewport.setColorByTag(view0.colorByTag);
 
@@ -1036,10 +1039,18 @@ export class App {
       this.deleteGuidesEntry(),
       null,
       { label: t(byTag ? 'view.plainColors' : 'view.colorByTag'), enabled: true, run: () => this.setColorByTag(!byTag) },
+      null,
+      ...THEMES.map((theme): MenuEntry => ({ label: t(`view.theme.${theme}`), enabled: true, checked: theme === loadViewSettings().theme, run: () => this.setTheme(theme) })),
       ...(showsWoodworking(this.session.doc.workspace)
         ? [null, { label: t(this.cutListPanel.open ? 'cutlist.hide' : 'cutlist.open'), enabled: true, run: () => this.setCutListOpen(!this.cutListPanel.open) }]
         : []),
     ];
+  }
+
+  /** Light, Dark or the system's theme, on this device. */
+  private setTheme(theme: Theme): void {
+    saveViewSettings({ ...loadViewSettings(), theme });
+    applyTheme(document.documentElement, theme);
   }
 
   private deleteGuidesEntry(): MenuEntry {

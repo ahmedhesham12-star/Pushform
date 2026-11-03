@@ -6,8 +6,12 @@ export interface MenuItem {
   /** Key shown at the end of the item, already translated. */
   readonly shortcut?: string;
   readonly enabled: boolean;
+  /** For one of a set of choices (the theme): whether it is the one in use, shown with a check mark. */
+  readonly checked?: boolean;
   readonly run: () => void;
 }
+
+const CHECK = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M2.5 6.5 5 9l4.5-6"/></svg>';
 
 /** A menu entry, or null for a separator. */
 export type MenuEntry = MenuItem | null;
@@ -53,10 +57,12 @@ export class ContextMenu {
       }
       const b = el('button');
       b.type = 'button';
-      b.setAttribute('role', 'menuitem');
+      b.setAttribute('role', entry.checked === undefined ? 'menuitem' : 'menuitemradio');
+      if (entry.checked !== undefined) b.setAttribute('aria-checked', String(entry.checked));
       b.disabled = !entry.enabled;
       b.append(el('span', undefined, entry.label));
       if (entry.shortcut) b.append(el('kbd', undefined, entry.shortcut));
+      if (entry.checked) b.insertAdjacentHTML('beforeend', CHECK);
       b.addEventListener('click', () => {
         this.close();
         entry.run();

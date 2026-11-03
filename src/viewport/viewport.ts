@@ -49,7 +49,7 @@ import { InstancesView, tagColor } from './instancesView';
 import { SnapMarker, type MarkerKind } from './marker';
 import { MaterialLibrary } from './materials';
 import { colorMaterials, ModelView, type EdgeHighlight, type FaceLook } from './modelView';
-import { DARK_PALETTE, LIGHT_PALETTE, setPalette, themedColor } from './palette';
+import { LIGHT_PALETTE, PALETTES, setPalette, themedColor } from './palette';
 import { Picker, type FaceHit } from './picking';
 
 
@@ -945,12 +945,12 @@ export class Viewport {
   /** Called after the theme changed, so highlights drawn in its colors can be drawn again. */
   onThemeChange: (() => void) | null = null;
 
-  /** The canvas and grid from the page's colors; lines and highlights from the palette of its color scheme. */
+  /** The canvas and grid from the page's colors; lines and highlights from the palette it names. */
   private readTheme(): void {
     const cs = getComputedStyle(document.documentElement);
     const color = (name: string) => new Color(cs.getPropertyValue(name).trim() || '#888');
     this.scene.background = color('--canvas');
-    if (setPalette(cs.colorScheme.includes('dark') ? DARK_PALETTE : LIGHT_PALETTE)) this.onThemeChange?.();
+    if (setPalette(PALETTES[cs.getPropertyValue('--palette').trim()] ?? LIGHT_PALETTE)) this.onThemeChange?.();
     if (this.grid) {
       this.scene.remove(this.grid);
       this.grid.geometry.dispose();

@@ -68,6 +68,30 @@ export const DARK_PALETTE: Palette = {
   axis: { x: 0xe0675f, y: 0x6f93e6, z: 0x63bd70 },
 };
 
+/**
+ * On trial: the dark interface around a medium grey view, so edges can stay
+ * near-black and show on every face. Colored lines must still read on the
+ * near-white default faces, so they stay dark; against the grey canvas they
+ * show by hue more than by lightness. The axes are light, as they run
+ * mostly over the canvas.
+ */
+export const GREY_PALETTE: Palette = {
+  edge: 0x0b0d0f,
+  guide: 0x111417,
+  selected: 0x1d5c86,
+  hover: 0x3f80b3,
+  erase: 0xc0392b,
+  faceSelected: [0x8fbde0, 0x6f9dc4],
+  faceHover: [0xd5e5f1, 0xa9bed2],
+  faceErase: [0xf1c3ba, 0xd29a90],
+  preview: 0x1d5c86,
+  tangent: 0x0f7f9c,
+  axis: { x: 0xff9c94, y: 0x9dbbff, z: 0x7fd88a },
+};
+
+/** The palettes by the stylesheet's --palette name. */
+export const PALETTES: Record<string, Palette> = { light: LIGHT_PALETTE, dark: DARK_PALETTE, grey: GREY_PALETTE };
+
 let current: Palette = LIGHT_PALETTE;
 const themed: [{ color: Color }, (p: Palette) => number][] = [];
 

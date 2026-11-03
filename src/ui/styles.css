@@ -22,6 +22,8 @@
   --axis-x: #c4443b;
   --axis-y: #3a62c2;
   --axis-z: #3e9a4c;
+  /* Which palette the 3D view takes its lines and highlights from (src/viewport/palette.ts). */
+  --palette: light;
   color-scheme: light;
   box-sizing: border-box;
   padding-block: env(safe-area-inset-top, 0px) env(safe-area-inset-bottom, 0px);
@@ -45,6 +47,7 @@
     --axis-x: #e0675f;
     --axis-y: #6f93e6;
     --axis-z: #63bd70;
+    --palette: dark;
     color-scheme: dark;
   }
 }
@@ -66,6 +69,29 @@
   --axis-x: #e0675f;
   --axis-y: #6f93e6;
   --axis-z: #63bd70;
+  --palette: dark;
+  color-scheme: dark;
+}
+/* On trial (milestone 6): the dark interface with a medium grey view and near-black edges. */
+:root[data-theme='dark-grey'] {
+  --ui: #23282c;
+  --ui-2: #2d3338;
+  --line: #434a50;
+  --ink: #e4e7e8;
+  --ink-2: #a2abb1;
+  --accent: #5ca3d5;
+  --accent-ink: #0c1924;
+  --canvas: #5e6368;
+  --grid: #676c71;
+  --grid-2: #73797e;
+  --end: #5fc185;
+  --mid: #55bfdc;
+  --err: #f08a7a;
+  --edge-snap: #d58ccd;
+  --axis-x: #e0675f;
+  --axis-y: #6f93e6;
+  --axis-z: #63bd70;
+  --palette: grey;
   color-scheme: dark;
 }
 *,

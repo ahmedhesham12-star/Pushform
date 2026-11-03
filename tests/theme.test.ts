@@ -7,7 +7,7 @@ import { loadViewSettings, saveViewSettings } from '../src/storage';
 import { ContextMenu } from '../src/ui/contextMenu';
 import { applyTheme } from '../src/ui/theme';
 import { FACE_COLOR } from '../src/viewport/materials';
-import { DARK_PALETTE, LIGHT_PALETTE, palette, setPalette, themedColor, type Palette } from '../src/viewport/palette';
+import { DARK_PALETTE, GREY_PALETTE, LIGHT_PALETTE, palette, PALETTES, setPalette, themedColor, type Palette } from '../src/viewport/palette';
 
 /* Light and dark themes (milestone 6, step 2): contrast of the 3D view's lines and highlights, and the setting. */
 
@@ -35,15 +35,21 @@ const contrast = (a: number, b: number) => {
   return (hi + 0.05) / (lo + 0.05);
 };
 
-const themes: [string, Palette, number][] = [
-  ['light', LIGHT_PALETTE, parseInt(token(':root', '--canvas').slice(1), 16)],
-  ['dark', DARK_PALETTE, parseInt(token(":root[data-theme='dark']", '--canvas').slice(1), 16)],
+const LINES = ['edge', 'guide', 'selected', 'hover', 'erase', 'preview', 'tangent'] as const;
+const canvasOf = (selector: string) => parseInt(token(selector, '--canvas').slice(1), 16);
+
+/** Each theme, and the lines that must stand out 3:1 from its canvas as well as from faces. */
+const themes: [string, Palette, number, readonly (typeof LINES)[number][]][] = [
+  ['light', LIGHT_PALETTE, canvasOf(':root'), LINES],
+  ['dark', DARK_PALETTE, canvasOf(":root[data-theme='dark']"), LINES],
+  // A grey view cannot give a colored line 3:1 against both it and the near-white faces: there they show by hue.
+  ['dark, grey view', GREY_PALETTE, canvasOf(":root[data-theme='dark-grey']"), ['edge', 'guide']],
 ];
 
-describe('the 3D view in both themes', () => {
-  test.each(themes)('%s: every line stands out at least 3:1 from the canvas and from the default face color', (_, p, canvas) => {
-    for (const name of ['edge', 'guide', 'selected', 'hover', 'erase', 'preview', 'tangent'] as const) {
-      expect(contrast(p[name], canvas), `${name} on the canvas`).toBeGreaterThanOrEqual(3);
+describe('the 3D view in every theme', () => {
+  test.each(themes)('%s: lines stand out at least 3:1 from the default face color, and from the canvas where required', (_, p, canvas, onCanvas) => {
+    for (const name of LINES) {
+      if (onCanvas.includes(name)) expect(contrast(p[name], canvas), `${name} on the canvas`).toBeGreaterThanOrEqual(3);
       expect(contrast(p[name], FACE_COLOR), `${name} on a face`).toBeGreaterThanOrEqual(3);
     }
     for (const a of ['x', 'y', 'z'] as const) expect(contrast(p.axis[a], canvas), `axis ${a}`).toBeGreaterThanOrEqual(3);
@@ -62,6 +68,8 @@ describe('the 3D view in both themes', () => {
         .map((l) => l.trim())
         .filter(Boolean);
     const media = css.indexOf(":root:not([data-theme='light'])");
+    expect(css).toContain('--palette: grey;');
+    expect(Object.keys(PALETTES)).toEqual(['light', 'dark', 'grey']);
     expect(block(media)).toEqual(block(css.indexOf(":root[data-theme='dark']")));
   });
 

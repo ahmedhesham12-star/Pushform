@@ -433,6 +433,7 @@ export const en = {
   'view.showGuides': 'Show Guides',
   'view.theme.light': 'Light Theme',
   'view.theme.dark': 'Dark Theme',
+  'view.theme.dark-grey': 'Dark Theme, Grey View',
   'view.theme.system': 'Follow System Theme',
   'file.new': 'New…',
   'file.workspace': 'Workspace: {name}…',

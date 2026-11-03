@@ -303,6 +303,8 @@ export const en = {
   'cutlist.grain.green': 'Along green',
   'cutlist.grain.blue': 'Along blue',
   'cutlist.csv.withUnit': '{label} ({unit})',
+  'cutlist.warning.severalBoards': 'Looks like several boards in one part: make each board its own group',
+  'cutlist.tip.severalBoards': 'Tip: the cut list lists each group or component that holds faces and nothing else as one board. Open the cabinet component, select the faces of one board, and use Make Group (or Make Component); do that for each board. The cabinet stays one component holding its boards.',
   'cutlist.warning.thickness': 'Thickness differs from the material',
   'cutlist.warning.stretched': 'Scaled non-uniformly',
   'cutlist.warning.notSolid': 'Not a solid',

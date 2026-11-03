@@ -195,6 +195,7 @@ export class CutListPanel {
       const cost = list.totals.reduce<number | null>((s, x) => (x.cost === null ? s : (s ?? 0) + x.cost), null);
       if (cost !== null) this.body.append(el('p', 'cutlist-grand', t('cutlist.totalCost', { cost: this.money(cost) })));
     }
+    if (list.rows.some((r) => r.warnings.includes('severalBoards'))) this.body.append(el('p', 'cutlist-note cutlist-tip', t('cutlist.tip.severalBoards')));
     if (list.hiddenLeftOut) this.body.append(el('p', 'cutlist-note', tCount('cutlist.hiddenLeftOut', list.hiddenLeftOut, formatNumber(list.hiddenLeftOut))));
     for (const a of list.looseInAssemblies) this.body.append(el('p', 'cutlist-note cutlist-warning', t('cutlist.looseInAssembly', { name: a.name })));
   }

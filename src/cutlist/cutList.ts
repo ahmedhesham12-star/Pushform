@@ -15,7 +15,12 @@ import { bounds, faceArea, listFaces, solidVolume, type Model } from '../kernel'
 import { t } from '../i18n';
 import { inheritedMaterial, placedInstances, tagShown, type GrainAxis, type InstanceId, type MaterialId, type Scene, type Stock } from '../scene';
 
-export type PartWarning = 'thickness' | 'stretched' | 'notSolid' | 'noMaterial';
+/**
+ * What can be wrong with a part. `severalBoards` stands for a thick part that
+ * is not a solid (a whole cabinet modeled in one group or component): it
+ * replaces the thickness and not-a-solid warnings, which would not say what to do.
+ */
+export type PartWarning = 'severalBoards' | 'thickness' | 'stretched' | 'notSolid' | 'noMaterial';
 
 export interface CutListRow {
   /** What makes these parts one row. */
@@ -67,6 +72,8 @@ export interface CutListOptions {
 
 /** A thickness this close (mm) to the stock's matches it. */
 const THICKNESS_TOLERANCE = 0.05;
+/** A part that is not a solid and thicker than this (mm), or than its material's stock, is taken for several boards in one. */
+const BOARD_THICKNESS = 50;
 const MM3_PER_BOARD_FOOT = 25.4 ** 3 * 144;
 const MM3_PER_CUBIC_METER = 1e9;
 /** Our axes as SketchUp names them: red is x, green is z, blue is y (up). */
@@ -131,9 +138,13 @@ export function cutList(scene: Scene, options: CutListOptions): CutList {
 
     const warnings: PartWarning[] = [];
     const stock = materialId ? scene.materials.get(materialId)!.stock : undefined;
-    if (stock && Math.abs(stock.thickness - thickness) > THICKNESS_TOLERANCE) warnings.push('thickness');
+    const solid = solidVolume(def.model) !== null;
+    if (!solid && thickness > (stock?.thickness ?? BOARD_THICKNESS) + THICKNESS_TOLERANCE) warnings.push('severalBoards');
+    else {
+      if (stock && Math.abs(stock.thickness - thickness) > THICKNESS_TOLERANCE) warnings.push('thickness');
+      if (!solid) warnings.push('notSolid');
+    }
     if (stretched) warnings.push('stretched');
-    if (solidVolume(def.model) === null) warnings.push('notSolid');
     if (!materialId) warnings.push('noMaterial');
 
     const name = nameOf(p);

@@ -5,6 +5,7 @@ import type { CutList, PartWarning } from './cutList';
 
 /** The text of each warning, for the CSV and the panel. */
 export const WARNING_KEYS: Record<PartWarning, MessageKey> = {
+  severalBoards: 'cutlist.warning.severalBoards',
   thickness: 'cutlist.warning.thickness',
   stretched: 'cutlist.warning.stretched',
   notSolid: 'cutlist.warning.notSolid',

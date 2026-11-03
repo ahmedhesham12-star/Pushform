@@ -218,3 +218,35 @@ describe('CSV', () => {
     expect(toCsv(list(s), s.doc.scene, s.doc.units).split('\r\n')[1]).toBe('No material,Rail,1,"7 1/2""","3""","3/4""",,No material');
   });
 });
+
+describe('several boards in one part', () => {
+  /** An open box (no top: not a solid) of the given height, made a component. */
+  function openBox(s: CommandSession, x: number, h: number, name: string) {
+    const p = part(s, x, 600, 500, h, name);
+    const top = listFaces(definitionModel(s.doc, p.definitionId)!).find((f) => f.normal[1] === 1)!.id;
+    ok(s.execute('core.erase', { definitionId: p.definitionId, faceIds: [top], edgeIds: [] }));
+    return p;
+  }
+  const warnings = (s: CommandSession, name: string) => list(s).rows.find((r) => r.name === name)!.warnings;
+
+  test('a thick part that is not a solid gets one warning that says what to do, instead of two', () => {
+    const s = createSession();
+    openBox(s, 0, 300, 'Cabinet');
+    expect(warnings(s, 'Cabinet')).toEqual(['severalBoards', 'noMaterial']);
+    // Thin enough to be one board: the usual warning stays.
+    openBox(s, 1000, 40, 'Tray');
+    expect(warnings(s, 'Tray')).toEqual(['notSolid', 'noMaterial']);
+  });
+
+  test("with a material, its stock thickness is the limit; a closed box keeps the thickness warning", () => {
+    const s = createSession();
+    const mel = ok(s.execute('core.addMaterial', { starter: 'whiteMelamine' })).materialId;
+    const thin = openBox(s, 0, 30, 'Shelf');
+    const closed = part(s, 1000, 600, 500, 300, 'Block');
+    ok(s.execute('core.paint', { instanceIds: [thin.instanceId, closed.instanceId], materialId: mel }));
+    // 30 mm open on 18 mm stock: several boards.
+    expect(warnings(s, 'Shelf')).toEqual(['severalBoards']);
+    expect(warnings(s, 'Block')).toEqual(['thickness']);
+    expect(toCsv(list(s), s.doc.scene, s.doc.units)).toContain('Looks like several boards in one part: make each board its own group');
+  });
+});

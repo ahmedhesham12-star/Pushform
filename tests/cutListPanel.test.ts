@@ -109,3 +109,18 @@ describe('the Cut List panel', () => {
     expect(table().some((r) => r[0] === 'Front')).toBe(true);
   });
 });
+
+describe('the several boards tip', () => {
+  test('shows with the warning, and only then', () => {
+    const { s, p } = setup();
+    expect(p.element.querySelector('.cutlist-tip')).toBeNull();
+    // A whole cabinet in one component: an open box 300 mm deep.
+    const c = part(s, 5000, 800, 300, 720, 'Cabinet');
+    const front = listFaces(definitionModel(s.doc, c.definitionId)!).find((f) => f.normal[2] === 1)!.id;
+    ok(s.execute('core.erase', { definitionId: c.definitionId, faceIds: [front], edgeIds: [] }));
+    p.sync();
+    const row = [...p.element.querySelectorAll('.cutlist-row')].find((r) => r.textContent!.startsWith('Cabinet'))!;
+    expect(row.lastElementChild!.textContent).toBe('Looks like several boards in one part: make each board its own group; No material');
+    expect(p.element.querySelector('.cutlist-tip')!.textContent).toMatch(/^Tip: .*Make Group/);
+  });
+});

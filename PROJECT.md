@@ -2,7 +2,7 @@
 
 Free, open-source 3D modeling in the browser, built around push/pull modeling. Draw shapes, push and pull them into solids, and export the result. No account and no install.
 
-Last updated: 2026-10-29.
+Last updated: 2026-11-03.
 
 ## Goals
 - A fast, precise push/pull modeler that runs as a static web page.
@@ -48,8 +48,8 @@ A properties panel that shows a selected rectangle's width and depth and lets th
 ### Hardware and import (roadmap)
 - Imports become components: one definition, many instances. Imported meshes are reference geometry: movable and snappable, but not push/pull editable. Show simplified versions when zoomed out.
 - Formats:
-  - v1: OBJ, STL, glTF.
-  - v1.1: STEP/IGES via OpenCascade WebAssembly. It is LGPL, which is compatible with both GPL and MIT when used as a separate library, so the license choice does not block STEP import. Ship it as a separately loaded, replaceable module with its license notice.
+  - v1: OBJ, STL, glTF (GLB), in milestone 6.
+  - v1.1: STEP/IGES via OpenCascade WebAssembly (STEP is attempted at the end of milestone 6). It is LGPL, which is compatible with both GPL and MIT when used as a separate library, so the license choice does not block STEP import. Ship it as a separately loaded, replaceable module with its license notice.
   - DXF for 2D profiles.
 - On import: ask for units when the file has none, show the real size, and set the insertion point and orientation.
 - Placement: glue to face, snap to edges, and per-item placement presets.
@@ -58,6 +58,11 @@ A properties panel that shows a selected rectangle's width and depth and lets th
   - A personal library on the device.
   - A small starter library of original models.
   - Later, a community library that links to manufacturer downloads instead of re-hosting their files.
+
+### Roadmap after milestone 6 (product owner, 2026-11-03)
+- **Milestone 7, shaping tools:** round corner and bevel on edges, with several radii (as the RoundCorner extension does), and vertex editing with soft selection (as Vertex Tools does).
+- **Milestone 8, organic modeling:** smooth subdivision meshes as a second object kind, for cushions and upholstery (as Artisan does), then cloth draping (as ClothWorks does), possibly as a plugin.
+- **Architecture workspace tools:** walls, openings, section planes and 2D plans.
 
 ## Architecture
 ```
@@ -644,6 +649,52 @@ Decisions approved for milestone 5 (2026-10-29, product owner):
 - **Cut list:** currency is a file setting (none by default: plain numbers); solid wood shows board feet for imperial units and m³ for metric. Copied groups that still share their geometry count as the same part. Sheets = area × (1 + waste) / sheet area, rounded up. Clicking a row highlights all its instances, selects those in one context, and says how many are elsewhere. CSV is UTF-8 with a byte order mark. The print view is a printable page in the app. The cut list is a new pure layer, `src/cutlist`.
 - **Acceptance cabinet:** 800 x 500 x 720 mm with 18 mm white melamine panels (two sides as one mirrored component, a back and a bottom), an 18 mm oak top with 50 mm rounded corners, three drawers (one component) with 12 mm birch ply boxes (two sides, a front and a back, a bottom), and three 18 mm white MDF fronts. Expected at 15% waste: melamine 1 sheet, birch ply 2 sheets (1525 x 1525), MDF 1 sheet, oak 0.00939 m³.
 
+**Milestone 6** (from 2026-11-03), on branch `milestone-6`, in progress: workspaces, light mode, cutting diagrams, edge banding, part labels and hardware. The woodworking workflow should run from the model to cutting diagrams, labels and a full bill of materials; a file says what kind of work it is for; and the app gets a light theme. Scope, as specified by the product owner:
+1. **Workspaces**
+   - Woodworking, Architecture and General. Chosen when a file is created (File > New opens a small chooser; the first run of the app asks once), stored in the file, and switchable at any time from the File menu without losing anything.
+   - A workspace sets defaults and visibility only: units and precision (Woodworking mm with 0 decimals; Architecture m or ft-in by locale; General mm), the starter materials (Woodworking: sheet goods and solid woods with stock; Architecture: concrete, brick, plaster, glass, tile, wood flooring, painted wall colors; General: a small neutral set), and which panels and toolbar groups show (the Cut List and woodworking panels only in Woodworking).
+   - Existing files open as Woodworking when they have stock materials or cut list settings, otherwise as General.
+2. **Theme:** Light, Dark and Follow system in the View menu, saved per device. Light mode covers the whole UI and the 3D view (background, grid, axes, edges and selection colors chosen for contrast). Materials look the same in both. Plain, technical styling.
+3. **Flip feedback:** the status bar confirms a flip ("Flipped along red"), so a flip of a symmetric part never looks like nothing happened.
+4. **Cutting diagrams**
+   - Per sheet material: the cut list's parts laid onto sheets of the material's size, with saw kerf (default 3 mm), a trim margin per sheet edge, guillotine-only layouts (panel saw friendly, default on) and the direction of the first cuts (along the length, along the width, or best result; default best result).
+   - Grain: parts on a grain material keep their length along the sheet's length; parts without grain may turn 90 degrees.
+   - Output per material: the number of sheets, each sheet drawn to scale with numbered parts and their sizes, the utilization, and usable offcuts with sizes. Part numbers match between the cut list, the diagrams and the labels. The real sheet count replaces the cut list's estimate.
+   - Solid wood: a 1D layout of parts onto stock board lengths (a stock length on solid wood materials).
+   - A Diagrams view in the Cut List panel, and a print view (one sheet per landscape page).
+5. **Edge banding**
+   - Edge band materials in the Materials panel: thickness, width and price per meter.
+   - Per part, the band on each of its four edges (two length edges, two width edges), in Entity Info and in the cut list row; component copies share the setting.
+   - An option to show the cut size, reduced by the band thickness on banded edges, next to the finished size.
+   - Totals per edge band material in meters, with waste, and cost. Banded edges are marked on the diagrams and labels.
+6. **Part labels:** a printable label sheet, one label per part instance, with part number, name, assembly (the parent component's name), finished size, material, grain arrow and edge band marks. Layouts A4 3 x 8, A4 2 x 7 and Letter 3 x 10, and a custom grid.
+7. **Hardware import and bill of materials**
+   - Import OBJ, STL and GLB files as components: ask for units when the file has none, show the real size before placing, and place with the Move tool so it snaps.
+   - Imported models are reference meshes, a new definition kind that holds triangles instead of kernel topology. They render, pick, snap to their corners and edges, move, rotate, scale, copy, flip, export and hide by tag, but cannot be push/pulled or edited. Large meshes show a simplified version when zoomed out if needed for speed.
+   - Hardware details on any component definition: a hardware flag, manufacturer, part number, price and link. Hardware is left out of the cut list and listed in a Hardware tab of the Cut List panel, grouped by definition with quantities, prices and totals, and included in the CSV and the print view.
+   - A personal library: save a component (imported hardware included) to a library on the device, and insert it from a Library panel into any file.
+   - Stretch goal: STEP import (OpenCascade WebAssembly, LGPL, loaded on demand as a separate module). If it does not fit, it becomes the first next step.
+8. **Roadmap** after this milestone: see "Roadmap after milestone 6".
+
+Checkpoints for the product owner's manual testing: (a) workspaces, theme and flip feedback; (b) cutting diagrams; (c) edge banding and labels; (d) hardware import, the library and the hardware list.
+
+Progress (2026-11-03): plan approved; branch `milestone-6` created from `main` (step 0).
+
+Decisions approved for milestone 6 (2026-11-03, product owner):
+- **One milestone**, merged into `main` only after all four checkpoints and the stress sweeps pass. STEP is attempted last, after checkpoint (d).
+- **Workspaces:** a file setting, changed by an undoable command. Switching changes only what is shown and the starter list, never the file's units, materials, banding, hardware details or cut list settings. New-file units: Woodworking and General mm with 0 decimals; Architecture ft-in at 1/16" when the browser region is the US, Liberia or Myanmar, otherwise m with 2 decimals. The first run asks once (when there is no recovery copy); later empty starts use the last workspace chosen on the device. Starter materials are colors only; glass is not transparent yet. Import and the Library show in every workspace, and every current tool applies to all three.
+- **Theme:** a per-device view setting, Follow system by default. A light and a dark palette for the 3D view, checked for contrast; the default face colors, tag colors and materials stay the same in both. Print views are always light.
+- **Flip:** the status bar names the axis, and the count when several objects were flipped.
+- **Part numbers:** 1, 2, 3 per cut list row, in list order, shared by all copies of the part. Diagrams show the number; labels show it with the copy ("3, 2 of 6").
+- **Cutting diagrams:** file settings for kerf (3 mm), trim (10 mm on each sheet edge), guillotine only (on), first cuts (best result) and the smallest usable offcut (100 mm on its short side). Packing is deterministic. Utilization is part area over the full sheet area. Parts larger than the usable sheet are listed as not fitting. Solid wood boards are laid out by length only: widths are not combined, and solid wood cost stays by volume.
+- **Edge banding:** a third stock kind (thickness, width, price per meter). Each of a part's four edges takes its own band material or none, stored on the definition by its local side faces, so copies share it and a band stays on its edge when the part is resized. Totals per band material use the file's waste percentage. The cut size option is off by default; with it on, the diagrams and labels use the cut size.
+- **Labels:** the assembly is the nearest component above the part. The label layout is a per-device setting.
+- **Imports:** three.js's loaders in a new `src/import` layer, loaded on demand. STL and OBJ ask for units and are read Z-up (with a switch); GLB is meters and Y-up. Vertices are welded, the definition origin is the lowest corner of the bounding box, each mesh has one color (painting the instance overrides it), and files over 1,000,000 triangles are refused. Placing previews the component on the cursor and is one undo step.
+- **Reference meshes:** a `mesh` definition kind that behaves like a component. Editing and Explode are refused. Snapping uses feature edges: boundaries and edges sharper than 30 degrees.
+- **Hardware and the library:** hardware details go on any component or mesh definition; hardware and everything inside it is left out of the cut list. The library is a separate store on the device; inserting an item again places another copy of its definition.
+- **SketchUp:** OpenCutList is not installed, so its conventions are not verified here. STL import is checked in a new empty model the product owner opens.
+- **Acceptance:** the milestone 5 reference cabinet in Woodworking, with white ABS 1 x 22 mm band (0.50 per meter) on the front edges of the sides and bottom and on all four edges of the fronts, oak on 2400 mm boards, and two 450 x 45 x 12.7 mm drawer slides (12.50 each) inside the Drawer component. Expected: 8.336 m of band (9.586 m with 15% waste, cost 4.79); diagrams with melamine 1 sheet, birch ply 2, MDF 1 and oak 1 board; 23 labels; 6 slides for 75.00.
+
 ### Known limitations
 - The differences from SketchUp listed above.
 - Each operation recomputes its whole plane and an adjacency index. That is fine for typical models; very large models may slow down.
@@ -661,12 +712,12 @@ Decisions approved for milestone 5 (2026-10-29, product owner):
 - Selecting a cut list row whose parts sit in several groups opens the group holding most of them; the others are marked with boxes, not selected.
 
 ## Next steps (proposed, not yet approved)
-1. **After milestone 5** (out of its scope):
-   1. **Sheet layout and cutting diagrams** (milestone 6).
-   2. **Edge banding** and **part labels** for the cut list.
-   3. **Texture positioning tools.**
-   4. **Solid tools**: union, subtract and intersect for groups and components that are solids, and solid volume for groups holding other groups.
-   5. **Hardware import**: manufacturer models (STEP or glTF) placed as components.
+1. **After milestone 6** (out of its scope; milestones 7 and 8 are under "Roadmap after milestone 6"):
+   1. **Edge banding in the 3D view:** a colored line on banded edges.
+   2. **Cutting diagram export** as SVG and DXF for CNC.
+   3. **Material opacity** (glass).
+   4. **Texture positioning tools.**
+   5. **Solid tools**: union, subtract and intersect for groups and components that are solids, and solid volume for groups holding other groups.
    6. **OBJ and DXF export.**
    7. **Intersecting moved geometry** with what it lands on.
 2. A stretch that lands a point on another point merges the two instead of being refused.
@@ -684,5 +735,4 @@ Decisions approved for milestone 5 (2026-10-29, product owner):
 ## Open questions
 - License: GPL or MIT.
 - Arabic font choice, since Barlow has no Arabic glyphs.
-- Default units: currently meters for every new file. Revisit when woodworking features land, for example a setting or a locale-based default.
 - Decimal comma input. Users in many regions type 1,5 for 1.5. Today the parser accepts only a decimal point, and a comma separates values ("600, 400"), so "1,5" is read as two values. Proposed approach: follow the locale's decimal separator, and switch the list separator to ";" when the decimal separator is a comma. Decide during the localization work. No code change yet.

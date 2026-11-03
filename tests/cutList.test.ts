@@ -250,3 +250,25 @@ describe('several boards in one part', () => {
     expect(toCsv(list(s), s.doc.scene, s.doc.units)).toContain('Looks like several boards in one part: make each board its own group');
   });
 });
+
+describe('paint on the group or component counts (the usual SketchUp way)', () => {
+  test("a board's material is its instance's paint, else the paint of the cabinet around it; the nearest wins", () => {
+    const s = createSession();
+    const oak = ok(s.execute('core.addMaterial', { starter: 'oak' })).materialId;
+    const ply = ok(s.execute('core.addMaterial', { starter: 'birchPly' })).materialId;
+    const left = part(s, 0, 18, 500, 720, 'Side');
+    const shelf = part(s, 100, 764, 482, 18, 'Shelf');
+    // No face of either board is painted.
+    for (const p of [left, shelf]) expect(listFaces(definitionModel(s.doc, p.definitionId)!).every((f) => !f.paint)).toBe(true);
+    // Paint on the board's own group or component.
+    ok(s.execute('core.paint', { instanceIds: [left.instanceId], materialId: oak }));
+    expect(list(s).rows.find((r) => r.name === 'Side')!.materialId).toBe(oak);
+    // Paint on the cabinet component around the boards reaches the unpainted one; the side keeps its own.
+    const cabinet = ok(s.execute('core.makeComponent', { instanceIds: [left.instanceId, shelf.instanceId], name: 'Cabinet' }));
+    ok(s.execute('core.paint', { instanceIds: [cabinet.instanceId], materialId: ply }));
+    const rows = list(s).rows;
+    expect(rows.find((r) => r.name === 'Shelf')!.materialId).toBe(ply);
+    expect(rows.find((r) => r.name === 'Side')!.materialId).toBe(oak);
+    expect(rows.every((r) => !r.warnings.includes('noMaterial'))).toBe(true);
+  });
+});

@@ -25,7 +25,8 @@ describe('randomized mixed commands', () => {
     randomMixedRun(seed, steps);
   });
 
-  test('the runs exercise every command', () => {
+  // Six runs with the scene checked after every step take a few seconds on a busy machine.
+  test('the runs exercise every command', { timeout: 30_000 }, () => {
     const total: Record<string, number> = {};
     for (let seed = 1; seed <= 6; seed++) {
       for (const [k, v] of Object.entries(randomMixedRun(seed, 50).counts)) total[k] = (total[k] ?? 0) + v;

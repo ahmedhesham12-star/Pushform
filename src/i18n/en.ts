@@ -304,7 +304,7 @@ export const en = {
   'cutlist.grain.blue': 'Along blue',
   'cutlist.csv.withUnit': '{label} ({unit})',
   'cutlist.warning.severalBoards': 'Looks like several boards in one part: make each board its own group',
-  'cutlist.tip.severalBoards': 'Tip: the cut list lists each group or component that holds faces and nothing else as one board. Open the cabinet component, select the faces of one board, and use Make Group (or Make Component); do that for each board. The cabinet stays one component holding its boards.',
+  'cutlist.tip.severalBoards': 'The cut list counts each group or component holding faces as one board. Model each board on its own: draw it, push/pull it to its thickness, and make it a group before drawing the next. Then put the boards of one cabinet inside one component.',
   'cutlist.warning.thickness': 'Thickness differs from the material',
   'cutlist.warning.stretched': 'Scaled non-uniformly',
   'cutlist.warning.notSolid': 'Not a solid',

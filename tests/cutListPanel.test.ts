@@ -121,6 +121,8 @@ describe('the several boards tip', () => {
     p.sync();
     const row = [...p.element.querySelectorAll('.cutlist-row')].find((r) => r.textContent!.startsWith('Cabinet'))!;
     expect(row.lastElementChild!.textContent).toBe('Looks like several boards in one part: make each board its own group; No material');
-    expect(p.element.querySelector('.cutlist-tip')!.textContent).toMatch(/^Tip: .*Make Group/);
+    expect(p.element.querySelector('.cutlist-tip')!.textContent).toBe(
+      'The cut list counts each group or component holding faces as one board. Model each board on its own: draw it, push/pull it to its thickness, and make it a group before drawing the next. Then put the boards of one cabinet inside one component.',
+    );
   });
 });

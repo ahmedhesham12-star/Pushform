@@ -195,9 +195,10 @@ export class MaterialsPanel {
   }
 
   /**
-   * What the material is bought as: none (paint only), sheet goods or solid
-   * wood, with a thickness (common ones suggested), the sheet size, a price
-   * and whether it has a grain. Every change sets the whole stock.
+   * What the material is bought as: none (paint only), sheet goods, solid
+   * wood or edge band, with a thickness (common ones suggested), the sheet
+   * size or band width, a price and whether it has a grain. Every change sets
+   * the whole stock.
    */
   private stockFields(id: MaterialId, stock: Stock | undefined): void {
     const units = this.host.units();
@@ -212,6 +213,7 @@ export class MaterialsPanel {
       ['none', 'materials.stockNone'],
       ['sheet', 'materials.stockSheet'],
       ['solid', 'materials.stockSolid'],
+      ['band', 'materials.stockBand'],
     ] as const) {
       const o = el('option', undefined, t(key));
       o.value = value;
@@ -220,8 +222,11 @@ export class MaterialsPanel {
     kind.value = stock?.kind ?? 'none';
     kind.addEventListener('change', () => {
       const imperial = units.unit === 'in' || units.unit === 'in-frac' || units.unit === 'ft-in';
-      if (kind.value === 'sheet') this.host.setStock(id, { kind: 'sheet', thickness: stock?.thickness ?? 18, length: 2440, width: 1220, grain: stock?.grain ?? false });
-      else if (kind.value === 'solid') this.host.setStock(id, { kind: 'solid', thickness: stock?.thickness ?? 18, length: 2400, per: imperial ? 'boardFoot' : 'cubicMeter', grain: true });
+      // A board's thickness carries over between sheet goods and solid wood; a band's is far thinner.
+      const board = stock && stock.kind !== 'band' ? stock : undefined;
+      if (kind.value === 'sheet') this.host.setStock(id, { kind: 'sheet', thickness: board?.thickness ?? 18, length: 2440, width: 1220, grain: board?.grain ?? false });
+      else if (kind.value === 'solid') this.host.setStock(id, { kind: 'solid', thickness: board?.thickness ?? 18, length: 2400, per: imperial ? 'boardFoot' : 'cubicMeter', grain: true });
+      else if (kind.value === 'band') this.host.setStock(id, { kind: 'band', thickness: 1, width: 22 });
       else this.host.setStock(id, null);
     });
     row(t('materials.stock'), kind);
@@ -242,10 +247,10 @@ export class MaterialsPanel {
       });
       row(label, input);
     };
-    // Common sheet thicknesses: 12, 15, 18 and 25 mm, 1/2" and 3/4".
+    // Common sheet thicknesses: 12, 15, 18 and 25 mm, 1/2" and 3/4"; and band thicknesses.
     const list = el('datalist');
     list.id = `materials-thicknesses-${id}`;
-    for (const mm of [12, 15, 18, 25, 12.7, 19.05]) {
+    for (const mm of stock.kind === 'band' ? [0.4, 0.6, 1, 2] : [12, 15, 18, 25, 12.7, 19.05]) {
       const o = el('option');
       o.value = mm === 12.7 ? '1/2"' : mm === 19.05 ? '3/4"' : `${mm}mm`;
       list.append(o);
@@ -255,6 +260,8 @@ export class MaterialsPanel {
     if (stock.kind === 'sheet') {
       lengthField(t('materials.sheetLength'), stock.length, (mm) => ({ ...stock, length: mm }));
       lengthField(t('materials.sheetWidth'), stock.width, (mm) => ({ ...stock, width: mm }));
+    } else if (stock.kind === 'band') {
+      lengthField(t('materials.bandWidth'), stock.width, (mm) => ({ ...stock, width: mm }));
     } else {
       // The board length for the cutting diagrams; empty leaves solid wood out of them.
       const board = el('input');
@@ -288,7 +295,7 @@ export class MaterialsPanel {
       }
       this.host.setStock(id, { ...rest, price: n });
     });
-    row(t(stock.kind === 'sheet' ? 'materials.pricePerSheet' : 'materials.price'), price);
+    row(t(stock.kind === 'sheet' ? 'materials.pricePerSheet' : stock.kind === 'band' ? 'materials.pricePerMeter' : 'materials.price'), price);
     if (stock.kind === 'solid') {
       const per = el('select');
       for (const [value, key] of [
@@ -303,6 +310,7 @@ export class MaterialsPanel {
       per.addEventListener('change', () => this.host.setStock(id, { ...stock, per: per.value as 'boardFoot' | 'cubicMeter' }));
       row(t('materials.pricePer'), per);
     }
+    if (stock.kind === 'band') return;
     const grain = el('input');
     grain.type = 'checkbox';
     grain.checked = stock.grain;

@@ -231,9 +231,9 @@ describe('CSV', () => {
     ok(s.execute('core.setGrain', { definitionId: side.definitionId, grain: 'red' }));
     part(s, 3000, 600.25, 300, 18, 'Shelf "A"');
     expect(toCsv(list(s), s.doc.scene, s.doc.units)).toBe(
-      '﻿No.,Material,Part,Quantity,Length (mm),Width (mm),Thickness (mm),Grain,Warnings\r\n' +
-        '1,"Birch ply, 12",Drawer side,2,450,180,12,Along red,\r\n' +
-        '2,No material,"Shelf ""A""",1,600.3,300,18,,No material\r\n',
+      '﻿No.,Material,Part,Quantity,Length (mm),Width (mm),Thickness (mm),Grain,Length edge 1,Length edge 2,Width edge 1,Width edge 2,Warnings\r\n' +
+        '1,"Birch ply, 12",Drawer side,2,450,180,12,Along red,,,,,\r\n' +
+        '2,No material,"Shelf ""A""",1,600.3,300,18,,,,,,No material\r\n',
     );
   });
 
@@ -241,7 +241,7 @@ describe('CSV', () => {
     const s = createSession();
     ok(s.execute('core.setDisplayUnits', { unit: 'in-frac', precision: 16 }));
     part(s, 0, 19.05 * 10, 19.05 * 4, 19.05, 'Rail');
-    expect(toCsv(list(s), s.doc.scene, s.doc.units).split('\r\n')[1]).toBe('1,No material,Rail,1,"7 1/2""","3""","3/4""",,No material');
+    expect(toCsv(list(s), s.doc.scene, s.doc.units).split('\r\n')[1]).toBe('1,No material,Rail,1,"7 1/2""","3""","3/4""",,,,,,No material');
   });
 });
 
@@ -319,6 +319,6 @@ describe('part names', () => {
     const p = part(s, 0, 600, 300, 18, 'Top');
     ok(s.execute('core.paint', { instanceIds: [p.instanceId], materialId: oak }));
     ok(s.execute('core.setMaterialStock', { materialId: oak, stock: { kind: 'solid', thickness: 20, per: 'cubicMeter', grain: true } }));
-    expect(toCsv(list(s), s.doc.scene, s.doc.units).split('\r\n')[1]).toBe('1,Oak,Top,1,600,300,18,,"Thickness 18 mm, material is 20 mm"');
+    expect(toCsv(list(s), s.doc.scene, s.doc.units).split('\r\n')[1]).toBe('1,Oak,Top,1,600,300,18,,,,,,"Thickness 18 mm, material is 20 mm"');
   });
 });

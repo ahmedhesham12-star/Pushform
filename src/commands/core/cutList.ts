@@ -21,10 +21,12 @@ export const setCutListSettingsInput = z.strictObject({
   minOffcut: z.number().min(0).max(999).optional(),
   guillotine: z.boolean().optional(),
   firstCut: z.enum(['length', 'width', 'best']).optional(),
+  /** Show cut sizes (less edge band) and lay parts out at them. */
+  cutSize: z.boolean().optional(),
 });
 export type SetCutListSettingsInput = z.infer<typeof setCutListSettingsInput>;
 
-/** Change the cut list's settings (waste, currency, hidden parts, and the cutting diagrams'); saved in the file. */
+/** Change the cut list's settings (waste, currency, hidden parts, cut sizes, and the cutting diagrams'); saved in the file. */
 export const setCutListSettings: CommandDef<SetCutListSettingsInput, Record<string, never>> = {
   id: 'core.setCutListSettings',
   title: () => t('command.setCutListSettings'),

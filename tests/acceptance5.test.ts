@@ -165,8 +165,8 @@ describe('milestone 5 acceptance: the reference cabinet cut list', () => {
 
   test('CSV, save and reopen, and GLB with materials', async () => {
     const csv = toCsv(list(c.s), c.s.doc.scene, c.s.doc.units).split('\r\n');
-    expect(csv[0]).toBe('﻿No.,Material,Part,Quantity,Length (mm),Width (mm),Thickness (mm),Grain,Warnings');
-    expect(csv.slice(1, 5)).toEqual(['1,Birch ply,Drawer bottom,3,716,426,12,,', '2,Birch ply,Drawer front/back,6,716,180,12,,', '3,Birch ply,Drawer side,6,450,180,12,,', '4,Oak,Top,1,840,540,18,Along red,']);
+    expect(csv[0]).toBe('﻿No.,Material,Part,Quantity,Length (mm),Width (mm),Thickness (mm),Grain,Length edge 1,Length edge 2,Width edge 1,Width edge 2,Warnings');
+    expect(csv.slice(1, 5)).toEqual(['1,Birch ply,Drawer bottom,3,716,426,12,,,,,,', '2,Birch ply,Drawer front/back,6,716,180,12,,,,,,', '3,Birch ply,Drawer side,6,450,180,12,,,,,,', '4,Oak,Top,1,840,540,18,Along red,,,,,']);
     const reopened = documentFromText(documentToText(c.s.doc))!;
     expect(serializeDocument(reopened)).toEqual(serializeDocument(c.s.doc));
     expect(cutList(reopened.scene, { waste: 0.15, includeHidden: true })).toEqual(list(c.s));

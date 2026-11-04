@@ -19,6 +19,8 @@ export const STARTER_MATERIALS: Record<string, { readonly color: string; readonl
   walnut: { color: '#6b4a33', stock: { kind: 'solid', thickness: 20, length: 2400, per: 'cubicMeter', grain: true } },
   whiteMdf: { color: '#efeee9', stock: { kind: 'sheet', thickness: 18, length: 2440, width: 1220, grain: false } },
   whiteMelamine: { color: '#f7f7f4', stock: { kind: 'sheet', thickness: 18, length: 2440, width: 1220, grain: false } },
+  whiteAbsBand: { color: '#f2f2ef', stock: { kind: 'band', thickness: 1, width: 22 } },
+  oakVeneerBand: { color: '#cfa96f', stock: { kind: 'band', thickness: 0.6, width: 22 } },
   paintedSage: { color: '#9aab8f' },
   paintedNavy: { color: '#2f3e57' },
   paintedCharcoal: { color: '#3b3f42' },
@@ -44,6 +46,8 @@ const STARTERS = [
   'walnut',
   'whiteMdf',
   'whiteMelamine',
+  'whiteAbsBand',
+  'oakVeneerBand',
   'paintedSage',
   'paintedNavy',
   'paintedCharcoal',
@@ -167,12 +171,14 @@ const price = z.number().nonnegative().optional();
 const stock = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('sheet'), thickness: size, length: size, width: size, price, grain: z.boolean() }),
   z.strictObject({ kind: z.literal('solid'), thickness: size, length: size.optional(), price, per: z.enum(['boardFoot', 'cubicMeter']), grain: z.boolean() }),
+  // Edge band: its price is per meter.
+  z.strictObject({ kind: z.literal('band'), thickness: size, width: size, price }),
 ]);
 
 export const setMaterialStockInput = z.strictObject({ materialId, stock: stock.nullable() });
 export type SetMaterialStockInput = z.infer<typeof setMaterialStockInput>;
 
-/** Say what a material is bought as (sheet goods or solid wood, with a thickness, sizes and a price), or null for paint only. */
+/** Say what a material is bought as (sheet goods, solid wood or edge band, with a thickness, sizes and a price), or null for paint only. */
 export const setMaterialStock: CommandDef<SetMaterialStockInput, Record<string, never>> = {
   id: 'core.setMaterialStock',
   title: () => t('command.setMaterialStock'),

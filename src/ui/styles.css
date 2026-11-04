@@ -421,6 +421,11 @@ input {
   border-radius: 4px;
   background: var(--canvas);
 }
+/* Tall for a part with its edge banding: it scrolls rather than squeezing the outliner. */
+.entity-info {
+  max-block-size: 45vh;
+  overflow: auto;
+}
 .entity-info dl {
   display: grid;
   grid-template-columns: auto 1fr;
@@ -452,6 +457,11 @@ input {
   color: inherit;
   font: inherit;
 }
+.entity-info .entity-info-section {
+  grid-column: 1 / -1;
+  margin-block-start: 4px;
+  font-weight: 600;
+}
 .entity-info .entity-info-hint {
   grid-column: 1 / -1;
   color: var(--ink-2);
@@ -464,7 +474,8 @@ input {
   display: flex;
   flex-direction: column;
   flex: 1;
-  min-block-size: 0;
+  /* Room for its heading and a few rows, whatever the panels above take. */
+  min-block-size: 96px;
 }
 .outliner.folded {
   flex: none;
@@ -1205,6 +1216,11 @@ li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
   fill: var(--canvas);
   stroke: var(--ink);
 }
+/* A banded edge: a thick line just inside it, in ink so it prints in black and white. */
+.diagram-band {
+  stroke: var(--ink);
+  stroke-linecap: butt;
+}
 .diagram text {
   fill: var(--ink);
   text-anchor: middle;
@@ -1228,6 +1244,22 @@ li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
 .diagrams-offcuts {
   margin-block: 2px 0;
   color: var(--ink-2);
+}
+
+/* A part drawn small with its banded edges thick (cut list rows, labels). */
+.edge-marks {
+  display: block;
+}
+.edge-marks line {
+  stroke-linecap: square;
+}
+.edge-marks-plain {
+  stroke: var(--ink-2);
+  stroke-width: 1;
+}
+.edge-marks-band {
+  stroke: var(--ink);
+  stroke-width: 3;
 }
 
 /* The copy that is printed: hidden on screen, alone on paper. */

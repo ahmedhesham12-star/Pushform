@@ -1,3 +1,4 @@
+import { Vector3 } from 'three';
 import {
   createSession,
   cutListSettings,
@@ -19,7 +20,7 @@ import {
   type ToolGroup,
   type Workspace,
 } from './commands';
-import { cutList, toCsv } from './cutlist';
+import { cutList, partAxes, partEdges, toCsv } from './cutlist';
 import { browserRegion, t, tCount, type MessageKey } from './i18n';
 import {
   edgeCount,
@@ -39,8 +40,11 @@ import {
   type Point3,
 } from './kernel';
 import {
+  applyNormal,
   applyPoint,
+  isEdgeBand,
   multiply,
+  pathTransform,
   definitionBounds,
   determinant,
   dimensionLength,
@@ -71,7 +75,7 @@ import {
   type ToolId,
 } from './tools';
 import { ContextMenu, type MenuEntry } from './ui/contextMenu';
-import { EntityInfo, type EntityInfoData, type TagField } from './ui/entityInfo';
+import { EntityInfo, type EdgesField, type EntityInfoData, type TagField } from './ui/entityInfo';
 import { CutListPanel } from './ui/cutListPanel';
 import { NameDialog } from './ui/nameDialog';
 import { WorkspaceDialog } from './ui/workspaceDialog';
@@ -285,6 +289,8 @@ export class App {
       renameInstance: (instanceId, name) => this.run(this.session.execute('core.renameInstance', { instanceId, name })),
       setTag: (tagId) => this.tagSelected(tagId),
       setGrain: (definitionId, grain) => this.run(this.session.execute('core.setGrain', { definitionId, grain })),
+      setEdgeBand: (definitionId, faceIds, band) => this.setEdgeBand(definitionId, faceIds, band),
+      previewEdge: (faceIds) => this.previewEdge(faceIds),
     });
     this.outliner = new Outliner({
       scene: () => this.session.doc.scene,
@@ -497,6 +503,7 @@ export class App {
           tag: this.tagField([i]),
           material: i.material ? (doc.scene.materials.get(i.material)?.name ?? t('materials.default')) : t('materials.default'),
           ...(showsWoodworking(doc.workspace) ? { grain: def.grain ?? null } : {}),
+          ...(showsWoodworking(doc.workspace) ? this.edgesField([...this.context, id]) : {}),
         };
       }
     }
@@ -990,6 +997,64 @@ export class App {
     this.materials.focusThickness();
   }
 
+  /** The selected part's edges and their bands for Entity Info; nothing for an assembly. */
+  private edgesField(path: readonly InstanceId[]): { edges?: EdgesField } {
+    const scene = this.session.doc.scene;
+    const def = pathDefinition(scene, path);
+    if (!def || def.instances.size) return {};
+    const axes = partAxes(def.model, def.grain ?? null, pathTransform(scene, path));
+    if (!axes) return {};
+    const edges = partEdges(scene, def.model, axes);
+    const options = [...scene.materials]
+      .filter(([id]) => isEdgeBand(scene, id))
+      .map(([id, m]) => ({ id, name: m.name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const field = (e: keyof typeof edges) => ({ faceIds: edges[e].faceIds, band: edges[e].band });
+    return { edges: { edges: { length1: field('length1'), length2: field('length2'), width1: field('width1'), width2: field('width2') }, options } };
+  }
+
+  /**
+   * Band an edge of the selected part: paint its side faces with the band. Taking
+   * the band off gives them back the paint the part's other faces carry, or none.
+   */
+  private setEdgeBand(definitionId: string, faceIds: readonly string[], band: string | null): void {
+    const scene = this.session.doc.scene;
+    const def = scene.definitions.get(definitionId);
+    if (!def || !faceIds.length) return;
+    let materialId = band;
+    if (!band) {
+      const sides = new Set(faceIds);
+      const own = new Map<string, number>();
+      for (const f of listFaces(def.model)) {
+        const p = f.paint?.front;
+        if (!sides.has(f.id) && p && !isEdgeBand(scene, p)) own.set(p, (own.get(p) ?? 0) + faceArea(def.model, f.id));
+      }
+      materialId = [...own].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
+    }
+    this.run(this.session.execute('core.paint', { definitionId, faceIds: [...faceIds], materialId }));
+  }
+
+  /** Show the selected part's side faces in the view, from Entity Info's edge rows: filled when one face, outlined when several. */
+  private previewEdge(faceIds: readonly string[] | null): void {
+    const id = [...this.selection.instances][0];
+    if (!faceIds || !id) return this.viewport.clearPreview();
+    const scene = this.session.doc.scene;
+    const path = [...this.context, id];
+    const def = pathDefinition(scene, path);
+    if (!def) return;
+    const world = pathTransform(scene, path);
+    const faces = faceIds.flatMap((f) => {
+      const face = getFace(def.model, f);
+      if (!face) return [];
+      const normal = new Vector3(...applyNormal(world, face.normal));
+      return [{ points: face.outer.map((p) => new Vector3(...applyPoint(world, p))), normal }];
+    });
+    const [only] = faces;
+    if (faces.length === 1 && only) return this.viewport.showShapePreview(only.points, only.normal);
+    // Lifted off the faces a little, so the outlines are not hidden in them.
+    this.viewport.showGuides(faces.map((f) => ({ points: f.points.map((p) => p.clone().addScaledVector(f.normal, 0.5)), closed: true })));
+  }
+
   /** Save the cut list as CSV. */
   private async exportCutList(): Promise<void> {
     const name = this.fileName ?? t('file.untitled');
@@ -997,7 +1062,7 @@ export class App {
     const settings = cutListSettings(doc);
     const type: FileType = { description: t('file.typeCsv'), mime: 'text/csv', extension: '.csv' };
     try {
-      const text = toCsv(cutList(doc.scene, settings), doc.scene, doc.units);
+      const text = toCsv(cutList(doc.scene, settings), doc.scene, doc.units, { cutSize: settings.cutSize });
       const r = await saveFile(text, type, `${name}${t('cutlist.fileSuffix')}${type.extension}`);
       if (r) this.status.flash(t('message.exported', { name: r.name }));
     } catch {

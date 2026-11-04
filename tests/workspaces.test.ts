@@ -56,8 +56,8 @@ describe('new documents', () => {
         expect(s.doc.scene.materials.get(id)!.name).toBe(starterName(key));
       }
     }
-    // Woodworking: sheet goods and solid wood with stock; the others are paint only.
-    expect(WORKSPACE_STARTERS.woodworking.filter((k) => STARTER_MATERIALS[k]!.stock)).toEqual(['birchPly', 'oak', 'walnut', 'whiteMdf', 'whiteMelamine']);
+    // Woodworking: sheet goods, solid wood and edge band with stock; the others are paint only.
+    expect(WORKSPACE_STARTERS.woodworking.filter((k) => STARTER_MATERIALS[k]!.stock)).toEqual(['birchPly', 'oak', 'walnut', 'whiteMdf', 'whiteMelamine', 'whiteAbsBand', 'oakVeneerBand']);
     expect([...WORKSPACE_STARTERS.architecture, ...WORKSPACE_STARTERS.general].some((k) => STARTER_MATERIALS[k]!.stock)).toBe(false);
     expect(WORKSPACE_STARTERS.architecture.map(starterName)).toEqual([
       'Concrete',

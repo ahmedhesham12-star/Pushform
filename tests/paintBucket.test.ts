@@ -176,7 +176,7 @@ describe('the Materials panel', () => {
     ok(s.execute('core.addMaterial', { starter: 'oak' }));
     const { p, host, swatches } = panel(s);
     expect(swatches(0)).toEqual(['Default', 'Oak']);
-    expect(swatches(1)).toEqual(['Birch ply', 'Walnut', 'White MDF', 'White melamine', 'Painted sage', 'Painted navy', 'Painted charcoal', 'Painted cream']);
+    expect(swatches(1)).toEqual(['Birch ply', 'Walnut', 'White MDF', 'White melamine', 'White ABS edge band', 'Oak veneer edge band', 'Painted sage', 'Painted navy', 'Painted charcoal', 'Painted cream']);
     (p.element.querySelectorAll('.materials-swatches')[1]!.querySelector('.materials-swatch') as HTMLButtonElement).click();
     expect(host.choose).toHaveBeenCalledWith({ starter: 'birchPly' });
     p.sync();

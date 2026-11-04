@@ -44,9 +44,11 @@ export interface CutListSettings {
   readonly firstCut: 'length' | 'width' | 'best';
   /** Leftovers with a short side at least this long (mm) are listed as offcuts. */
   readonly minOffcut: number;
+  /** Show each part's cut size, before edge banding, and lay parts out at it. */
+  readonly cutSize: boolean;
 }
 
-export const DEFAULT_CUT_LIST: CutListSettings = { waste: 0.15, currency: null, includeHidden: false, kerf: 3, trim: 10, guillotine: true, firstCut: 'best', minOffcut: 100 };
+export const DEFAULT_CUT_LIST: CutListSettings = { waste: 0.15, currency: null, includeHidden: false, kerf: 3, trim: 10, guillotine: true, firstCut: 'best', minOffcut: 100, cutSize: false };
 const FIRST_CUTS = ['length', 'width', 'best'] as const;
 
 export const cutListSettings = (doc: PushformDocument): CutListSettings => doc.cutList ?? DEFAULT_CUT_LIST;
@@ -58,16 +60,18 @@ function readCutList(v: unknown): CutListSettings | null {
   if (typeof x.waste !== 'number' || !(x.waste >= 0 && x.waste < 10)) return null;
   if (x.currency !== null && (typeof x.currency !== 'string' || !/^[A-Z]{3}$/.test(x.currency))) return null;
   if (typeof x.includeHidden !== 'boolean') return null;
-  // The diagram settings came in milestone 6; files without them take the defaults.
+  // The diagram and cut size settings came in milestone 6; files without them take the defaults.
   const d = DEFAULT_CUT_LIST;
   const kerf = x.kerf ?? d.kerf;
   const trim = x.trim ?? d.trim;
   const minOffcut = x.minOffcut ?? d.minOffcut;
   const guillotine = x.guillotine ?? d.guillotine;
   const firstCut = x.firstCut ?? d.firstCut;
+  const cutSize = x.cutSize ?? d.cutSize;
   const mm = (n: unknown): n is number => typeof n === 'number' && Number.isFinite(n) && n >= 0 && n < 1000;
   if (!mm(kerf) || !mm(trim) || !mm(minOffcut) || typeof guillotine !== 'boolean' || !FIRST_CUTS.includes(firstCut as CutListSettings['firstCut'])) return null;
-  return { waste: x.waste, currency: x.currency, includeHidden: x.includeHidden, kerf, trim, guillotine, firstCut: firstCut as CutListSettings['firstCut'], minOffcut };
+  if (typeof cutSize !== 'boolean') return null;
+  return { waste: x.waste, currency: x.currency, includeHidden: x.includeHidden, kerf, trim, guillotine, firstCut: firstCut as CutListSettings['firstCut'], minOffcut, cutSize };
 }
 
 /**

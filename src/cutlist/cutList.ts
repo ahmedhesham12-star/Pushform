@@ -8,13 +8,15 @@
  * any depth. A part's size is its definition's box along its own axes, as
  * placed (scaled by every instance above it). Its thickness is the smallest
  * size and its length the largest, unless a grain direction picks the
- * length. Its material is the one most of its painted face area shows. Identical
+ * length. Its material is the one most of its painted face area shows, edge
+ * band aside: bands on its side faces band its edges (milestone 6). Identical
  * parts are one row with a quantity.
  */
-import { bounds, faceArea, listFaces, solidVolume, type Model } from '../kernel';
+import { faceArea, listFaces, solidVolume, type Model } from '../kernel';
 import { t } from '../i18n';
-import { inheritedMaterial, placedInstances, tagShown, type GrainAxis, type InstanceId, type MaterialId, type Scene, type Stock } from '../scene';
+import { inheritedMaterial, isEdgeBand, placedInstances, tagShown, type GrainAxis, type InstanceId, type MaterialId, type Scene, type Stock } from '../scene';
 import { layoutBoards, type BoardLayout } from './boardLayouts';
+import { bandsOf, cutSize, EDGES, partAxes, partEdges, type Bands } from './edges';
 import { DEFAULT_LAYOUT, layoutSheets, type LayoutSettings, type Piece, type SheetLayout } from './sheetLayouts';
 
 /**
@@ -37,6 +39,11 @@ export interface CutListRow {
   readonly thickness: number;
   readonly materialId: MaterialId | null;
   readonly grain: GrainAxis | null;
+  /** The edge band on each of its four edges (milestone 6). */
+  readonly bands: Bands;
+  /** Its length and width before banding: each banded edge's band thickness less. */
+  readonly cutLength: number;
+  readonly cutWidth: number;
   readonly warnings: readonly PartWarning[];
   /** Where each of these parts is: its instance path from the root. */
   readonly paths: readonly (readonly InstanceId[])[];
@@ -61,9 +68,21 @@ export interface MaterialTotal {
   readonly cost: number | null;
 }
 
+/** One edge band's total: its banded edges' length, with the waste, and cost. */
+export interface BandTotal {
+  readonly materialId: MaterialId;
+  /** In mm. */
+  readonly length: number;
+  readonly withWaste: number;
+  /** In the file's currency, by the meter; null without a price. */
+  readonly cost: number | null;
+}
+
 export interface CutList {
   readonly rows: readonly CutListRow[];
   readonly totals: readonly MaterialTotal[];
+  /** Per edge band, by name. */
+  readonly bands: readonly BandTotal[];
   /** Parts a hidden tag hides that are not listed (0 when hidden parts are listed). */
   readonly hiddenLeftOut: number;
   /** Assemblies (groups and components holding others) with loose faces of their own, which are not parts. */
@@ -71,9 +90,11 @@ export interface CutList {
 }
 
 export interface CutListOptions extends Partial<LayoutSettings> {
-  /** Waste as a fraction (0.15 is 15%), added to board volume (sheets are counted by their layout). */
+  /** Waste as a fraction (0.15 is 15%), added to board volume and edge band (sheets are counted by their layout). */
   readonly waste: number;
   readonly includeHidden: boolean;
+  /** Lay parts out at their cut size, before banding. */
+  readonly cutSize?: boolean;
 }
 
 /** A thickness this close (mm) to the stock's matches it. */
@@ -82,8 +103,6 @@ const THICKNESS_TOLERANCE = 0.05;
 const BOARD_THICKNESS = 50;
 const MM3_PER_BOARD_FOOT = 25.4 ** 3 * 144;
 const MM3_PER_CUBIC_METER = 1e9;
-/** Our axes as SketchUp names them: red is x, green is z, blue is y (up). */
-const AXIS_INDEX: Record<GrainAxis, number> = { red: 0, green: 2, blue: 1 };
 
 /** Ids for models, so copied groups that still share geometry group together. */
 const modelIds = new WeakMap<Model, number>();
@@ -112,30 +131,23 @@ export function cutList(scene: Scene, options: CutListOptions): CutList {
       if (faces.length) looseInAssemblies.push({ name: nameOf(p), path: p.path });
       continue;
     }
-    const box = bounds(def.model);
-    if (!faces.length || !box) continue;
-    // Each own axis as placed: its length is the scale along it.
-    const m = p.world.m;
-    const column = (i: number) => [m[3 * i]!, m[3 * i + 1]!, m[3 * i + 2]!];
-    const scales = [0, 1, 2].map((i) => Math.hypot(...column(i)));
-    const sizes = [0, 1, 2].map((i) => (box.max[i]! - box.min[i]!) * scales[i]!);
-    const dot = (a: number[], b: number[]) => a[0]! * b[0]! + a[1]! * b[1]! + a[2]! * b[2]!;
-    const skewed = [0, 1, 2].some((i) => Math.abs(dot(column(i), column((i + 1) % 3))) > 1e-9 * scales[i]! * scales[(i + 1) % 3]!);
-    const stretched = skewed || scales.some((s) => Math.abs(s - scales[0]!) > 1e-9 * scales[0]!);
     const grain = def.grain ?? null;
-    let length: number, width: number, thickness: number;
-    if (grain) {
-      const along = AXIS_INDEX[grain];
-      const rest = sizes.filter((_, i) => i !== along).sort((a, b) => b - a);
-      [length, width, thickness] = [sizes[along]!, rest[0]!, rest[1]!];
-    } else [length, width, thickness] = [...sizes].sort((a, b) => b - a) as [number, number, number];
+    const axes = faces.length ? partAxes(def.model, grain, p.world) : null;
+    if (!axes) continue;
+    const [length, width, thickness] = axes.sizes;
+    const stretched = axes.stretched;
+    const bands = bandsOf(partEdges(scene, def.model, axes));
+    const cut = cutSize(scene, length, width, bands);
 
     // The material most of the part's painted face area shows (its own paint, else what is passed
     // down); unpainted faces do not count, so edges painted on their own still give the part its material.
-    const inherited = inheritedMaterial(scene, p.path);
+    // Edge band is not what a part is made of: banded faces do not count, and a band passed down is none.
+    const passed = inheritedMaterial(scene, p.path);
+    const inherited = isEdgeBand(scene, passed) ? undefined : passed;
     const area = new Map<MaterialId | null, number>();
     for (const f of faces) {
       const own = f.paint?.front;
+      if (isEdgeBand(scene, own)) continue;
       const id = own && scene.materials.has(own) ? own : (inherited ?? null);
       area.set(id, (area.get(id) ?? 0) + faceArea(def.model, f.id));
     }
@@ -156,10 +168,11 @@ export function cutList(scene: Scene, options: CutListOptions): CutList {
     const name = nameOf(p);
     // Components group by definition; groups by their geometry, which copies share until edited.
     const identity = def.kind === 'component' ? `d:${def.id}` : `m:${modelId(def.model)}`;
-    const key = [identity, name, round(length), round(width), round(thickness), materialId ?? '', grain ?? '', warnings.join(',')].join('|');
+    const banding = EDGES.map((e) => bands[e] ?? '').join(',');
+    const key = [identity, name, round(length), round(width), round(thickness), materialId ?? '', grain ?? '', banding, warnings.join(',')].join('|');
     const row = rows.get(key);
     if (row) row.paths.push(p.path);
-    else rows.set(key, { key, number: 0, name, length, width, thickness, materialId, grain, warnings, paths: [p.path] });
+    else rows.set(key, { key, number: 0, name, length, width, thickness, materialId, grain, bands, cutLength: cut.length, cutWidth: cut.width, warnings, paths: [p.path] });
   }
 
   const materialName = (id: MaterialId | null) => (id ? scene.materials.get(id)!.name : null);
@@ -181,7 +194,25 @@ export function cutList(scene: Scene, options: CutListOptions): CutList {
     firstCut: options.firstCut ?? DEFAULT_LAYOUT.firstCut,
     minOffcut: options.minOffcut ?? DEFAULT_LAYOUT.minOffcut,
   };
-  return { rows: out, totals: totals(scene, out, options.waste, layout), hiddenLeftOut, looseInAssemblies };
+  return { rows: out, totals: totals(scene, out, options.waste, layout, options.cutSize ?? false), bands: bandTotals(scene, out, options.waste), hiddenLeftOut, looseInAssemblies };
+}
+
+/** Each edge band's banded edges, end to end: a length edge is the part's length, a width edge its width. */
+function bandTotals(scene: Scene, rows: readonly CutListRow[], waste: number): BandTotal[] {
+  const by = new Map<MaterialId, number>();
+  for (const r of rows) {
+    for (const e of EDGES) {
+      const id = r.bands[e];
+      if (id) by.set(id, (by.get(id) ?? 0) + (e.startsWith('length') ? r.length : r.width) * r.quantity);
+    }
+  }
+  return [...by]
+    .map(([materialId, length]) => {
+      const stock = scene.materials.get(materialId)!.stock;
+      const withWaste = length * (1 + waste);
+      return { materialId, length, withWaste, cost: stock?.price === undefined ? null : (withWaste / 1000) * stock.price };
+    })
+    .sort((a, b) => collator.compare(scene.materials.get(a.materialId)!.name, scene.materials.get(b.materialId)!.name));
 }
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -212,17 +243,18 @@ function cached<L extends SheetLayout | BoardLayout>(key: unknown, make: () => L
 
 /**
  * Totals per material, in the order of the rows: area, volume, the sheet or
- * board layout, board volume with the waste, and cost (sheets by the layout's
- * count, solid wood by volume).
+ * board layout (of the cut sizes when `cut`), board volume with the waste,
+ * and cost (sheets by the layout's count, solid wood by volume).
  */
-function totals(scene: Scene, rows: readonly CutListRow[], waste: number, layout: LayoutSettings): MaterialTotal[] {
+function totals(scene: Scene, rows: readonly CutListRow[], waste: number, layout: LayoutSettings, cut: boolean): MaterialTotal[] {
   const by = new Map<MaterialId | null, { quantity: number; area: number; volume: number; pieces: Piece[] }>();
   for (const r of rows) {
     const x = by.get(r.materialId) ?? { quantity: 0, area: 0, volume: 0, pieces: [] };
     x.quantity += r.quantity;
     x.area += r.length * r.width * r.quantity;
     x.volume += r.length * r.width * r.thickness * r.quantity;
-    for (let copy = 1; copy <= r.quantity; copy++) x.pieces.push({ number: r.number, copy, length: r.length, width: r.width });
+    const [length, width] = cut ? [r.cutLength, r.cutWidth] : [r.length, r.width];
+    for (let copy = 1; copy <= r.quantity; copy++) x.pieces.push({ number: r.number, copy, length, width });
     by.set(r.materialId, x);
   }
   return [...by].map(([materialId, { pieces, ...x }]) => {

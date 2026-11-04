@@ -1,10 +1,11 @@
 import type { CutListSettings } from '../commands';
-import { boardFeet, cutList, warningText, type CutList, type CutListRow, type MaterialTotal } from '../cutlist';
+import { boardFeet, cutList, warningText, type BandTotal, type CutList, type CutListRow, type MaterialTotal } from '../cutlist';
 import { localeTag, t, tCount, type MessageKey } from '../i18n';
 import type { InstanceId, MaterialId, Scene } from '../scene';
 import { formatArea, formatLength, formatNumber, isImperial, type UnitSettings } from '../units';
 import { DiagramsView } from './diagrams';
 import { el } from './dom';
+import { bandsText, edgeMarks } from './edgeMarks';
 
 export interface CutListHost {
   scene(): Scene;
@@ -22,14 +23,21 @@ export interface CutListHost {
 }
 
 type View = 'parts' | 'diagrams';
-type Column = 'number' | 'name' | 'quantity' | 'length' | 'width' | 'thickness' | 'material' | 'grain';
-const COLUMNS: readonly { id: Column; label: MessageKey; numeric?: true }[] = [
+type Column = 'number' | 'name' | 'quantity' | 'length' | 'width' | 'thickness' | 'cutLength' | 'cutWidth' | 'material' | 'grain';
+interface ColumnSpec {
+  readonly id: Column;
+  readonly label: MessageKey;
+  readonly numeric?: true;
+}
+const COLUMNS: readonly ColumnSpec[] = [
   { id: 'number', label: 'cutlist.number', numeric: true },
   { id: 'name', label: 'cutlist.part' },
   { id: 'quantity', label: 'cutlist.quantity', numeric: true },
   { id: 'length', label: 'cutlist.length', numeric: true },
   { id: 'width', label: 'cutlist.width', numeric: true },
   { id: 'thickness', label: 'cutlist.thickness', numeric: true },
+  { id: 'cutLength', label: 'cutlist.cutLength', numeric: true },
+  { id: 'cutWidth', label: 'cutlist.cutWidth', numeric: true },
   { id: 'material', label: 'cutlist.material' },
   { id: 'grain', label: 'cutlist.grain' },
 ];
@@ -38,11 +46,12 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'bas
 
 /**
  * The cut list, over the view: parts grouped by material, with sortable
- * columns (number, name, quantity, length, width, thickness, material,
- * grain), warnings, and per material the area, the sheets or boards its
- * layout uses, board volume with the waste, and cost. A click on a row
+ * columns (number, name, quantity, length, width, thickness, the cut size
+ * when asked, material, grain), the edge banding, warnings, and per material
+ * the area, the sheets or boards its layout uses, board volume with the
+ * waste, and cost; then each edge band's length and cost. A click on a row
  * selects its parts. The settings
- * (waste, currency, hidden parts) are saved in the file. CSV and Print.
+ * (waste, currency, hidden parts, cut sizes) are saved in the file. CSV and Print.
  * The Diagrams view (milestone 6) shows the cutting diagrams instead; Print
  * prints the view shown.
  */
@@ -52,6 +61,7 @@ export class CutListPanel {
   private readonly waste = el('input');
   private readonly currency = el('input');
   private readonly hidden = el('input');
+  private readonly cutSize = el('input');
   private readonly diagrams: DiagramsView;
   private readonly settings = el('div', 'cutlist-settings cutlist-controls');
   private readonly tabs = new Map<View, HTMLButtonElement>();
@@ -125,6 +135,11 @@ export class CutListPanel {
     const h = el('label', 'cutlist-check');
     h.append(this.hidden, el('span', undefined, t('cutlist.includeHidden')));
     settings.append(h);
+    this.cutSize.type = 'checkbox';
+    this.cutSize.addEventListener('change', () => this.host.setSettings({ cutSize: this.cutSize.checked }));
+    const c = el('label', 'cutlist-check');
+    c.append(this.cutSize, el('span', undefined, t('cutlist.showCutSize')));
+    settings.append(c);
     this.diagrams = new DiagramsView(host);
     this.element.append(head, settings, this.diagrams.controls, this.body, this.diagrams.body);
     this.setView('parts');
@@ -159,6 +174,7 @@ export class CutListPanel {
     if (document.activeElement !== this.waste) this.waste.value = formatNumber(settings.waste * 100, 0);
     if (document.activeElement !== this.currency) this.currency.value = settings.currency ?? '';
     this.hidden.checked = settings.includeHidden;
+    this.cutSize.checked = settings.cutSize;
     const list = cutList(scene, settings);
     if (this.view === 'diagrams') this.diagrams.render(scene, list);
     else this.render(scene, list);
@@ -168,13 +184,17 @@ export class CutListPanel {
     const units = this.host.units();
     const length = (mm: number) => formatLength(mm, units);
     const materialName = (id: string | null) => (id ? scene.materials.get(id)!.name : t('cutlist.noMaterial'));
+    // Cut sizes when asked; the banding when the file has edge band to choose.
+    const columns = COLUMNS.filter((c) => this.host.settings().cutSize || (c.id !== 'cutLength' && c.id !== 'cutWidth'));
+    const banding = [...scene.materials.values()].some((m) => m.stock?.kind === 'band');
+    const span = columns.length + (banding ? 2 : 1);
     this.body.replaceChildren();
     if (!list.rows.length) {
       this.body.append(el('p', 'cutlist-empty', t('cutlist.empty')));
     } else {
       const table = el('table');
       const head = el('tr');
-      for (const c of COLUMNS) {
+      for (const c of columns) {
         const th = el('th');
         th.scope = 'col';
         const b = el('button', 'cutlist-sort', t(c.label));
@@ -189,6 +209,11 @@ export class CutListPanel {
         if (c.numeric) th.classList.add('numeric');
         head.append(th);
       }
+      if (banding) {
+        const edges = el('th', 'cutlist-plain', t('cutlist.edges'));
+        edges.scope = 'col';
+        head.append(edges);
+      }
       const warnings = el('th', 'cutlist-plain', t('cutlist.warnings'));
       warnings.scope = 'col';
       head.append(warnings);
@@ -200,18 +225,30 @@ export class CutListPanel {
         const group = el('tr', 'cutlist-group');
         const th = el('th', undefined, materialName(total.materialId));
         th.scope = 'rowgroup';
-        th.colSpan = COLUMNS.length + 1;
+        th.colSpan = span;
         group.append(th);
         tbody.append(group);
         for (const r of this.sorted(list.rows.filter((x) => x.materialId === total.materialId), materialName)) {
           const tr = el('tr', 'cutlist-row');
           tr.tabIndex = 0;
-          const cells = [formatNumber(r.number), r.name, formatNumber(r.quantity), length(r.length), length(r.width), length(r.thickness), materialName(r.materialId), r.grain ? t(`cutlist.grain.${r.grain}` as MessageKey) : ''];
-          cells.forEach((text, i) => {
-            const td = el('td', COLUMNS[i]!.numeric ? 'numeric' : undefined);
+          const cell: Record<Column, string> = {
+            number: formatNumber(r.number),
+            name: r.name,
+            quantity: formatNumber(r.quantity),
+            length: length(r.length),
+            width: length(r.width),
+            thickness: length(r.thickness),
+            cutLength: length(r.cutLength),
+            cutWidth: length(r.cutWidth),
+            material: materialName(r.materialId),
+            grain: r.grain ? t(`cutlist.grain.${r.grain}` as MessageKey) : '',
+          };
+          columns.forEach((c) => {
+            const text = cell[c.id];
+            const td = el('td', c.numeric ? 'numeric' : undefined);
             const materialId = r.materialId;
             // With a thickness off its stock, the material name opens it, to fix the stock's thickness.
-            if (COLUMNS[i]!.id === 'material' && materialId && r.warnings.includes('thickness')) {
+            if (c.id === 'material' && materialId && r.warnings.includes('thickness')) {
               const b = el('button', 'cutlist-material', text);
               b.type = 'button';
               b.title = t('cutlist.editMaterial', { name: text });
@@ -224,6 +261,12 @@ export class CutListPanel {
             } else td.textContent = text;
             tr.append(td);
           });
+          if (banding) {
+            const td = el('td', 'cutlist-edges');
+            td.title = bandsText(r.bands, scene);
+            td.append(edgeMarks(r.bands, scene));
+            tr.append(td);
+          }
           const w = el('td', r.warnings.length ? 'cutlist-warning' : undefined, warningText(r, scene, units));
           tr.append(w);
           tr.addEventListener('click', () => this.host.select(r.paths));
@@ -237,13 +280,30 @@ export class CutListPanel {
         }
         const sum = el('tr', 'cutlist-total');
         const td = el('td', undefined, this.totalText(total, units));
-        td.colSpan = COLUMNS.length + 1;
+        td.colSpan = span;
         sum.append(td);
         tbody.append(sum);
         table.append(tbody);
       }
+      if (list.bands.length) {
+        const tbody = el('tbody');
+        const group = el('tr', 'cutlist-group');
+        const th = el('th', undefined, t('cutlist.edges'));
+        th.scope = 'rowgroup';
+        th.colSpan = span;
+        group.append(th);
+        tbody.append(group);
+        for (const band of list.bands) {
+          const tr = el('tr', 'cutlist-total');
+          const td = el('td', undefined, this.bandText(band, scene, units));
+          td.colSpan = span;
+          tr.append(td);
+          tbody.append(tr);
+        }
+        table.append(tbody);
+      }
       this.body.append(table);
-      const cost = list.totals.reduce<number | null>((s, x) => (x.cost === null ? s : (s ?? 0) + x.cost), null);
+      const cost = [...list.totals, ...list.bands].reduce<number | null>((s, x) => (x.cost === null ? s : (s ?? 0) + x.cost), null);
       if (cost !== null) this.body.append(el('p', 'cutlist-grand', t('cutlist.totalCost', { cost: this.money(cost) })));
     }
     if (list.rows.some((r) => r.warnings.includes('severalBoards'))) this.body.append(el('p', 'cutlist-note cutlist-tip', t('cutlist.tip.severalBoards')));
@@ -284,6 +344,15 @@ export class CutListPanel {
     if (total.cost !== null) parts.push(this.money(total.cost));
     const tooLarge = (sheets?.tooLarge.length ?? 0) + (boards?.tooLarge.length ?? 0);
     if (tooLarge) parts.push(tCount('cutlist.tooLarge', tooLarge, formatNumber(tooLarge)));
+    return parts.join(t('cutlist.separator'));
+  }
+
+  /** "White ABS: 8.34 m, 9.59 m with waste · 4.79": an edge band's banded edges, in meters (feet in imperial files). */
+  private bandText(band: BandTotal, scene: Scene, units: UnitSettings): string {
+    const run = (mm: number) =>
+      isImperial(units.unit) ? t('cutlist.feet', { value: formatNumber(mm / 304.8, 1) }) : t('cutlist.meters', { value: formatNumber(mm / 1000, 2) });
+    const parts = [t('cutlist.bandTotal', { name: scene.materials.get(band.materialId)!.name, length: run(band.length), withWaste: run(band.withWaste) })];
+    if (band.cost !== null) parts.push(this.money(band.cost));
     return parts.join(t('cutlist.separator'));
   }
 

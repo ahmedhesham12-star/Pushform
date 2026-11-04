@@ -1,5 +1,6 @@
-import { t } from '../i18n';
-import type { DefinitionId, GrainAxis, InstanceId } from '../scene';
+import { EDGES, type Edge } from '../cutlist';
+import { t, type MessageKey } from '../i18n';
+import type { DefinitionId, GrainAxis, InstanceId, MaterialId } from '../scene';
 import { el } from './dom';
 
 /** The select's value for Untagged; tag ids never take this form. */
@@ -11,6 +12,12 @@ export interface TagField {
   readonly value?: string | null;
   /** Every tag, by name; Untagged is added first. */
   readonly options: readonly { id: string; name: string }[];
+}
+
+/** A part's edge banding: each edge's side faces and band, and the edge bands to choose from (by name). */
+export interface EdgesField {
+  readonly edges: Readonly<Record<Edge, { readonly faceIds: readonly string[]; readonly band: MaterialId | null }>>;
+  readonly options: readonly { id: MaterialId; name: string }[];
 }
 
 /** What Entity Info shows; the app builds it from the selection. Values are already formatted. */
@@ -36,6 +43,8 @@ export type EntityInfoData =
       material: string;
       /** Its grain direction for the cut list (shared by component copies); null for the longest side; absent outside the Woodworking workspace. */
       grain?: GrainAxis | null;
+      /** Its edge banding, for a part in the Woodworking workspace; absent otherwise. */
+      edges?: EdgesField;
     }
   | { kind: 'dimension'; length: string; tag: TagField }
   | { kind: 'text'; text: string; tag: TagField }
@@ -61,6 +70,10 @@ export interface EntityInfoHost {
   setTag(id: string | null): void;
   /** Set a definition's grain direction (null: the longest side). */
   setGrain(definitionId: DefinitionId, grain: GrainAxis | null): void;
+  /** Band one edge of the selected part (its side faces) with an edge band, or take the band off (null). */
+  setEdgeBand(definitionId: DefinitionId, faceIds: readonly string[], band: MaterialId | null): void;
+  /** Outline side faces of the selected part in the view, or stop (null). */
+  previewEdge(faceIds: readonly string[] | null): void;
 }
 
 /**
@@ -71,6 +84,7 @@ export class EntityInfo {
   readonly element = el('section', 'entity-info');
   private readonly body = el('dl');
   private shown = '';
+  private previewing = false;
 
   constructor(private readonly host: EntityInfoHost) {
     const heading = el('h2', undefined, t('panel.entityInfo'));
@@ -83,6 +97,8 @@ export class EntityInfo {
     const key = JSON.stringify(data);
     if (key === this.shown) return;
     this.shown = key;
+    // The rows go, and with them the pointer that was over one.
+    this.preview(null);
     this.body.replaceChildren();
     switch (data.kind) {
       case 'none':
@@ -98,6 +114,7 @@ export class EntityInfo {
         this.tagRow(data.tag);
         this.row(t('info.material'), data.material);
         if (data.grain !== undefined) this.grainRow(data.definitionId, data.grain);
+        if (data.edges) this.edgeRows(data.definitionId, data.edges);
         if (data.volume) this.row(t('info.volume'), data.volume);
         if (data.scale) this.row(t('info.scale'), data.scale);
         if (data.stretched) this.body.append(el('dd', 'entity-info-warning', t('info.stretched')));
@@ -147,6 +164,54 @@ export class EntityInfo {
     const dd = el('dd');
     dd.append(select);
     this.body.append(dt, dd);
+  }
+
+  /**
+   * The band on each of the part's four edges, or a hint when the file has no
+   * edge band yet. Pointing at a row, or into its menu, outlines that edge.
+   */
+  private edgeRows(definitionId: DefinitionId, field: EdgesField): void {
+    this.body.append(el('dt', 'entity-info-section', t('info.edgeBanding')));
+    if (!field.options.length) {
+      this.body.append(el('dd', 'entity-info-hint', t('info.edgesNone')));
+      return;
+    }
+    for (const edge of EDGES) {
+      const { faceIds, band } = field.edges[edge];
+      const id = `entity-info-${this.body.children.length}`;
+      const dt = el('dt');
+      const lab = el('label', undefined, t(`cutlist.edge.${edge}` as MessageKey));
+      lab.htmlFor = id;
+      dt.append(lab);
+      const select = el('select');
+      select.id = id;
+      const option = (value: string, text: string) => {
+        const o = el('option', undefined, text);
+        o.value = value;
+        return o;
+      };
+      select.append(option('', t('info.edgeNone')), ...field.options.map((o) => option(o.id, o.name)));
+      select.value = band ?? '';
+      // A part with no straight face at this edge (a rounded end) has nothing to band there.
+      select.disabled = !faceIds.length;
+      if (!faceIds.length) select.title = t('info.edgeMissing');
+      select.addEventListener('change', () => this.host.setEdgeBand(definitionId, faceIds, select.value || null));
+      const dd = el('dd');
+      dd.append(select);
+      for (const part of [dt, dd]) {
+        part.addEventListener('pointerenter', () => this.preview(faceIds));
+        part.addEventListener('pointerleave', () => this.preview(null));
+      }
+      select.addEventListener('focus', () => this.preview(faceIds));
+      select.addEventListener('blur', () => this.preview(null));
+      this.body.append(dt, dd);
+    }
+  }
+
+  private preview(faceIds: readonly string[] | null): void {
+    if (!faceIds && !this.previewing) return;
+    this.previewing = !!faceIds?.length;
+    this.host.previewEdge(faceIds?.length ? faceIds : null);
   }
 
   /** A menu of tags; picking one puts the selection on it. */

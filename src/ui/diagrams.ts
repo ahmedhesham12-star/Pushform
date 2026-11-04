@@ -1,7 +1,7 @@
 import type { CutListSettings } from '../commands';
-import { placedSize, type BoardLayout, type CutList, type CutListRow, type MaterialTotal, type SheetLayout } from '../cutlist';
+import { EDGES, placedSize, type Bands, type BoardLayout, type CutList, type CutListRow, type MaterialTotal, type SheetLayout } from '../cutlist';
 import { localeTag, t, tCount } from '../i18n';
-import type { Scene } from '../scene';
+import type { Scene, Stock } from '../scene';
 import { formatLength, formatNumber, parseLength, type UnitSettings } from '../units';
 import { el } from './dom';
 
@@ -34,15 +34,17 @@ const SHEET_PX = 280;
 const BOARD_PX = 900;
 const NUMBER_PX = 15;
 const SIZE_PX = 11;
+/** How thick a banded edge's mark is, in pixels on screen. */
+const BAND_PX = 3;
 
 const percent = (fraction: number) => formatNumber(fraction * 100, 0);
 
 /**
  * The Diagrams view of the Cut List panel (milestone 6): the settings of the
  * cutting diagrams, then per material its sheets (or boards) drawn to scale,
- * each part with its cut list number and size, the leftovers kept as offcuts,
- * the use of each sheet, and the parts that do not fit. Each sheet is its own
- * page when printed.
+ * each part with its cut list number and size (the cut size when asked) and
+ * a mark on each banded edge, the leftovers kept as offcuts, the use of each
+ * sheet, and the parts that do not fit. Each sheet is its own page when printed.
  */
 export class DiagramsView {
   readonly controls = el('div', 'cutlist-settings cutlist-controls diagrams-settings');
@@ -111,7 +113,8 @@ export class DiagramsView {
 
   private material(scene: Scene, total: MaterialTotal, rows: ReadonlyMap<number, CutListRow>, units: UnitSettings): HTMLElement {
     const material = scene.materials.get(total.materialId!)!;
-    const stock = material.stock!;
+    // Only sheet goods and solid wood are laid out.
+    const stock = material.stock as Exclude<Stock, { kind: 'band' }>;
     const length = (mm: number) => formatLength(mm, units);
     const section = el('section', 'diagrams-material');
     section.append(el('h3', undefined, material.name));
@@ -162,6 +165,7 @@ export class DiagramsView {
     for (const p of sheet.pieces) {
       const [w, h] = placedSize(p);
       this.part(drawing, p.number, p.x, p.y, w, h, p.rotated ? [p.width, p.length] : [p.length, p.width], px, units);
+      this.bands(drawing, rows.get(p.number)?.bands, p.x, p.y, w, h, p.rotated, px);
     }
     page.append(drawing, this.partsTable(sheet.pieces, rows, units));
     if (sheet.offcuts.length) {
@@ -186,7 +190,10 @@ export class DiagramsView {
     page.classList.add('diagram-board-page');
     const drawing = svg('svg', { viewBox: `0 0 ${length} ${BOARD_DEPTH}`, class: 'diagram diagram-board', role: 'img', 'aria-label': `${name}, ${caption}` });
     drawing.append(svg('rect', { x: 0, y: 0, width: length, height: BOARD_DEPTH, class: 'diagram-stock' }));
-    for (const p of board.pieces) this.part(drawing, p.number, p.x, 0, p.length, BOARD_DEPTH, [p.length, null], BOARD_PX / length, units);
+    for (const p of board.pieces) {
+      this.part(drawing, p.number, p.x, 0, p.length, BOARD_DEPTH, [p.length, null], BOARD_PX / length, units);
+      this.bands(drawing, rows.get(p.number)?.bands, p.x, 0, p.length, BOARD_DEPTH, false, BOARD_PX / length);
+    }
     page.append(drawing, this.partsTable(board.pieces, rows, units));
     if (board.offcut > 0) page.append(el('p', 'diagrams-offcuts', t('diagrams.offcuts', { sizes: formatLength(board.offcut, units) })));
     return page;
@@ -214,6 +221,27 @@ export class DiagramsView {
     this.dimensions(drawing, x, y, w, h, sizes[0], sizes[1], px, units, 'diagram-size');
   }
 
+  /**
+   * A mark inside each banded edge of a part drawn at x, y, w by h: its length
+   * edges run along the drawing (top, then bottom), or up it when the part is
+   * turned (start side, then end side).
+   */
+  private bands(drawing: SVGSVGElement, bands: Bands | undefined, x: number, y: number, w: number, h: number, rotated: boolean, px: number): void {
+    if (!bands) return;
+    // Strokes do not scale (non-scaling-stroke): the width is in pixels, the inset in mm.
+    const i = BAND_PX / px / 2;
+    const top: [number, number, number, number] = [x, y + i, x + w, y + i];
+    const bottom: [number, number, number, number] = [x, y + h - i, x + w, y + h - i];
+    const start: [number, number, number, number] = [x + i, y, x + i, y + h];
+    const end: [number, number, number, number] = [x + w - i, y, x + w - i, y + h];
+    const at = rotated ? { length1: start, length2: end, width1: top, width2: bottom } : { length1: top, length2: bottom, width1: start, width2: end };
+    for (const e of EDGES) {
+      if (!bands[e]) continue;
+      const [x1, y1, x2, y2] = at[e];
+      drawing.append(svg('line', { x1, y1, x2, y2, 'stroke-width': BAND_PX, class: 'diagram-band' }));
+    }
+  }
+
   /** Sizes written inside a rectangle: the first along its top, the second up its start side, each only where it fits. */
   private dimensions(drawing: SVGSVGElement, x: number, y: number, w: number, h: number, along: number, across: number | null, px: number, units: UnitSettings, cls: string): void {
     const font = SIZE_PX / px;
@@ -230,8 +258,9 @@ export class DiagramsView {
     }
   }
 
-  /** The parts on one sheet or board: number, name, size, and how many. */
+  /** The parts on one sheet or board: number, name, size (the cut size when asked), and how many. */
   private partsTable(pieces: readonly { number: number }[], rows: ReadonlyMap<number, CutListRow>, units: UnitSettings): HTMLElement {
+    const cut = this.host.settings().cutSize;
     const counts = new Map<number, number>();
     for (const p of pieces) counts.set(p.number, (counts.get(p.number) ?? 0) + 1);
     const table = el('table', 'diagrams-parts');
@@ -256,8 +285,8 @@ export class DiagramsView {
       for (const [text, numeric] of [
         [formatNumber(number), true],
         [r.name, false],
-        [formatLength(r.length, units), true],
-        [formatLength(r.width, units), true],
+        [formatLength(cut ? r.cutLength : r.length, units), true],
+        [formatLength(cut ? r.cutWidth : r.width, units), true],
         [formatNumber(count), true],
       ] as const)
         tr.append(el('td', numeric ? 'numeric' : undefined, text));

@@ -151,7 +151,7 @@ describe('the Tag field of Entity Info', () => {
 
   test('shows the common tag, or Mixed; picking one sets it on the selection', () => {
     const setTag = vi.fn();
-    const info = new EntityInfo({ renameDefinition: vi.fn(), renameInstance: vi.fn(), setTag, setGrain: vi.fn() });
+    const info = new EntityInfo({ renameDefinition: vi.fn(), renameInstance: vi.fn(), setTag, setGrain: vi.fn(), setEdgeBand: vi.fn(), previewEdge: vi.fn() });
     document.body.replaceChildren(info.element);
     info.show(selection({ value: 't3', options }));
     const select = info.element.querySelector('select')!;
@@ -169,7 +169,7 @@ describe('the Tag field of Entity Info', () => {
   });
 
   test('loose geometry alone gets the hint instead of a Tag field', () => {
-    const info = new EntityInfo({ renameDefinition: vi.fn(), renameInstance: vi.fn(), setTag: vi.fn(), setGrain: vi.fn() });
+    const info = new EntityInfo({ renameDefinition: vi.fn(), renameInstance: vi.fn(), setTag: vi.fn(), setGrain: vi.fn(), setEdgeBand: vi.fn(), previewEdge: vi.fn() });
     info.show(selection(null, true));
     expect(info.element.querySelector('select')).toBeNull();
     expect(info.element.querySelector('.entity-info-hint')!.textContent).toBe('Loose geometry stays Untagged; group it to tag it.');

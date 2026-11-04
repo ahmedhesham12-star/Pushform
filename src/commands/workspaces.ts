@@ -20,7 +20,7 @@ export function workspaceUnits(workspace: Workspace, region: string | null): Uni
 
 /** The starter materials each workspace offers. */
 export const WORKSPACE_STARTERS: Record<Workspace, readonly StarterMaterial[]> = {
-  woodworking: ['birchPly', 'oak', 'walnut', 'whiteMdf', 'whiteMelamine', 'paintedSage', 'paintedNavy', 'paintedCharcoal', 'paintedCream'],
+  woodworking: ['birchPly', 'oak', 'walnut', 'whiteMdf', 'whiteMelamine', 'whiteAbsBand', 'oakVeneerBand', 'paintedSage', 'paintedNavy', 'paintedCharcoal', 'paintedCream'],
   architecture: ['concrete', 'brick', 'plaster', 'glass', 'ceramicTile', 'woodFlooring', 'wallWhite', 'wallGreige', 'wallBlue'],
   general: ['white', 'lightGrey', 'darkGrey', 'black', 'wood'],
 };

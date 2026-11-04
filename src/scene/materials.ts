@@ -21,12 +21,15 @@ export interface Texture {
  * What a material is bought as, for the cut list (milestone 5): sheet goods
  * (thickness and sheet size in mm, a price per sheet) or solid wood (a
  * thickness, a price per board foot or per cubic meter, and the length of
- * its boards for the cutting diagrams, milestone 6). Prices are in the
- * file's currency. `grain` says the material has a grain direction.
+ * its boards for the cutting diagrams, milestone 6), or edge band (a
+ * thickness and width, and a price per meter, milestone 6), painted on the
+ * side faces of parts. Prices are in the file's currency. `grain` says the
+ * material has a grain direction.
  */
 export type Stock =
   | { readonly kind: 'sheet'; readonly thickness: number; readonly length: number; readonly width: number; readonly price?: number; readonly grain: boolean }
-  | { readonly kind: 'solid'; readonly thickness: number; readonly length?: number; readonly price?: number; readonly per: 'boardFoot' | 'cubicMeter'; readonly grain: boolean };
+  | { readonly kind: 'solid'; readonly thickness: number; readonly length?: number; readonly price?: number; readonly per: 'boardFoot' | 'cubicMeter'; readonly grain: boolean }
+  | { readonly kind: 'band'; readonly thickness: number; readonly width: number; readonly price?: number };
 
 export interface Material {
   readonly name: string;
@@ -42,8 +45,11 @@ export function validStock(v: unknown): Stock | null {
   const x = v as Record<string, unknown>;
   const size = (n: unknown) => typeof n === 'number' && Number.isFinite(n) && n > 0;
   const price = x.price === undefined || (typeof x.price === 'number' && Number.isFinite(x.price) && x.price >= 0);
-  if (!size(x.thickness) || !price || typeof x.grain !== 'boolean') return null;
-  const base = { thickness: x.thickness as number, grain: x.grain, ...(x.price === undefined ? {} : { price: x.price as number }) };
+  if (!size(x.thickness) || !price) return null;
+  const priced = x.price === undefined ? {} : { price: x.price as number };
+  if (x.kind === 'band') return size(x.width) ? { kind: 'band', thickness: x.thickness as number, width: x.width as number, ...priced } : null;
+  if (typeof x.grain !== 'boolean') return null;
+  const base = { thickness: x.thickness as number, grain: x.grain, ...priced };
   if (x.kind === 'sheet' && size(x.length) && size(x.width)) return { kind: 'sheet', ...base, length: x.length as number, width: x.width as number };
   if (x.kind === 'solid' && (x.per === 'boardFoot' || x.per === 'cubicMeter') && (x.length === undefined || size(x.length)))
     return { kind: 'solid', ...base, ...(x.length === undefined ? {} : { length: x.length as number }), per: x.per };
@@ -51,6 +57,9 @@ export function validStock(v: unknown): Stock | null {
 }
 
 export const MATERIAL_COLOR = /^#[0-9a-f]{6}$/;
+
+/** Whether a material is edge band, which parts are banded with rather than made of. */
+export const isEdgeBand = (s: Scene, id: MaterialId | null | undefined): boolean => !!id && s.materials.get(id)?.stock?.kind === 'band';
 
 /** Add a material; returns its id and the new scene. */
 export function addMaterial(s: Scene, material: Material): [MaterialId, Scene] {

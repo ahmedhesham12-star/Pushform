@@ -191,7 +191,7 @@ describe('woodworking stock (step 8)', () => {
 
   test('cut list settings: defaults, changes, saved in the file', () => {
     const s = createSession();
-    const layout = { kerf: 3, trim: 10, guillotine: true, firstCut: 'best', minOffcut: 100 };
+    const layout = { kerf: 3, trim: 10, guillotine: true, firstCut: 'best', minOffcut: 100, cutSize: false };
     expect(cutListSettings(s.doc)).toEqual({ waste: 0.15, currency: null, includeHidden: false, ...layout });
     const doc = s.doc;
     ok(s.execute('core.setCutListSettings', { waste: 0.15 }));

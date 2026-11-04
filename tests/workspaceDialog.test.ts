@@ -85,7 +85,7 @@ describe('the Materials panel follows the workspace', () => {
 
     ok(s.execute('core.setWorkspace', { workspace: 'woodworking' }));
     m.panel.sync();
-    expect(m.starters()).toEqual(['Birch ply', 'Walnut', 'White MDF', 'White melamine', 'Painted sage', 'Painted navy', 'Painted charcoal', 'Painted cream']);
+    expect(m.starters()).toEqual(['Birch ply', 'Walnut', 'White MDF', 'White melamine', 'White ABS edge band', 'Oak veneer edge band', 'Painted sage', 'Painted navy', 'Painted charcoal', 'Painted cream']);
     expect(m.stockField()).toBe(true);
 
     ok(s.execute('core.setWorkspace', { workspace: 'architecture' }));
@@ -114,7 +114,7 @@ describe('Entity Info and the tool bar follow the workspace', () => {
   });
 
   test('the grain menu shows only when the data has a grain (Woodworking)', () => {
-    const info = new EntityInfo({ renameDefinition: () => {}, renameInstance: () => {}, setTag: () => {}, setGrain: () => {} });
+    const info = new EntityInfo({ renameDefinition: () => {}, renameInstance: () => {}, setTag: () => {}, setGrain: () => {}, setEdgeBand: () => {}, previewEdge: () => {} });
     const labels = () => [...info.element.querySelectorAll('dt, label')].map((x) => x.textContent);
     info.show(instance(null));
     expect(labels()).toContain('Grain');

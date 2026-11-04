@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { createSession, documentFromText, documentToText, serializeDocument, type CommandSession } from '../src/commands';
 import { exportGlb, worldTriangles } from '../src/export';
 import { listFaces } from '../src/kernel';
-import { findInstance, getDefinition, placements, worldAnnotations, worldEdges, worldGuides, worldSnapPoints, type Scene } from '../src/scene';
+import { findInstance, getDefinition, placements, shownBounds, worldAnnotations, worldEdges, worldGuides, worldSnapPoints, type Scene } from '../src/scene';
 import { InstancesView } from '../src/viewport/instancesView';
 
 /* Tags (milestone 5, step 1): commands, what a hidden tag hides, and files. */
@@ -125,6 +125,14 @@ describe('what a hidden tag hides', () => {
     ok(s.execute('core.setTagVisible', { tagId: hinges, visible: false }));
     const context = [copy, nested.instanceId];
     expect(placedPaths(s.doc.scene, context)).toContain(`${copy}/${nested.instanceId}`);
+  });
+
+  test('Zoom extents frames what is shown: a hidden instance is left out unless it holds the open context', () => {
+    const { s, doors, copy } = scene();
+    expect(shownBounds(s.doc.scene)!.max[0]).toBe(1400);
+    ok(s.execute('core.setTagVisible', { tagId: doors, visible: false }));
+    expect(shownBounds(s.doc.scene)).toEqual({ min: [0, 0, 0], max: [400, 100, 100] });
+    expect(shownBounds(s.doc.scene, [copy])!.max[0]).toBe(1400);
   });
 
   test('hidden geometry gives no snap points, edges or meshes to pick; exports leave it out', () => {

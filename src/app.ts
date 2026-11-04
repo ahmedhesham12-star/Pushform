@@ -48,6 +48,7 @@ import {
   instanceCount,
   pathDefinition,
   rootDefinition,
+  shownBounds,
   tagShown,
   transformBounds,
   union,
@@ -715,7 +716,7 @@ export class App {
 
   private zoomToFit(): void {
     const scene = this.session.doc.scene;
-    this.viewport.zoomToFit(definitionBounds(scene, scene.rootId));
+    this.viewport.zoomToFit(shownBounds(scene, this.context));
   }
 
   private clear(): void {

@@ -681,6 +681,8 @@ Decisions approved for milestone 5 (2026-10-29, product owner):
 
 Checkpoints for the product owner's manual testing: (a) workspaces, theme and flip feedback; (b) cutting diagrams; (c) edge banding and labels; (d) hardware import, the library and the hardware list.
 
+Progress (2026-11-04, later): Zoom extents leaves out what a hidden tag hides, as SketchUp does (product owner); the group or component open for editing still counts. 900 unit tests pass and the build succeeds.
+
 Progress (2026-11-04): ready for checkpoint (b). Done since checkpoint (a): a grey view for the dark theme on trial, "Dark Theme, Grey View" in the View menu (the product owner keeps one of the two dark themes); the sheet and board layout engines, with part numbers, board lengths on solid wood, the diagram settings in the file, and sheet counts from the layouts (step 4); the Diagrams view and its print (step 5). 899 unit tests pass and the build succeeds.
 
 Progress (2026-11-03, later): ready for checkpoint (a). Done:

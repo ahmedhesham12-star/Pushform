@@ -5,10 +5,10 @@
  * hides is left out; the open editing context (and the instances leading to
  * it) is always shown, so it can still be edited.
  */
-import { listEdges, snapPoints, type Model, type Point3, type SnapKind } from '../kernel';
+import { bounds, listEdges, snapPoints, type Bounds, type Model, type Point3, type SnapKind } from '../kernel';
 import { dimensionLength, transformAnnotation, type Annotation, type AnnotationId } from './annotations';
 import { transformGuide, type Guide, type GuideId } from './guides';
-import { placedInstances, rootDefinition, type Definition, type InstanceId, type Scene } from './scene';
+import { placedInstances, rootDefinition, transformBounds, union, type Definition, type InstanceId, type Scene } from './scene';
 import { tagShown } from './tags';
 import { AFFINE_IDENTITY, applyPoint, type Affine } from './transform';
 
@@ -28,6 +28,13 @@ export function placements(s: Scene, context: readonly InstanceId[] = []): Place
   const out: Placement[] = [{ path: [], definition: rootDefinition(s), world: AFFINE_IDENTITY }];
   const hidden = (i: { readonly tag?: string }, path: readonly InstanceId[]) => !tagShown(s, i.tag) && !onContextPath(path, context);
   for (const p of placedInstances(s, s.rootId, AFFINE_IDENTITY, [], hidden)) out.push({ path: p.path, definition: s.definitions.get(p.instance.definitionId)!, world: p.world });
+  return out;
+}
+
+/** The box around everything shown, for Zoom extents: what a hidden tag hides is left out, as in SketchUp. */
+export function shownBounds(s: Scene, context: readonly InstanceId[] = []): Bounds | null {
+  let out: Bounds | null = null;
+  for (const p of placements(s, context)) out = union(out, transformBounds(p.world, bounds(p.definition.model)));
   return out;
 }
 

@@ -10,8 +10,8 @@ Last updated: 2026-11-03.
 - Exact dimensions everywhere: typed sizes in metric or imperial, with snapping.
 - Local-first. No backend; models are saved on the user's device, and the app is hosted as a static site.
 - Free forever. Any AI use is bring-your-own: MCP through the command layer, later WebMCP. No in-app calls on our API bill. The app must be fully usable without AI.
-- Its own name and visual identity. No SketchUp branding, icons or file format at this stage.
-- Planned exports: glTF, OBJ, STL, DXF.
+- Its own name and visual identity. No SketchUp branding or icons. `.skp` is the native file, with Pushform-only data in hidden attributes.
+- Exports: glTF, OBJ, STL, DXF.
 
 ## Non-goals
 - Photorealistic rendering.
@@ -19,7 +19,7 @@ Last updated: 2026-11-03.
 - Sculpting or animation.
 - BIM suites.
 - Accounts or cloud storage in v1.
-- `.skp` import, for now.
+- A user-facing JSON project file; the browser recovery copy is internal.
 
 ## Product decisions
 | Decision | Status |
@@ -28,8 +28,9 @@ Last updated: 2026-11-03.
 | Local-first, static hosting, no backend | Decided |
 | Free forever; AI only bring-your-own (MCP via the command layer, later WebMCP) | Decided |
 | License (GPL or MIT) | **Open.** No license file until decided. |
-| Own name and identity; no SketchUp branding, icons or file format | Decided |
+| Own name and identity; no SketchUp branding or icons; `.skp` is the native file, with Pushform-only data in hidden attributes | Decided 2026-11-04 |
 | Exports: glTF, OBJ, STL, DXF | Planned |
+| Native `.skp` save/open writes the legacy v17 container through the MIT `openskp` package; Pushform-only data rides in a hidden `Pushform data` component; SketchUp 2017 and later open it | Decided 2026-11-04 |
 | No emojis in UI, code, comments, docs or commits | Rule |
 | Visual direction: plain, technical; no gradients, glows or stock AI styling | Rule |
 | New faces on the ground face up (SketchUp makes them face down) | Decided 2026-10-26, a deliberate improvement |

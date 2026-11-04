@@ -3,9 +3,9 @@ import {
   cutListSettings,
   defaultComponentName,
   definitionModel,
-  documentFromText,
-  documentToText,
+  documentFromSkp,
   newDocument,
+  skpMetadata,
   matchTypedValues,
   rootModel,
   showsWoodworking,
@@ -91,8 +91,8 @@ import { UnitsMenu } from './ui/unitsMenu';
 import { defaultPrecision, formatAngle, formatArea, formatLength, formatNumber, formatVolume, parseTypedValues, type LengthUnit } from './units';
 import { Viewport, type EdgeHighlight, type Highlight } from './viewport';
 
-/** The .pushform file type, for the open and save dialogs. */
-const PUSHFORM_FILE = (): FileType => ({ description: t('file.typePushform'), mime: 'application/json', extension: '.pushform' });
+/** The native .skp file type, for the open and save dialogs. */
+const SKP_FILE = (): FileType => ({ description: t('file.typeSkp'), mime: 'application/vnd.sketchup.skp', extension: '.skp' });
 
 /** Characters that start typing into the measurements box while a tool is busy. */
 const MEASURE_START = /^[0-9.,\-٠-٩۰-۹x×*/]$/i;
@@ -1114,6 +1114,7 @@ export class App {
       null,
       { label: t('file.exportStl'), enabled: !this.isEmpty(), run: () => void this.exportFile('stl') },
       { label: t('file.exportGlb'), enabled: !this.isEmpty(), run: () => void this.exportFile('glb') },
+      { label: t('file.exportSkp'), enabled: !this.isEmpty(), run: () => void this.exportFile('skp') },
     ];
   }
 
@@ -1191,9 +1192,9 @@ export class App {
   private async openFile(): Promise<void> {
     if (!this.discardOk()) return;
     try {
-      const f = await openFile(PUSHFORM_FILE());
+      const f = await openFile(SKP_FILE());
       if (!f) return;
-      const doc = documentFromText(f.text);
+      const doc = await documentFromSkp(f.data);
       if (!doc) return this.status.flash(t('error.fileInvalid'), true);
       this.replaceDocument(doc, baseName(f.name), f.handle);
       this.status.flash(t('message.opened', { name: f.name }));
@@ -1206,7 +1207,9 @@ export class App {
   private async saveFile(as: boolean): Promise<void> {
     const doc = this.session.doc;
     try {
-      const r = await saveFile(documentToText(doc), PUSHFORM_FILE(), `${this.fileName ?? t('file.untitled')}.pushform`, as ? null : this.fileHandle);
+      const { exportSkp } = await import('./export');
+      const data = await exportSkp(doc.scene, JSON.stringify(skpMetadata(doc)));
+      const r = await saveFile(data, SKP_FILE(), `${this.fileName ?? t('file.untitled')}.skp`, as ? null : this.fileHandle);
       if (!r) return;
       this.fileName = baseName(r.name);
       this.fileHandle = r.handle;
@@ -1218,18 +1221,21 @@ export class App {
     }
   }
 
-  /** STL (mm, Z up) or GLB (meters, Y up) of the whole model, groups and components placed. */
-  private async exportFile(kind: 'stl' | 'glb'): Promise<void> {
+  /** STL (mm, Z up), GLB (meters, Y up) or SKP (inches, Z up) of the whole model, groups and components placed. */
+  private async exportFile(kind: 'stl' | 'glb' | 'skp'): Promise<void> {
     const name = this.fileName ?? t('file.untitled');
     const scene = this.session.doc.scene;
     const type: FileType =
       kind === 'stl'
         ? { description: t('file.typeStl'), mime: 'model/stl', extension: '.stl' }
-        : { description: t('file.typeGlb'), mime: 'model/gltf-binary', extension: '.glb' };
+        : kind === 'glb'
+          ? { description: t('file.typeGlb'), mime: 'model/gltf-binary', extension: '.glb' }
+          : { description: t('file.typeSkp'), mime: 'application/vnd.sketchup.skp', extension: '.skp' };
     try {
       // Loaded on first use, to keep the main bundle small.
-      const { exportGlb, exportStl } = await import('./export');
-      const data = kind === 'stl' ? exportStl(scene) : exportGlb(scene, name);
+      const { exportGlb, exportSkp, exportStl } = await import('./export');
+      const payload = kind === 'skp' ? JSON.stringify(skpMetadata(this.session.doc)) : undefined;
+      const data = kind === 'stl' ? exportStl(scene) : kind === 'glb' ? exportGlb(scene, name) : await exportSkp(scene, payload);
       const r = await saveFile(data, type, `${name}${type.extension}`);
       if (r) this.status.flash(t('message.exported', { name: r.name }));
     } catch {

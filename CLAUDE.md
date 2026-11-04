@@ -18,14 +18,14 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 ## Layers (enforced by tests/architecture.test.ts)
 - `src/kernel`: pure geometry in millimeters: a shared topology of vertices, edges, faces and curves. No three.js, no DOM, no imports from other layers; the only package allowed is `earcut`. Import it only through `src/kernel/index.ts`. The `Model` type is opaque. Kernel tests check `validate()` (via `checkModel`) after every operation.
 - `src/scene`: definitions (each with its own kernel Model), instances and their transforms (quaternion, translation in mm, scale along the instance's own axes, which may be negative or non-uniform); world placements are affine maps (`Affine`, `multiply`, `decompose`), skewed where a stretch holds a turn. Pure: imports only the kernel, no three.js or DOM. Scenes are immutable.
-- `src/commands`: the only code that may call kernel mutations (besides `src/scene` loading models) (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawArc`, `paintFaces`, `replacePaint`, `drawLine`, `pushPull`, `erase`, `extractGeometry`, `transformGeometry`, `mergeGeometry`, `moveGeometry`, `transformSelection`, `offset`, `deserialize`). No three.js or DOM.
+- `src/commands`: the only code that may call kernel mutations (besides `src/scene` loading models) (`createModel`, `drawRectangle`, `drawRegularPolygon`, `drawArc`, `paintFaces`, `replacePaint`, `drawLine`, `pushPull`, `erase`, `extractGeometry`, `transformGeometry`, `mergeGeometry`, `moveGeometry`, `transformSelection`, `offset`, `deserialize`). No three.js or DOM. `src/commands/skp.ts` opens and saves the native `.skp`: it rebuilds the scene from the legacy v17 geometry and merges the hidden Pushform metadata.
 - `src/units`, `src/i18n`: shared foundations.
 - `src/viewport`: three.js rendering, camera, picking and snapping.
 - `src/tools`: one file per tool. Tools change the model only through `session.execute` or `session.preview`.
 - `src/ui`: DOM components.
-- `src/export`: STL and GLB writers. Pure: imports only the kernel and the scene, no DOM. The app loads it on demand.
+- `src/export`: STL, GLB and SKP writers. Pure: imports only the kernel, the scene and `openskp` (SKP), no DOM. The app loads it on demand.
 - `src/cutlist`: the cut list (parts, sizes, materials, totals) and its CSV. Pure: imports only the kernel, the scene, units and i18n, no DOM.
-- `src/app.ts`: wiring. `src/files.ts`: open and save on the device. `src/storage.ts`: autosave (the recovery copy).
+- `src/app.ts`: wiring. `src/files.ts`: open and save `.skp` on the device. `src/storage.ts`: autosave (the internal recovery copy).
 
 ## Conventions
 - Every model change is a command: namespaced id (`core.x`), zod input schema with `z.strictObject`, JSON-serializable input and output, and a pure `run()` that returns the same document instance when nothing changed.
@@ -36,6 +36,7 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 - Tools work in world coordinates (picking, inference and previews). When they call a command they convert with `ctx.viewport.frame` (`toLocal`, `dirToLocal`, `normalToLocal`) and pass `frame.definitionId`, so they work the same inside any group or component. Inference goes through `inferPoint` in `src/tools/inference.ts` and uses the world snap points and edges of every placement (`worldSnapPoints`, `worldEdges`), including faded geometry outside the editing context. Previews go through `ctx.showPreview`, which never changes what picking sees.
 - Lengths are stored in mm. Convert only at the edges, with `parseLength`/`parseLengthList`/`parseTypedValues` and `formatLength`/`formatArea` from `src/units`.
 - Kernel operations work on a `Draft` and return a new topology; never edit a `Topology` in place. Drawing goes through the planar engine (`insertSegment`, `rebuildPlane`), not hand-built faces.
+- The native file is `.skp` (legacy v17, which SketchUp 2017 and later open). Pushform-only data (units, workspace, cut list, stock, grain, guides, annotations) rides in the hidden `Pushform data` component's `dynamic_attributes`, split into chunks under the legacy 255-character limit; never add a user-visible JSON project file. `SerializedDocument` JSON is only the recovery copy and the format-conversion tests.
 - Kernel tests run the invariant checker after every operation. Planar changes get randomized cases too (see `tests/planar.test.ts` and `tests/helpers/randomRun.ts`). A seed that finds a bug is pinned as a regression test in `npm test`; long sweeps go in `tests/stress`.
 - DOM component tests opt into happy-dom with `// @vitest-environment happy-dom` at the top of the file.
 - All user-visible text goes through `t()` with keys in `src/i18n/en.ts`. Never put text in HTML, icons or code literals.
@@ -49,7 +50,7 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 ## Rules
 - No emojis anywhere: UI, code, comments, docs, commit messages.
 - Keep the visual direction plain and technical: no gradients, glows or stock AI styling.
-- No SketchUp branding, icons or file formats.
+- No SketchUp branding or icons. `.skp` interoperability is allowed (product owner decision, 2026-11-04).
 - No license file until the product owner chooses one.
 - No network calls or backend. The app must work fully offline once loaded, and without AI.
 - Commit in small steps with clear messages. Ask the product owner before pushing.

@@ -38,7 +38,8 @@ export function baseName(fileName: string): string {
 export interface OpenedFile {
   /** File name with its extension. */
   name: string;
-  text: string;
+  /** The file's bytes; .skp is binary. */
+  data: ArrayBuffer;
   /** Where Save writes back to, when the browser allows it. */
   handle: FileHandle | null;
 }
@@ -51,7 +52,7 @@ export async function openFile(type: FileType): Promise<OpenedFile | null> {
       const [handle] = await p.showOpenFilePicker({ types: pickerTypes(type), multiple: false });
       if (!handle) return null;
       const file = await handle.getFile();
-      return { name: file.name, text: await file.text(), handle };
+      return { name: file.name, data: await file.arrayBuffer(), handle };
     } catch (e) {
       if (cancelled(e)) return null;
       throw e;
@@ -64,7 +65,7 @@ export async function openFile(type: FileType): Promise<OpenedFile | null> {
     input.addEventListener('change', () => {
       const file = input.files?.[0];
       if (!file) return resolve(null);
-      file.text().then((text) => resolve({ name: file.name, text, handle: null }), reject);
+      file.arrayBuffer().then((data) => resolve({ name: file.name, data, handle: null }), reject);
     });
     input.addEventListener('cancel', () => resolve(null));
     input.click();

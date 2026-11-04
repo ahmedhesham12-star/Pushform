@@ -473,14 +473,16 @@ export const en = {
   'file.saveAs': 'Save as…',
   'file.exportStl': 'Export STL…',
   'file.exportGlb': 'Export GLB…',
+  'file.exportSkp': 'Export SKP…',
   'file.untitled': 'Untitled',
   'file.unsavedMarker': ' •',
   'file.unsaved': 'Unsaved changes',
   'file.windowTitle': '{name}{marker} – Pushform',
   'file.discard': 'Discard the unsaved changes to {name}?',
-  'file.typePushform': 'Pushform model',
+
   'file.typeStl': 'STL model (millimeters)',
   'file.typeGlb': 'glTF binary model',
+  'file.typeSkp': 'SketchUp model',
   'file.typeCsv': 'CSV spreadsheet',
 
   'menu.label': 'Actions',

@@ -4,10 +4,11 @@ import { localeTag, t, tCount, type MessageKey } from '../i18n';
 import type { InstanceId, MaterialId, Scene } from '../scene';
 import { formatArea, formatLength, formatNumber, isImperial, type UnitSettings } from '../units';
 import { DiagramsView } from './diagrams';
+import { LabelsView, type LabelsHost } from './labels';
 import { el } from './dom';
 import { bandsText, edgeMarks } from './edgeMarks';
 
-export interface CutListHost {
+export interface CutListHost extends LabelsHost {
   scene(): Scene;
   units(): UnitSettings;
   settings(): CutListSettings;
@@ -22,7 +23,7 @@ export interface CutListHost {
   flash(message: string, isError?: boolean): void;
 }
 
-type View = 'parts' | 'diagrams';
+type View = 'parts' | 'diagrams' | 'labels';
 type Column = 'number' | 'name' | 'quantity' | 'length' | 'width' | 'thickness' | 'cutLength' | 'cutWidth' | 'material' | 'grain';
 interface ColumnSpec {
   readonly id: Column;
@@ -52,8 +53,8 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'bas
  * waste, and cost; then each edge band's length and cost. A click on a row
  * selects its parts. The settings
  * (waste, currency, hidden parts, cut sizes) are saved in the file. CSV and Print.
- * The Diagrams view (milestone 6) shows the cutting diagrams instead; Print
- * prints the view shown.
+ * The Diagrams view (milestone 6) shows the cutting diagrams instead, and
+ * the Labels view the part labels; Print prints the view shown.
  */
 export class CutListPanel {
   readonly element = el('section', 'cutlist');
@@ -63,6 +64,7 @@ export class CutListPanel {
   private readonly hidden = el('input');
   private readonly cutSize = el('input');
   private readonly diagrams: DiagramsView;
+  private readonly labels: LabelsView;
   private readonly settings = el('div', 'cutlist-settings cutlist-controls');
   private readonly tabs = new Map<View, HTMLButtonElement>();
   private view: View = 'parts';
@@ -91,6 +93,7 @@ export class CutListPanel {
     for (const [view, label] of [
       ['parts', t('cutlist.view.parts')],
       ['diagrams', t('cutlist.view.diagrams')],
+      ['labels', t('cutlist.view.labels')],
     ] as const) {
       const b = el('button', 'cutlist-tab', label);
       b.type = 'button';
@@ -141,16 +144,18 @@ export class CutListPanel {
     c.append(this.cutSize, el('span', undefined, t('cutlist.showCutSize')));
     settings.append(c);
     this.diagrams = new DiagramsView(host);
-    this.element.append(head, settings, this.diagrams.controls, this.body, this.diagrams.body);
+    this.labels = new LabelsView(host);
+    this.element.append(head, settings, this.diagrams.controls, this.labels.controls, this.body, this.diagrams.body, this.labels.body);
     this.setView('parts');
   }
 
-  /** Show the parts list or the cutting diagrams. */
+  /** Show the parts list, the cutting diagrams or the labels. */
   setView(view: View): void {
     this.view = view;
     for (const [v, b] of this.tabs) b.setAttribute('aria-selected', String(v === view));
     this.body.hidden = view !== 'parts';
     this.diagrams.controls.hidden = this.diagrams.body.hidden = view !== 'diagrams';
+    this.labels.controls.hidden = this.labels.body.hidden = view !== 'labels';
     this.sync();
   }
 
@@ -168,7 +173,7 @@ export class CutListPanel {
     if (!this.open) return;
     const scene = this.host.scene();
     const settings = this.host.settings();
-    const key = JSON.stringify([settings, this.host.units(), this.sort, this.view]);
+    const key = JSON.stringify([settings, this.host.units(), this.sort, this.view, this.view === 'labels' ? this.host.labelSettings() : null]);
     if (scene === this.shown.scene && key === this.shown.key) return;
     this.shown = { scene, key };
     if (document.activeElement !== this.waste) this.waste.value = formatNumber(settings.waste * 100, 0);
@@ -177,6 +182,7 @@ export class CutListPanel {
     this.cutSize.checked = settings.cutSize;
     const list = cutList(scene, settings);
     if (this.view === 'diagrams') this.diagrams.render(scene, list);
+    else if (this.view === 'labels') this.labels.render(scene, list);
     else this.render(scene, list);
   }
 
@@ -370,11 +376,13 @@ export class CutListPanel {
   /**
    * The browser's print of the view shown (print to PDF makes a PDF): a copy
    * of it in a page of its own, so it runs over as many pages as it needs,
-   * each diagram on a landscape page.
+   * each diagram on a landscape page. Label sheets print without a heading,
+   * at their size, edge to edge.
    */
   private print(): void {
     const root = el('div', `print-root print-${this.view}`);
-    root.append(el('h1', undefined, t(this.view === 'parts' ? 'panel.cutList' : 'diagrams.title')), (this.view === 'parts' ? this.body : this.diagrams.body).cloneNode(true));
+    if (this.view === 'labels') root.append(this.labels.body.cloneNode(true));
+    else root.append(el('h1', undefined, t(this.view === 'parts' ? 'panel.cutList' : 'diagrams.title')), (this.view === 'parts' ? this.body : this.diagrams.body).cloneNode(true));
     document.body.append(root);
     document.body.classList.add('printing');
     const done = () => {

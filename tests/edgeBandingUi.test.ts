@@ -51,6 +51,8 @@ function setup(withBand = true) {
     exportCsv: vi.fn(),
     close: vi.fn(),
     flash: vi.fn(),
+    labelSettings: () => ({ preset: 'a4-3x8', page: 'a4', columns: 3, rows: 8 }),
+    setLabelSettings: vi.fn(),
   };
   const panel = new CutListPanel(host);
   document.body.replaceChildren(panel.element);

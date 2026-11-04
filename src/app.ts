@@ -266,6 +266,11 @@ export class App {
       exportCsv: () => void this.exportCutList(),
       close: () => this.setCutListOpen(false),
       flash: (message, isError) => this.status.flash(message, isError),
+      labelSettings: () => loadViewSettings().labels,
+      setLabelSettings: (labels) => {
+        saveViewSettings({ ...loadViewSettings(), labels });
+        this.cutListPanel.sync();
+      },
     });
     view.append(this.cutListPanel.element, this.nameDialog.element, this.workspaceDialog.element);
 

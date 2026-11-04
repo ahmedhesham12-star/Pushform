@@ -1,4 +1,6 @@
 import { deserializeDocument, serializeDocument, WORKSPACES, type PushformDocument, type Workspace } from './commands';
+import { defaultLabelSettings, validLabelSettings, type LabelSettings } from './cutlist';
+import { browserRegion } from './i18n';
 import { THEMES, type Theme } from './ui/theme';
 
 /**
@@ -121,9 +123,11 @@ export interface ViewSettings {
   workspace: Workspace | null;
   /** Light, Dark or the system's (milestone 6). */
   theme: Theme;
+  /** The label sheet parts are printed on (milestone 6). */
+  labels: LabelSettings;
 }
 
-const DEFAULT_VIEW: ViewSettings = { guides: true, colorByTag: false, collapsed: [], workspace: null, theme: 'system' };
+const DEFAULT_VIEW: Omit<ViewSettings, 'labels'> = { guides: true, colorByTag: false, collapsed: [], workspace: null, theme: 'system' };
 
 export function loadViewSettings(): ViewSettings {
   try {
@@ -137,12 +141,13 @@ export function loadViewSettings(): ViewSettings {
         workspace: WORKSPACES.includes(raw.workspace as Workspace) ? (raw.workspace as Workspace) : null,
         // The grey view on trial in milestone 6 became the dark theme.
         theme: (raw.theme as string) === 'dark-grey' ? 'dark' : THEMES.includes(raw.theme as Theme) ? (raw.theme as Theme) : DEFAULT_VIEW.theme,
+        labels: validLabelSettings(raw.labels) ?? defaultLabelSettings(browserRegion()),
       };
     }
   } catch {
     // Unreadable: fall through.
   }
-  return { ...DEFAULT_VIEW, collapsed: [] };
+  return { ...DEFAULT_VIEW, collapsed: [], labels: defaultLabelSettings(browserRegion()) };
 }
 
 export function saveViewSettings(settings: ViewSettings): void {

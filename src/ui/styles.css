@@ -1262,6 +1262,81 @@ li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
   stroke-width: 3;
 }
 
+/* Label sheets (the Labels view): paper at 60% on screen, at size in print. */
+.labels-custom:not([hidden]) {
+  display: contents;
+}
+.label-page {
+  /* Paper in any theme. */
+  --ink: #000000;
+  --ink-2: #555555;
+  display: grid;
+  align-content: start;
+  margin-block-end: 12px;
+  outline: 1px solid var(--line);
+  overflow: hidden;
+  background: #ffffff;
+  color: #000000;
+  zoom: 0.6;
+}
+.part-label {
+  display: flex;
+  gap: 1mm;
+  min-inline-size: 0;
+  padding-block: 1.5mm;
+  padding-inline: 2mm;
+  overflow: hidden;
+  outline: 0.2mm dashed #b8b8b4;
+  font-size: var(--label-font);
+  line-height: 1.2;
+}
+.label-text {
+  flex: 1;
+  min-inline-size: 0;
+}
+.label-head {
+  display: flex;
+  align-items: baseline;
+  gap: 1.5mm;
+}
+.label-number {
+  font-size: 1.6em;
+  font-weight: 700;
+}
+.label-copy {
+  color: var(--ink-2);
+}
+.label-name {
+  font-weight: 600;
+}
+.label-name,
+.label-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.label-marks {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1mm;
+}
+.label-marks .edge-marks {
+  inline-size: 12mm;
+  block-size: 6mm;
+}
+.label-grain {
+  inline-size: 12mm;
+  block-size: 3.3mm;
+}
+.label-grain path {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.4;
+}
+
 /* The copy that is printed: hidden on screen, alone on paper. */
 .print-root {
   display: none;
@@ -1340,6 +1415,36 @@ li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
 }
 @page diagram {
   size: landscape;
+}
+@media print {
+  /* Label sheets edge to edge on their paper, one sheet a page. */
+  .print-labels .labels-count {
+    display: none;
+  }
+  .print-labels .label-page {
+    margin: 0;
+    outline: 0;
+    zoom: 1;
+    break-after: page;
+  }
+  /* The paper is named on the copy itself, as the first page takes its size from it. */
+  body.printing .print-labels:has(.label-page-a4) {
+    page: labels-a4;
+  }
+  body.printing .print-labels:has(.label-page-letter) {
+    page: labels-letter;
+  }
+  .print-labels .part-label {
+    outline: 0;
+  }
+}
+@page labels-a4 {
+  size: A4;
+  margin: 0;
+}
+@page labels-letter {
+  size: letter;
+  margin: 0;
 }
 
 /* ---------- name dialog (Create Component) ---------- */

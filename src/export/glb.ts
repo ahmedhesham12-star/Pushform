@@ -1,6 +1,5 @@
 import { faceMeshes, faceTextureFrame, getFace, type FaceMesh, type Model } from '../kernel';
 import { rootDefinition, tagShown, type Definition, type Instance, type MaterialId, type Scene } from '../scene';
-import { fromBase64 } from './base64';
 
 /** glTF is in meters; Pushform in millimeters. Both are Y-up and right-handed. */
 const M = 0.001;
@@ -20,6 +19,25 @@ interface GltfNode {
 function linear(hex: string): number[] {
   const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
   return [...c.map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)), 1].map((v) => Math.round(v * 1e4) / 1e4);
+}
+
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+/** Base64 to bytes, written out here because this layer imports nothing outside the kernel and the scene. */
+function fromBase64(text: string): Uint8Array {
+  const clean = text.replace(/[^A-Za-z0-9+/]/g, '');
+  const out = new Uint8Array(Math.floor((clean.length * 3) / 4));
+  let bits = 0;
+  let value = 0;
+  let at = 0;
+  for (const ch of clean) {
+    value = (value << 6) | ALPHABET.indexOf(ch);
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out[at++] = (value >> bits) & 0xff;
+    }
+  }
+  return out.subarray(0, at);
 }
 
 /** Texture coordinates of a face mesh in tiles of a texture: along each face's texture frame, v going down the image. */

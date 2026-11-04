@@ -10,6 +10,8 @@ import {
   matchTypedValues,
   rootModel,
   showsWoodworking,
+  STARTER_MATERIALS,
+  starterName,
   WORKSPACE_STARTERS,
   WORKSPACE_TOOL_GROUPS,
   WORKSPACES,
@@ -17,10 +19,11 @@ import {
   type CommandSession,
   type MakeInstanceOutput,
   type PushformDocument,
+  type StarterMaterial,
   type ToolGroup,
   type Workspace,
 } from './commands';
-import { cutList, partAxes, partEdges, toCsv } from './cutlist';
+import { cutList, toCsv, type Edge } from './cutlist';
 import { browserRegion, t, tCount, type MessageKey } from './i18n';
 import {
   edgeCount,
@@ -68,6 +71,9 @@ import {
   selectionMode,
   shortcutFor,
   TOOL_SHORTCUTS,
+  partAt,
+  setEdgeBand,
+  type BandChoice,
   type PaintChoice,
   type Selection,
   type Tool,
@@ -95,6 +101,9 @@ import { ActionBar, ToolBar, type ToolButtonSpec } from './ui/toolbar';
 import { UnitsMenu } from './ui/unitsMenu';
 import { defaultPrecision, formatAngle, formatArea, formatLength, formatNumber, formatVolume, parseTypedValues, type LengthUnit } from './units';
 import { Viewport, type EdgeHighlight, type Highlight } from './viewport';
+
+/** Entity Info's value for a starter edge band, which is copied into the file when picked. */
+const STARTER_BAND = 'starter:';
 
 /** The .pushform file type, for the open and save dialogs. */
 const PUSHFORM_FILE = (): FileType => ({ description: t('file.typePushform'), mime: 'application/json', extension: '.pushform' });
@@ -294,7 +303,7 @@ export class App {
       renameInstance: (instanceId, name) => this.run(this.session.execute('core.renameInstance', { instanceId, name })),
       setTag: (tagId) => this.tagSelected(tagId),
       setGrain: (definitionId, grain) => this.run(this.session.execute('core.setGrain', { definitionId, grain })),
-      setEdgeBand: (definitionId, faceIds, band) => this.setEdgeBand(definitionId, faceIds, band),
+      setEdgeBand: (edge, band) => this.setEdgeBand(edge, band),
       previewEdge: (faceIds) => this.previewEdge(faceIds),
     });
     this.outliner = new Outliner({
@@ -462,6 +471,8 @@ export class App {
   private setPaintChoice(choice: PaintChoice): void {
     this.paintChoice = choice;
     this.materials.sync();
+    // An edge band turns the Paint Bucket into banding; its hint says so.
+    this.status.hint();
   }
 
   /** Flash a command's error; a successful command needs no message here. */
@@ -1002,41 +1013,38 @@ export class App {
     this.materials.focusThickness();
   }
 
-  /** The selected part's edges and their bands for Entity Info; nothing for an assembly. */
-  private edgesField(path: readonly InstanceId[]): { edges?: EdgesField } {
-    const scene = this.session.doc.scene;
+  /**
+   * The selected part's edges and their bands for Entity Info, with the edge
+   * bands to choose: the file's, then the workspace's starter bands not yet in
+   * it (picking one brings it in). An assembly gets a word on where banding is set.
+   */
+  private edgesField(path: readonly InstanceId[]): { edges?: EdgesField | 'assembly' } {
+    const doc = this.session.doc;
+    const scene = doc.scene;
     const def = pathDefinition(scene, path);
-    if (!def || def.instances.size) return {};
-    const axes = partAxes(def.model, def.grain ?? null, pathTransform(scene, path));
-    if (!axes) return {};
-    const edges = partEdges(scene, def.model, axes);
-    const options = [...scene.materials]
+    if (!def) return {};
+    if (def.instances.size) return { edges: 'assembly' };
+    const part = partAt(scene, path);
+    if (!part) return {};
+    const inFile = [...scene.materials]
       .filter(([id]) => isEdgeBand(scene, id))
-      .map(([id, m]) => ({ id, name: m.name }))
+      .map(([id, m]) => ({ value: id, name: m.name }))
       .sort((a, b) => a.name.localeCompare(b.name));
-    const field = (e: keyof typeof edges) => ({ faceIds: edges[e].faceIds, band: edges[e].band });
-    return { edges: { edges: { length1: field('length1'), length2: field('length2'), width1: field('width1'), width2: field('width2') }, options } };
+    const names = new Set([...scene.materials.values()].map((m) => m.name));
+    const starters = WORKSPACE_STARTERS[doc.workspace]
+      .filter((k) => STARTER_MATERIALS[k]!.stock?.kind === 'band' && !names.has(starterName(k)))
+      .map((k) => ({ value: `${STARTER_BAND}${k}`, name: t('info.edgeStarter', { name: starterName(k) }) }));
+    const field = (e: Edge) => ({ faceIds: part.edges[e].faceIds, band: part.edges[e].band });
+    return { edges: { edges: { length1: field('length1'), length2: field('length2'), width1: field('width1'), width2: field('width2') }, options: [...inFile, ...starters] } };
   }
 
-  /**
-   * Band an edge of the selected part: paint its side faces with the band. Taking
-   * the band off gives them back the paint the part's other faces carry, or none.
-   */
-  private setEdgeBand(definitionId: string, faceIds: readonly string[], band: string | null): void {
-    const scene = this.session.doc.scene;
-    const def = scene.definitions.get(definitionId);
-    if (!def || !faceIds.length) return;
-    let materialId = band;
-    if (!band) {
-      const sides = new Set(faceIds);
-      const own = new Map<string, number>();
-      for (const f of listFaces(def.model)) {
-        const p = f.paint?.front;
-        if (!sides.has(f.id) && p && !isEdgeBand(scene, p)) own.set(p, (own.get(p) ?? 0) + faceArea(def.model, f.id));
-      }
-      materialId = [...own].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-    }
-    this.run(this.session.execute('core.paint', { definitionId, faceIds: [...faceIds], materialId }));
+  /** Band an edge of the selected part from Entity Info: a band in the file, a starter band (brought in), or none. */
+  private setEdgeBand(edge: Edge, value: string | null): void {
+    const id = [...this.selection.instances][0];
+    const part = id && partAt(this.session.doc.scene, [...this.context, id]);
+    if (!part) return;
+    const band: BandChoice | null = value === null ? null : value.startsWith(STARTER_BAND) ? { starter: value.slice(STARTER_BAND.length) as StarterMaterial } : { materialId: value };
+    setEdgeBand(this.session, part, edge, band, { flash: (m) => this.status.flash(m), flashError: (e) => this.flashError(e) });
   }
 
   /** Show the selected part's side faces in the view, from Entity Info's edge rows: filled when one face, outlined when several. */

@@ -21,6 +21,7 @@ import type { Tool, ToolContext, ToolId } from './tool';
 
 export type { PaintChoice, Selection, Tool, ToolContext, ToolId } from './tool';
 export { arrayBeforeCopy } from './transformSelection';
+export { edgeOf, isBandChoice, partAt, setEdgeBand, type BandChoice, type PlacedPart } from './edgeBanding';
 export {
   ACTION_SHORTCUTS,
   isMac,

@@ -1,6 +1,7 @@
 import { t } from '../i18n';
 import { shownMaterial, type InstanceId } from '../scene';
 import { bucketCursor } from './cursors';
+import { edgeOf, isBandChoice, partAt, setEdgeBand } from './edgeBanding';
 import { fillFor, paintTargets } from './paintTargets';
 import { isMac } from './shortcuts';
 import type { Tool, ToolContext } from './tool';
@@ -13,6 +14,10 @@ import type { Tool, ToolContext } from './tool';
  * Ctrl (Option on a Mac) fills adjacent faces of the same material, Shift
  * every face of the context with it, both the faces of the same connected
  * geometry. Alt (Cmd on a Mac) samples the material a face shows.
+ *
+ * With an edge band (milestone 6), a click bands the edge of the part under
+ * it, open or closed: the side face clicked and the others on that edge. A
+ * click on an edge that has that band takes it off.
  */
 export function createPaintBucketTool(ctx: ToolContext): Tool {
   const vp = () => ctx.viewport;
@@ -38,14 +43,30 @@ export function createPaintBucketTool(ctx: ToolContext): Tool {
     if ('starter' in choice) ctx.paint.set({ materialId: r.output.materialId });
   };
 
+  const band = () => {
+    const choice = ctx.paint.current();
+    const scene = ctx.session.doc.scene;
+    if (!isBandChoice(scene, choice)) return;
+    const face = vp().faceUnderCursor();
+    if (!face) return;
+    const part = partAt(scene, face.path);
+    if (!part) return ctx.flash(t('status.bandPart'), true);
+    const edge = edgeOf(part, face.faceId);
+    if (!edge) return ctx.flash(t('status.bandEdge'), true);
+    const same = 'materialId' in choice && part.edges[edge].band === choice.materialId;
+    const id = setEdgeBand(ctx.session, part, edge, same ? null : choice, ctx);
+    if (id && 'starter' in choice) ctx.paint.set({ materialId: id });
+  };
+
   return {
     id: 'paintBucket',
     cursor: bucketCursor(),
-    hint: () => t(isMac() ? 'status.paintMac' : 'status.paint'),
+    hint: () => t(isBandChoice(ctx.session.doc.scene, ctx.paint.current()) ? (isMac() ? 'status.paintBandMac' : 'status.paintBand') : isMac() ? 'status.paintMac' : 'status.paint'),
     measurementLabel: () => t('measure.dimensions'),
     busy: () => false,
     down(e) {
       if (isMac() ? e.metaKey : e.altKey) return sample();
+      if (isBandChoice(ctx.session.doc.scene, ctx.paint.current())) return band();
       const hit = vp().pick();
       const { faces, instances } = ctx.selection;
       if (hit?.kind === 'instance') {

@@ -14,10 +14,10 @@ export interface TagField {
   readonly options: readonly { id: string; name: string }[];
 }
 
-/** A part's edge banding: each edge's side faces and band, and the edge bands to choose from (by name). */
+/** A part's edge banding: each edge's side faces and band, and the edge bands to choose from (a material id, or a starter band's value). */
 export interface EdgesField {
   readonly edges: Readonly<Record<Edge, { readonly faceIds: readonly string[]; readonly band: MaterialId | null }>>;
-  readonly options: readonly { id: MaterialId; name: string }[];
+  readonly options: readonly { value: string; name: string }[];
 }
 
 /** What Entity Info shows; the app builds it from the selection. Values are already formatted. */
@@ -43,8 +43,8 @@ export type EntityInfoData =
       material: string;
       /** Its grain direction for the cut list (shared by component copies); null for the longest side; absent outside the Woodworking workspace. */
       grain?: GrainAxis | null;
-      /** Its edge banding, for a part in the Woodworking workspace; absent otherwise. */
-      edges?: EdgesField;
+      /** Its edge banding, for a part in the Woodworking workspace, or 'assembly' for one holding parts; absent otherwise. */
+      edges?: EdgesField | 'assembly';
     }
   | { kind: 'dimension'; length: string; tag: TagField }
   | { kind: 'text'; text: string; tag: TagField }
@@ -70,8 +70,8 @@ export interface EntityInfoHost {
   setTag(id: string | null): void;
   /** Set a definition's grain direction (null: the longest side). */
   setGrain(definitionId: DefinitionId, grain: GrainAxis | null): void;
-  /** Band one edge of the selected part (its side faces) with an edge band, or take the band off (null). */
-  setEdgeBand(definitionId: DefinitionId, faceIds: readonly string[], band: MaterialId | null): void;
+  /** Band one edge of the selected part with an edge band (an option's value), or take the band off (null). */
+  setEdgeBand(edge: Edge, band: string | null): void;
   /** Outline side faces of the selected part in the view, or stop (null). */
   previewEdge(faceIds: readonly string[] | null): void;
 }
@@ -114,7 +114,7 @@ export class EntityInfo {
         this.tagRow(data.tag);
         this.row(t('info.material'), data.material);
         if (data.grain !== undefined) this.grainRow(data.definitionId, data.grain);
-        if (data.edges) this.edgeRows(data.definitionId, data.edges);
+        if (data.edges) this.edgeRows(data.edges);
         if (data.volume) this.row(t('info.volume'), data.volume);
         if (data.scale) this.row(t('info.scale'), data.scale);
         if (data.stretched) this.body.append(el('dd', 'entity-info-warning', t('info.stretched')));
@@ -170,8 +170,12 @@ export class EntityInfo {
    * The band on each of the part's four edges, or a hint when the file has no
    * edge band yet. Pointing at a row, or into its menu, outlines that edge.
    */
-  private edgeRows(definitionId: DefinitionId, field: EdgesField): void {
+  private edgeRows(field: EdgesField | 'assembly'): void {
     this.body.append(el('dt', 'entity-info-section', t('info.edgeBanding')));
+    if (field === 'assembly') {
+      this.body.append(el('dd', 'entity-info-hint', t('info.edgesAssembly')));
+      return;
+    }
     if (!field.options.length) {
       this.body.append(el('dd', 'entity-info-hint', t('info.edgesNone')));
       return;
@@ -190,12 +194,12 @@ export class EntityInfo {
         o.value = value;
         return o;
       };
-      select.append(option('', t('info.edgeNone')), ...field.options.map((o) => option(o.id, o.name)));
+      select.append(option('', t('info.edgeNone')), ...field.options.map((o) => option(o.value, o.name)));
       select.value = band ?? '';
       // A part with no straight face at this edge (a rounded end) has nothing to band there.
       select.disabled = !faceIds.length;
       if (!faceIds.length) select.title = t('info.edgeMissing');
-      select.addEventListener('change', () => this.host.setEdgeBand(definitionId, faceIds, select.value || null));
+      select.addEventListener('change', () => this.host.setEdgeBand(edge, select.value || null));
       const dd = el('dd');
       dd.append(select);
       for (const part of [dt, dd]) {

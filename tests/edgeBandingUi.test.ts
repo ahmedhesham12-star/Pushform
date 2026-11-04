@@ -7,6 +7,11 @@ import { pathTransform } from '../src/scene';
 import { CutListPanel, type CutListHost } from '../src/ui/cutListPanel';
 import { EntityInfo, type EdgesField, type EntityInfoData, type EntityInfoHost } from '../src/ui/entityInfo';
 import { MaterialsPanel, type MaterialsHost } from '../src/ui/materialsPanel';
+import { Vector3 } from 'three';
+import { findInstance } from '../src/scene';
+import { createPaintBucketTool } from '../src/tools/paintBucket';
+import type { PaintChoice, ToolContext } from '../src/tools/tool';
+import { Frame } from '../src/viewport/frame';
 
 /* Edge banding in the Cut List panel, the diagrams, Entity Info and Materials (milestone 6, step 6). */
 
@@ -133,7 +138,7 @@ describe('Entity Info', () => {
     const h = host();
     const info = new EntityInfo(h);
     document.body.replaceChildren(info.element);
-    info.show(data(field([{ id: 'm3', name: 'White ABS' }])));
+    info.show(data(field([{ value: 'm3', name: 'White ABS' }])));
     const labels = [...info.element.querySelectorAll('label')].map((l) => l.textContent);
     expect(labels).toEqual(expect.arrayContaining(['Length edge 1', 'Length edge 2', 'Width edge 1', 'Width edge 2']));
     const selects = [...info.element.querySelectorAll('select')].slice(-4);
@@ -141,17 +146,17 @@ describe('Entity Info', () => {
     expect(selects[2]!.disabled).toBe(true);
     selects[3]!.value = 'm3';
     selects[3]!.dispatchEvent(new Event('change'));
-    expect(h.setEdgeBand).toHaveBeenCalledWith('d1', ['f4', 'f5'], 'm3');
+    expect(h.setEdgeBand).toHaveBeenCalledWith('width2', 'm3');
     selects[0]!.value = '';
     selects[0]!.dispatchEvent(new Event('change'));
-    expect(h.setEdgeBand).toHaveBeenCalledWith('d1', ['f1'], null);
+    expect(h.setEdgeBand).toHaveBeenCalledWith('length1', null);
   });
 
   test('pointing at an edge outlines it, and the outline goes with the rows', () => {
     const h = host();
     const info = new EntityInfo(h);
     document.body.replaceChildren(info.element);
-    info.show(data(field([{ id: 'm3', name: 'White ABS' }])));
+    info.show(data(field([{ value: 'm3', name: 'White ABS' }])));
     const select = [...info.element.querySelectorAll('select')].at(-1)!;
     select.dispatchEvent(new Event('focus'));
     expect(h.previewEdge).toHaveBeenLastCalledWith(['f4', 'f5']);
@@ -163,6 +168,107 @@ describe('Entity Info', () => {
     const info = new EntityInfo(host());
     info.show(data(field([])));
     expect(info.element.querySelector('.entity-info-hint')!.textContent).toBe('No edge band in this file yet. Add White ABS or Oak veneer edge band from the Starter set in Materials, or set a material to be bought as Edge band.');
+  });
+});
+
+describe('Entity Info, more', () => {
+  const host = (): EntityInfoHost => ({ renameDefinition: vi.fn(), renameInstance: vi.fn(), setTag: vi.fn(), setGrain: vi.fn(), setEdgeBand: vi.fn(), previewEdge: vi.fn() });
+  const instance = (edges: Extract<EntityInfoData, { kind: 'instance' }>['edges']): EntityInfoData => ({
+    kind: 'instance',
+    type: 'component',
+    definitionId: 'd1',
+    instanceId: 'i2',
+    definitionName: 'Drawer',
+    instanceName: '',
+    copies: 1,
+    volume: null,
+    scale: null,
+    stretched: false,
+    tag: { value: null, options: [] },
+    material: 'Default',
+    grain: null,
+    ...(edges ? { edges } : {}),
+  });
+
+  test('the starter bands are in the menus; picking one passes its value', () => {
+    const h = host();
+    const info = new EntityInfo(h);
+    document.body.replaceChildren(info.element);
+    const none = { faceIds: ['f1'], band: null };
+    info.show(instance({ edges: { length1: none, length2: none, width1: none, width2: none }, options: [{ value: 'starter:whiteAbsBand', name: 'White ABS edge band (starter)' }] }));
+    const select = [...info.element.querySelectorAll('select')].at(-1)!;
+    expect([...select.options].map((o) => o.textContent)).toEqual(['None', 'White ABS edge band (starter)']);
+    select.value = 'starter:whiteAbsBand';
+    select.dispatchEvent(new Event('change'));
+    expect(h.setEdgeBand).toHaveBeenCalledWith('width2', 'starter:whiteAbsBand');
+  });
+
+  test('an assembly says where banding is set', () => {
+    const info = new EntityInfo(host());
+    info.show(instance('assembly'));
+    expect(info.element.querySelector('.entity-info-hint')!.textContent).toBe('Edge banding is set per part: open this one and select a part in it.');
+  });
+});
+
+describe('the Paint Bucket with an edge band', () => {
+  /** A shelf part, closed, and a drawer assembly holding a side. */
+  function setup() {
+    const s = createSession();
+    const shelf = part(s, 0, 600, 300, 18, 'Shelf');
+    const side = part(s, 1000, 450, 12, 180, 'Drawer side');
+    const drawer = ok(s.execute('core.makeComponent', { instanceIds: [side.instanceId], name: 'Drawer' }));
+    let choice: PaintChoice = { starter: 'whiteAbsBand' };
+    let under: { id: string; path: string[] } | null = null;
+    const flash = vi.fn();
+    const ctx = {
+      session: s,
+      selection: { faces: new Set(), edges: new Set(), instances: new Set(), guides: new Set(), annotations: new Set(), hovered: null },
+      paint: { current: () => choice, set: (c: PaintChoice) => (choice = c) },
+      contextPath: () => [],
+      flash,
+      flashError: (e: { code: string }) => {
+        throw new Error(e.code);
+      },
+      viewport: {
+        frame: Frame.ROOT,
+        pick: () => under && { kind: 'instance', id: under.path[0]!, point: new Vector3() },
+        faceUnderCursor: () => under && { path: under.path, faceId: under.id, side: 'front', model: definitionModel(s.doc, findInstance(s.doc.scene, under.path.at(-1)!)!.instance.definitionId)! },
+      },
+    } as unknown as ToolContext;
+    const tool = createPaintBucketTool(ctx);
+    const click = (id: string, path: string[]) => {
+      under = { id, path };
+      tool.down!({ shiftKey: false, ctrlKey: false, altKey: false, metaKey: false } as PointerEvent);
+    };
+    return { s, shelf, side, drawer, click, flash, tool, choice: () => choice };
+  }
+  const faces = (s: CommandSession, definitionId: string) => listFaces(s.doc.scene.definitions.get(definitionId)!.model);
+
+  test('a click on a side face of a closed part bands that edge; again takes it off; the hint says so', () => {
+    const { s, shelf, click, flash, tool, choice } = setup();
+    expect(tool.hint()).toContain('Click a side face of a part to band that edge');
+    const front = faces(s, shelf.definitionId).find((f) => f.normal[2] > 0.99)!.id;
+    click(front, [shelf.instanceId]);
+    const abs = [...s.doc.scene.materials].find(([, m]) => m.name === 'White ABS edge band')![0];
+    expect(choice()).toEqual({ materialId: abs });
+    expect(flash).toHaveBeenLastCalledWith('Shelf: Length edge 2 banded with White ABS edge band.');
+    // The part is not painted as a whole.
+    expect(findInstance(s.doc.scene, shelf.instanceId)!.instance.material).toBeUndefined();
+    click(front, [shelf.instanceId]);
+    expect(flash).toHaveBeenLastCalledWith('Shelf: band taken off Length edge 2.');
+    expect(faces(s, shelf.definitionId).find((f) => f.id === front)!.paint).toBeUndefined();
+  });
+
+  test('a broad face, or an assembly, is refused with a word on why', () => {
+    const { s, shelf, side, drawer, click, flash } = setup();
+    const top = faces(s, shelf.definitionId).find((f) => f.normal[1] > 0.99)!.id;
+    click(top, [shelf.instanceId]);
+    expect(flash).toHaveBeenLastCalledWith("Edge band goes on a part's edges: click one of its narrow side faces.", true);
+    // Inside the closed drawer, the click reaches its side part.
+    const end = faces(s, side.definitionId).find((f) => f.normal[0] > 0.99)!.id;
+    click(end, [drawer.instanceId, side.instanceId]);
+    expect(flash).toHaveBeenLastCalledWith('Drawer side: Width edge 2 banded with White ABS edge band.');
+    expect(s.doc.scene.materials.size).toBe(1);
   });
 });
 

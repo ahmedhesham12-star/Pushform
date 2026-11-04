@@ -735,6 +735,7 @@ Decisions approved for milestone 6 (2026-11-03, product owner):
    6. **OBJ and DXF export.**
    7. **Intersecting moved geometry** with what it lands on.
    8. **SKP import and export** (product owner, 2026-11-04), as a planned milestone after a legal and licensing check of the .skp format and any library used (e.g. openskp), and after naming in the UI is checked against Trimble's trademark. Requirements: curves, soft edges, grain and instance names survive; .pushform stays the native format; tested against files saved by real SketchUp versions, not only the library's own reader.
+   9. **"Export to Pushform" SketchUp extension** (product owner idea, 2026-11-04): a public extension that writes the open SketchUp model as a .pushform file through SketchUp's Ruby API, with no .skp parsing. It starts from the developer converter on the `tools/sketchup-import` branch (`scripts/sketchup-import`). Before publishing: the same legal and trademark checks as SKP import and export, and the extension store's terms.
 2. A stretch that lands a point on another point merges the two instead of being refused.
 3. **Dimension text** (product owner, checkpoint (b) feedback): replace a dimension's value with your own text or add to it, with `<>` standing for the measured length, as in SketchUp.
 4. **Copying dimensions and text** with Move and Rotate copies, as SketchUp does.

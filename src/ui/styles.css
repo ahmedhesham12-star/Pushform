@@ -1132,31 +1132,208 @@ li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
   font-weight: 600;
 }
 
-/* Print: only the cut list, as a plain page (the browser's print to PDF makes the PDF). */
+.cutlist-tabs {
+  display: flex;
+  gap: 2px;
+  margin-inline-end: auto;
+}
+.cutlist-tab {
+  padding-block: 3px;
+  padding-inline: 10px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--ink-2);
+  font: inherit;
+  cursor: pointer;
+}
+.cutlist-tab[aria-selected='true'] {
+  border-color: var(--line);
+  background: var(--ui-2);
+  color: var(--ink);
+  font-weight: 600;
+}
+.cutlist-settings[hidden],
+.cutlist-body[hidden],
+.diagrams[hidden] {
+  display: none;
+}
+.cutlist-settings select {
+  padding-block: 2px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--canvas);
+  color: var(--ink);
+  font: inherit;
+}
+
+/* ---------- cutting diagrams (the Diagrams view of the cut list) ---------- */
+.diagrams {
+  overflow: auto;
+  padding-block: 4px 10px;
+  padding-inline: 12px;
+}
+.diagrams-material h3 {
+  margin-block: 10px 2px;
+  font-size: 13px;
+  font-weight: 600;
+}
+.diagrams-summary {
+  margin: 0;
+  color: var(--ink-2);
+}
+.diagrams .cutlist-note {
+  padding-inline: 0;
+}
+.diagram-page {
+  margin-block: 10px 0;
+  margin-inline: 0;
+  max-inline-size: 960px;
+}
+.diagram-page figcaption {
+  display: flex;
+  gap: 14px;
+  margin-block-end: 4px;
+  color: var(--ink-2);
+}
+.diagram-page figcaption strong {
+  color: var(--ink);
+}
+/* The drawing is to scale in mm; strokes stay one pixel at any size. */
+.diagram {
+  display: block;
+  inline-size: auto;
+  max-inline-size: 100%;
+  block-size: 280px;
+}
+.diagram-board {
+  inline-size: 100%;
+  block-size: auto;
+}
+.diagram * {
+  vector-effect: non-scaling-stroke;
+}
+.diagram-stock {
+  fill: var(--ui-2);
+  stroke: var(--ink-2);
+}
+.diagram-trim {
+  fill: none;
+  stroke: var(--line);
+  stroke-dasharray: 4 3;
+}
+.diagram-offcut {
+  fill: none;
+  stroke: var(--ink-2);
+  stroke-dasharray: 2 3;
+}
+.diagram-part rect {
+  fill: var(--canvas);
+  stroke: var(--ink);
+}
+.diagram text {
+  fill: var(--ink);
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-family: inherit;
+}
+.diagram-number {
+  font-weight: 600;
+}
+.diagram-size,
+.diagram-offcut-text {
+  fill: var(--ink-2);
+}
+.diagrams-parts {
+  margin-block-start: 4px;
+}
+.diagrams-parts th {
+  color: var(--ink-2);
+  font-weight: 600;
+}
+.diagrams-offcuts {
+  margin-block: 2px 0;
+  color: var(--ink-2);
+}
+
+/* The copy that is printed: hidden on screen, alone on paper. */
+.print-root {
+  display: none;
+}
 @media print {
-  body.printing-cutlist * {
-    visibility: hidden;
+  body.printing > :not(.print-root) {
+    display: none !important;
   }
-  body.printing-cutlist .cutlist,
-  body.printing-cutlist .cutlist * {
-    visibility: visible;
+  html:has(body.printing),
+  body.printing {
+    background: #fff;
   }
-  body.printing-cutlist .cutlist {
-    position: fixed;
-    inset-block-start: 0;
-    inset-inline: 0;
-    max-block-size: none;
-    border: 0;
-    box-shadow: none;
+  /* Print views are always light. */
+  body.printing .print-root {
+    --ui: #ffffff;
+    --ui-2: #f3f3f1;
+    --line: #9a9a96;
+    --ink: #000000;
+    --ink-2: #3c3c3a;
+    --canvas: #ffffff;
+    --err: #a33a2c;
+    display: block;
     background: #fff;
     color: #000;
+    font-size: 11pt;
   }
-  body.printing-cutlist .cutlist-body {
-    overflow: visible;
+  .print-root h1 {
+    margin-block: 0 8px;
+    font-size: 14pt;
   }
-  body.printing-cutlist .cutlist-controls {
-    display: none;
+  .print-root table {
+    border-collapse: collapse;
   }
+  .print-root th,
+  .print-root td {
+    padding-block: 2px;
+    padding-inline: 8px;
+    text-align: start;
+  }
+  .print-root .numeric {
+    text-align: end;
+  }
+  .print-root .cutlist-sort {
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    font-weight: 600;
+  }
+  .print-root .cutlist-material {
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+  }
+  /* One sheet or board per landscape page; each material starts a page. */
+  body.printing .print-diagrams {
+    page: diagram;
+  }
+  .print-diagrams .diagrams-material + .diagrams-material {
+    break-before: page;
+  }
+  .print-diagrams .diagram-page {
+    break-inside: avoid;
+    max-inline-size: none;
+  }
+  .print-diagrams .diagram-page:not(:last-child) {
+    break-after: page;
+  }
+  .print-diagrams .diagram {
+    block-size: 130mm;
+  }
+  .print-diagrams .diagram-board {
+    block-size: auto;
+  }
+}
+@page diagram {
+  size: landscape;
 }
 
 /* ---------- name dialog (Create Component) ---------- */

@@ -1,5 +1,5 @@
-/** Light, Dark, or following the system's setting (the default); dark-grey is on trial (a grey view in the dark interface). */
-export const THEMES = ['light', 'dark', 'dark-grey', 'system'] as const;
+/** Light, Dark, or following the system's setting (the default). */
+export const THEMES = ['light', 'dark', 'system'] as const;
 export type Theme = (typeof THEMES)[number];
 
 /**

@@ -135,7 +135,8 @@ export function loadViewSettings(): ViewSettings {
         colorByTag: typeof raw.colorByTag === 'boolean' ? raw.colorByTag : DEFAULT_VIEW.colorByTag,
         collapsed: Array.isArray(raw.collapsed) ? raw.collapsed.filter((x): x is string => typeof x === 'string') : [],
         workspace: WORKSPACES.includes(raw.workspace as Workspace) ? (raw.workspace as Workspace) : null,
-        theme: THEMES.includes(raw.theme as Theme) ? (raw.theme as Theme) : DEFAULT_VIEW.theme,
+        // The grey view on trial in milestone 6 became the dark theme.
+        theme: (raw.theme as string) === 'dark-grey' ? 'dark' : THEMES.includes(raw.theme as Theme) ? (raw.theme as Theme) : DEFAULT_VIEW.theme,
       };
     }
   } catch {

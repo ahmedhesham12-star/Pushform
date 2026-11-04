@@ -50,32 +50,14 @@ export const LIGHT_PALETTE: Palette = {
 };
 
 /**
- * On the dark canvas, lines must stand out from it and from the near-white
- * default faces alike, so they are mid tones; highlighted faces turn dark
- * (or, hovered, a pale tint) so the edges on them still show.
- */
-export const DARK_PALETTE: Palette = {
-  edge: 0x7f878d,
-  guide: 0x7a8a99,
-  selected: 0x4a8ccc,
-  hover: 0x3994a6,
-  erase: 0xd65a4c,
-  faceSelected: [0x183a5e, 0x102a46],
-  faceHover: [0xe3edf7, 0x6583a4],
-  faceErase: [0x5a1a14, 0x3d120e],
-  preview: 0x4a8ccc,
-  tangent: 0x2a96ad,
-  axis: { x: 0xe0675f, y: 0x6f93e6, z: 0x63bd70 },
-};
-
-/**
- * On trial: the dark interface around a medium grey view, so edges can stay
- * near-black and show on every face. Colored lines must still read on the
+ * The dark interface around a medium grey view (product owner, milestone 6),
+ * so edges can stay near-black and show on every face, back faces and
+ * mid-tone materials included. Colored lines must still read on the
  * near-white default faces, so they stay dark; against the grey canvas they
  * show by hue more than by lightness. The axes are light, as they run
  * mostly over the canvas.
  */
-export const GREY_PALETTE: Palette = {
+export const DARK_PALETTE: Palette = {
   edge: 0x0b0d0f,
   guide: 0x111417,
   selected: 0x1d5c86,
@@ -88,9 +70,6 @@ export const GREY_PALETTE: Palette = {
   tangent: 0x0f7f9c,
   axis: { x: 0xff9c94, y: 0x9dbbff, z: 0x7fd88a },
 };
-
-/** The palettes by the stylesheet's --palette name. */
-export const PALETTES: Record<string, Palette> = { light: LIGHT_PALETTE, dark: DARK_PALETTE, grey: GREY_PALETTE };
 
 let current: Palette = LIGHT_PALETTE;
 const themed: [{ color: Color }, (p: Palette) => number][] = [];

@@ -378,6 +378,7 @@ Every level is validated on load: unit quaternions, scale with no zero component
 | 2026-11-04 | Cutting diagrams (`src/cutlist/sheetLayouts.ts`, `boardLayouts.ts`): kerf is handled by growing each part and the usable sheet by one kerf; trim comes off every sheet edge and both board ends. Guillotine layouts keep disjoint free rectangles split by one straight cut; with a first-cut direction, a free rectangle spanning the whole usable length (or width) is always split along it. "Best result" tries both directions and the free MaxRects layout with four sort orders, two fits and three splits, and keeps the fewest sheets, then the fullest first sheet. Offcuts are the leftovers less a kerf whose short side reaches the smallest usable size | Plan step 4. Deterministic: ties go by size, then part number and copy. 500 parts of one material take about 0.8 s, so recent layouts are cached by their inputs. |
 | 2026-11-04 | The sheet count to buy (and its cost) is the layout's; the waste percentage no longer applies to sheets, only to board volume. Rows are numbered 1, 2, 3 in list order (a No. column in the panel and the CSV). Solid wood stock gains an optional board length; the starter oak and walnut, and solid wood chosen in Materials, come on 2400 mm boards; without a board length a wood is not laid out | Plan step 4. The 2400 mm default board was approved by the product owner on 2026-11-04. |
 | 2026-11-04 | The Diagrams view is a second view of the Cut List panel, with its own settings row. Print copies the view shown into a page of its own (everything else is not displayed), so long lists and diagrams run over several pages; diagrams print one sheet or board per landscape page, each material from a new page, in light colors | Plan step 5. The panel is fixed on screen, and a fixed element does not run over pages when printed. |
+| 2026-11-04 | The dark theme shows a medium grey view (#5e6368) with near-black edges inside the dark interface, replacing the dark canvas with mid-tone edges; "Dark Theme, Grey View" leaves the View menu, and a device that chose it opens in Dark | Product owner, checkpoint (b), after comparing both. Edges now show on back faces and mid-tone materials. Selection and highlight lines reach 3:1 against faces but not against the grey canvas, where they show by hue; the contrast test holds edges and guides to 3:1 against both. |
 
 ## SketchUp parity: shortcuts and modifiers
 Our users come from SketchUp, so matching their muscle memory is a product requirement. On a Mac, Option takes the place of Ctrl in every modifier below. The shortcut map and reserved keys live in `src/tools/shortcuts.ts`, and `tests/shortcuts.test.ts` checks them.
@@ -681,6 +682,8 @@ Decisions approved for milestone 5 (2026-10-29, product owner):
 
 Checkpoints for the product owner's manual testing: (a) workspaces, theme and flip feedback; (b) cutting diagrams; (c) edge banding and labels; (d) hardware import, the library and the hardware list.
 
+Progress (2026-11-04, evening): checkpoint (b) passed (product owner). The dark theme keeps the grey view, which replaces the dark canvas. 898 unit tests pass and the build succeeds.
+
 Progress (2026-11-04, later): Zoom extents leaves out what a hidden tag hides, as SketchUp does (product owner); the group or component open for editing still counts. 900 unit tests pass and the build succeeds.
 
 Progress (2026-11-04): ready for checkpoint (b). Done since checkpoint (a): a grey view for the dark theme on trial, "Dark Theme, Grey View" in the View menu (the product owner keeps one of the two dark themes); the sheet and board layout engines, with part numbers, board lengths on solid wood, the diagram settings in the file, and sheet counts from the layouts (step 4); the Diagrams view and its print (step 5). 899 unit tests pass and the build succeeds.
@@ -725,7 +728,7 @@ Decisions approved for milestone 6 (2026-11-03, product owner):
 - The cut list has no edge banding or part labels yet (milestone 6, checkpoint (c)), sizes parts by their box (a round top is listed by its rectangle) and counts each row's parts by their shown material only.
 - Selecting a cut list row whose parts sit in several groups opens the group holding most of them; the others are marked with boxes, not selected.
 - Sheet layouts are heuristics: they find good layouts, not always the fewest sheets possible.
-- In the dark theme, edges are a mid tone, so they show on the default faces and the dark canvas alike, but faintly on back faces and on mid-tone materials.
+- In the dark theme, selection and highlight lines stand out from the grey view by hue rather than by lightness (3:1 against faces, not against the canvas).
 
 ## Next steps (proposed, not yet approved)
 1. **After milestone 6** (out of its scope; milestones 7 and 8 are under "Roadmap after milestone 6"):

@@ -52,7 +52,7 @@ const FIRST_CUTS = ['length', 'width', 'best'] as const;
 export const cutListSettings = (doc: PushformDocument): CutListSettings => doc.cutList ?? DEFAULT_CUT_LIST;
 
 /** Settings read from a file, or null when they are not valid. */
-export function readCutList(v: unknown): CutListSettings | null {
+function readCutList(v: unknown): CutListSettings | null {
   if (typeof v !== 'object' || v === null) return null;
   const x = v as Record<string, unknown>;
   if (typeof x.waste !== 'number' || !(x.waste >= 0 && x.waste < 10)) return null;

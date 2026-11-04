@@ -9,7 +9,6 @@ import { CommandSession } from './session';
 
 export * from './types';
 export * from './document';
-export * from './skp';
 export * from './workspaces';
 export { CommandRegistry } from './registry';
 export { applyAmendValues, matchTypedValues, type AmendValues } from './amend';

@@ -15,8 +15,8 @@ import { definitionId } from './schemas';
  */
 export const STARTER_MATERIALS: Record<string, { readonly color: string; readonly stock?: Stock }> = {
   birchPly: { color: '#e3cfa2', stock: { kind: 'sheet', thickness: 12, length: 1525, width: 1525, grain: true } },
-  oak: { color: '#c8a165', stock: { kind: 'solid', thickness: 18, per: 'cubicMeter', grain: true } },
-  walnut: { color: '#6b4a33', stock: { kind: 'solid', thickness: 20, per: 'cubicMeter', grain: true } },
+  oak: { color: '#c8a165', stock: { kind: 'solid', thickness: 18, length: 2400, per: 'cubicMeter', grain: true } },
+  walnut: { color: '#6b4a33', stock: { kind: 'solid', thickness: 20, length: 2400, per: 'cubicMeter', grain: true } },
   whiteMdf: { color: '#efeee9', stock: { kind: 'sheet', thickness: 18, length: 2440, width: 1220, grain: false } },
   whiteMelamine: { color: '#f7f7f4', stock: { kind: 'sheet', thickness: 18, length: 2440, width: 1220, grain: false } },
   paintedSage: { color: '#9aab8f' },
@@ -166,7 +166,7 @@ const size = z.number().positive().transform(snapLength);
 const price = z.number().nonnegative().optional();
 const stock = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('sheet'), thickness: size, length: size, width: size, price, grain: z.boolean() }),
-  z.strictObject({ kind: z.literal('solid'), thickness: size, price, per: z.enum(['boardFoot', 'cubicMeter']), grain: z.boolean() }),
+  z.strictObject({ kind: z.literal('solid'), thickness: size, length: size.optional(), price, per: z.enum(['boardFoot', 'cubicMeter']), grain: z.boolean() }),
 ]);
 
 export const setMaterialStockInput = z.strictObject({ materialId, stock: stock.nullable() });

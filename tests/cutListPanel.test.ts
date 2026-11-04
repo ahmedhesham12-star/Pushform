@@ -53,11 +53,11 @@ describe('the Cut List panel', () => {
     const { table } = setup();
     expect(table()).toEqual([
       ['Birch ply'],
-      ['Drawer bottom', '1', '716 mm', '426 mm', '12 mm', 'Birch ply', '', ''],
-      ['Drawer side', '2', '450 mm', '180 mm', '12 mm', 'Birch ply', '', ''],
-      ['3 parts · 0.47 m² · 1 sheet (0.23) · 80.00'],
+      ['1', 'Drawer bottom', '1', '716 mm', '426 mm', '12 mm', 'Birch ply', '', ''],
+      ['2', 'Drawer side', '2', '450 mm', '180 mm', '12 mm', 'Birch ply', '', ''],
+      ['3 parts · 0.47 m² · 1 sheet (20% used) · 80.00'],
       ['No material'],
-      ['Front', '1', '796 mm', '226 mm', '18 mm', 'No material', '', 'No material'],
+      ['3', 'Front', '1', '796 mm', '226 mm', '18 mm', 'No material', '', 'No material'],
       ['1 part · 0.18 m²'],
     ]);
   });
@@ -66,15 +66,15 @@ describe('the Cut List panel', () => {
     const { p, table } = setup();
     const heading = (label: string) => [...p.element.querySelectorAll<HTMLButtonElement>('.cutlist-sort')].find((b) => b.textContent === label)!;
     heading('Quantity').click();
-    expect(table()[1]![0]).toBe('Drawer bottom');
+    expect(table()[1]![1]).toBe('Drawer bottom');
     heading('Quantity').click();
-    expect(table()[1]![0]).toBe('Drawer side');
+    expect(table()[1]![1]).toBe('Drawer side');
     expect(heading('Quantity').parentElement!.getAttribute('aria-sort')).toBe('descending');
   });
 
   test('a click on a row selects its parts', () => {
     const { p, host, bottom } = setup();
-    const row = [...p.element.querySelectorAll<HTMLElement>('.cutlist-row')].find((r) => r.textContent!.startsWith('Drawer bottom'))!;
+    const row = [...p.element.querySelectorAll<HTMLElement>('.cutlist-row')].find((r) => r.children[1]!.textContent === 'Drawer bottom')!;
     row.click();
     expect(host.select).toHaveBeenCalledWith([[bottom.instanceId]]);
   });
@@ -90,7 +90,7 @@ describe('the Cut List panel', () => {
     currency.value = 'eur';
     currency.dispatchEvent(new Event('change'));
     p.sync();
-    expect(table()[3]![0]).toMatch(/^3 parts · 0.47 m² · 1 sheet \(0.3\d\) · €80.00$/);
+    expect(table()[3]![0]).toMatch(/^3 parts · 0.47 m² · 1 sheet \(20% used\) · €80.00$/);
     waste.value = 'lots';
     waste.dispatchEvent(new Event('change'));
     expect(host.flash).toHaveBeenCalledWith('Type the waste as a percentage, such as 15.', true);
@@ -103,11 +103,11 @@ describe('the Cut List panel', () => {
     ok(s.execute('core.setTag', { instanceIds: [front.id], tagId: tag }));
     ok(s.execute('core.setTagVisible', { tagId: tag, visible: false }));
     p.sync();
-    expect(table().some((r) => r[0] === 'Front')).toBe(false);
+    expect(table().some((r) => r[1] === 'Front')).toBe(false);
     expect(p.element.querySelector('.cutlist-note')!.textContent).toBe('1 hidden part is not listed.');
     p.element.querySelector<HTMLInputElement>('.cutlist-check input')!.click();
     p.sync();
-    expect(table().some((r) => r[0] === 'Front')).toBe(true);
+    expect(table().some((r) => r[1] === 'Front')).toBe(true);
   });
 });
 
@@ -120,7 +120,7 @@ describe('the several boards tip', () => {
     const front = listFaces(definitionModel(s.doc, c.definitionId)!).find((f) => f.normal[2] === 1)!.id;
     ok(s.execute('core.erase', { definitionId: c.definitionId, faceIds: [front], edgeIds: [] }));
     p.sync();
-    const row = [...p.element.querySelectorAll('.cutlist-row')].find((r) => r.textContent!.startsWith('Cabinet'))!;
+    const row = [...p.element.querySelectorAll('.cutlist-row')].find((r) => r.children[1]!.textContent === 'Cabinet')!;
     expect(row.lastElementChild!.textContent).toBe('Looks like several boards in one part: make each board its own group; No material');
     expect(p.element.querySelector('.cutlist-tip')!.textContent).toBe(
       'The cut list counts each group or component holding faces as one board. Model each board on its own: draw it, push/pull it to its thickness, and make it a group before drawing the next. Then put the boards of one cabinet inside one component.',
@@ -136,7 +136,7 @@ describe('a thickness off the material stock', () => {
     const ply = [...s.doc.scene.materials.keys()][0]!;
     ok(s.execute('core.paint', { instanceIds: [shelf.instanceId], materialId: ply }));
     p.sync();
-    const row = [...p.element.querySelectorAll<HTMLElement>('.cutlist-row')].find((r) => r.textContent!.startsWith('Shelf'))!;
+    const row = [...p.element.querySelectorAll<HTMLElement>('.cutlist-row')].find((r) => r.children[1]!.textContent === 'Shelf')!;
     expect(row.lastElementChild!.textContent).toBe('Thickness 15 mm, material is 12 mm');
     const button = row.querySelector<HTMLButtonElement>('.cutlist-material')!;
     expect(button.textContent).toBe('Birch ply');

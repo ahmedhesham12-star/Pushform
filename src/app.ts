@@ -996,7 +996,7 @@ export class App {
     const settings = cutListSettings(doc);
     const type: FileType = { description: t('file.typeCsv'), mime: 'text/csv', extension: '.csv' };
     try {
-      const text = toCsv(cutList(doc.scene, { waste: settings.waste, includeHidden: settings.includeHidden }), doc.scene, doc.units);
+      const text = toCsv(cutList(doc.scene, settings), doc.scene, doc.units);
       const r = await saveFile(text, type, `${name}${t('cutlist.fileSuffix')}${type.extension}`);
       if (r) this.status.flash(t('message.exported', { name: r.name }));
     } catch {

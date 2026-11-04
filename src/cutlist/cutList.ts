@@ -14,6 +14,8 @@
 import { bounds, faceArea, listFaces, solidVolume, type Model } from '../kernel';
 import { t } from '../i18n';
 import { inheritedMaterial, placedInstances, tagShown, type GrainAxis, type InstanceId, type MaterialId, type Scene, type Stock } from '../scene';
+import { layoutBoards, type BoardLayout } from './boardLayouts';
+import { DEFAULT_LAYOUT, layoutSheets, type LayoutSettings, type Piece, type SheetLayout } from './sheetLayouts';
 
 /**
  * What can be wrong with a part. `severalBoards` stands for a thick part that
@@ -25,6 +27,8 @@ export type PartWarning = 'severalBoards' | 'thickness' | 'stretched' | 'notSoli
 export interface CutListRow {
   /** What makes these parts one row. */
   readonly key: string;
+  /** The part number (1, 2, 3 in list order), shared by its copies, on the diagrams and labels too. */
+  readonly number: number;
   readonly name: string;
   readonly quantity: number;
   /** Sizes in mm: length, then width, then thickness. */
@@ -47,8 +51,10 @@ export interface MaterialTotal {
   /** Part volumes, length times width times thickness, in mm³. */
   readonly volume: number;
   readonly stock: Stock | undefined;
-  /** For sheet goods: sheets needed with the waste, as a fraction and rounded up. */
-  readonly sheets: { readonly exact: number; readonly count: number } | null;
+  /** For sheet goods: the parts laid out on sheets (its sheet count is what to buy). */
+  readonly sheetLayout: SheetLayout | null;
+  /** For solid wood with a board length: the parts laid out on boards. */
+  readonly boardLayout: BoardLayout | null;
   /** For solid wood: board volume with the waste, in mm³. */
   readonly boardVolume: number | null;
   /** In the file's currency; null without a price. */
@@ -64,8 +70,8 @@ export interface CutList {
   readonly looseInAssemblies: readonly { readonly name: string; readonly path: readonly InstanceId[] }[];
 }
 
-export interface CutListOptions {
-  /** Waste as a fraction (0.15 is 15%). */
+export interface CutListOptions extends Partial<LayoutSettings> {
+  /** Waste as a fraction (0.15 is 15%), added to board volume (sheets are counted by their layout). */
   readonly waste: number;
   readonly includeHidden: boolean;
 }
@@ -153,13 +159,14 @@ export function cutList(scene: Scene, options: CutListOptions): CutList {
     const key = [identity, name, round(length), round(width), round(thickness), materialId ?? '', grain ?? '', warnings.join(',')].join('|');
     const row = rows.get(key);
     if (row) row.paths.push(p.path);
-    else rows.set(key, { key, name, length, width, thickness, materialId, grain, warnings, paths: [p.path] });
+    else rows.set(key, { key, number: 0, name, length, width, thickness, materialId, grain, warnings, paths: [p.path] });
   }
 
   const materialName = (id: MaterialId | null) => (id ? scene.materials.get(id)!.name : null);
   const out: CutListRow[] = [...rows.values()]
     .map((r) => ({ ...r, quantity: r.paths.length }))
-    .sort((a, b) => order(materialName(a.materialId), materialName(b.materialId)) || collator.compare(a.name, b.name) || b.length - a.length);
+    .sort((a, b) => order(materialName(a.materialId), materialName(b.materialId)) || collator.compare(a.name, b.name) || b.length - a.length)
+    .map((r, i) => ({ ...r, number: i + 1 }));
 
   let hiddenLeftOut = 0;
   if (!options.includeHidden) {
@@ -167,7 +174,14 @@ export function cutList(scene: Scene, options: CutListOptions): CutList {
     const shown = new Set(placed.map((p) => p.path.join('/')));
     hiddenLeftOut = all.filter((p) => !shown.has(p.path.join('/')) && isPart(scene, p.instance.definitionId)).length;
   }
-  return { rows: out, totals: totals(scene, out, options.waste), hiddenLeftOut, looseInAssemblies };
+  const layout: LayoutSettings = {
+    kerf: options.kerf ?? DEFAULT_LAYOUT.kerf,
+    trim: options.trim ?? DEFAULT_LAYOUT.trim,
+    guillotine: options.guillotine ?? DEFAULT_LAYOUT.guillotine,
+    firstCut: options.firstCut ?? DEFAULT_LAYOUT.firstCut,
+    minOffcut: options.minOffcut ?? DEFAULT_LAYOUT.minOffcut,
+  };
+  return { rows: out, totals: totals(scene, out, options.waste, layout), hiddenLeftOut, looseInAssemblies };
 }
 
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
@@ -179,31 +193,54 @@ function isPart(scene: Scene, definitionId: string): boolean {
   return !!def && !def.instances.size && listFaces(def.model).length > 0;
 }
 
-/** Totals per material, in the order of the rows: area, volume, sheets or board volume with the waste, and cost. */
-function totals(scene: Scene, rows: readonly CutListRow[], waste: number): MaterialTotal[] {
-  const by = new Map<MaterialId | null, { quantity: number; area: number; volume: number }>();
+/**
+ * Recent layouts by their inputs: the cut list is recomputed after every
+ * edit, and laying out hundreds of parts takes a good part of a second, while
+ * most edits leave a material's parts as they were.
+ */
+const layouts = new Map<string, SheetLayout | BoardLayout>();
+const LAYOUTS_KEPT = 32;
+function cached<L extends SheetLayout | BoardLayout>(key: unknown, make: () => L): L {
+  const k = JSON.stringify(key);
+  const hit = layouts.get(k) as L | undefined;
+  if (hit) return hit;
+  const made = make();
+  layouts.set(k, made);
+  if (layouts.size > LAYOUTS_KEPT) layouts.delete(layouts.keys().next().value!);
+  return made;
+}
+
+/**
+ * Totals per material, in the order of the rows: area, volume, the sheet or
+ * board layout, board volume with the waste, and cost (sheets by the layout's
+ * count, solid wood by volume).
+ */
+function totals(scene: Scene, rows: readonly CutListRow[], waste: number, layout: LayoutSettings): MaterialTotal[] {
+  const by = new Map<MaterialId | null, { quantity: number; area: number; volume: number; pieces: Piece[] }>();
   for (const r of rows) {
-    const x = by.get(r.materialId) ?? { quantity: 0, area: 0, volume: 0 };
+    const x = by.get(r.materialId) ?? { quantity: 0, area: 0, volume: 0, pieces: [] };
     x.quantity += r.quantity;
     x.area += r.length * r.width * r.quantity;
     x.volume += r.length * r.width * r.thickness * r.quantity;
+    for (let copy = 1; copy <= r.quantity; copy++) x.pieces.push({ number: r.number, copy, length: r.length, width: r.width });
     by.set(r.materialId, x);
   }
-  return [...by].map(([materialId, x]) => {
+  return [...by].map(([materialId, { pieces, ...x }]) => {
     const stock = materialId ? scene.materials.get(materialId)!.stock : undefined;
-    let sheets: MaterialTotal['sheets'] = null;
+    let sheetLayout: SheetLayout | null = null;
+    let boardLayout: BoardLayout | null = null;
     let boardVolume: number | null = null;
     let cost: number | null = null;
     if (stock?.kind === 'sheet') {
-      const exact = (x.area * (1 + waste)) / (stock.length * stock.width);
-      // A hair over a whole sheet is rounding, not another sheet.
-      sheets = { exact, count: Math.ceil(exact - 1e-9) };
-      if (stock.price !== undefined) cost = sheets.count * stock.price;
+      sheetLayout = cached(['s', pieces, stock.length, stock.width, stock.grain, layout], () => layoutSheets(pieces, stock, layout));
+      if (stock.price !== undefined) cost = sheetLayout.sheets.length * stock.price;
     } else if (stock?.kind === 'solid') {
+      const board = stock.length;
+      if (board !== undefined) boardLayout = cached(['b', pieces, board, layout], () => layoutBoards(pieces, board, layout));
       boardVolume = x.volume * (1 + waste);
       if (stock.price !== undefined) cost = (boardVolume / (stock.per === 'boardFoot' ? MM3_PER_BOARD_FOOT : MM3_PER_CUBIC_METER)) * stock.price;
     }
-    return { materialId, ...x, stock, sheets, boardVolume, cost };
+    return { materialId, ...x, stock, sheetLayout, boardLayout, boardVolume, cost };
   });
 }
 

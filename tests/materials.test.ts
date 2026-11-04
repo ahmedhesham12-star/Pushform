@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { createSession, cutListSettings, definitionModel, documentFromText, documentToText, serializeDocument, type CommandSession } from '../src/commands';
+import { createSession, cutListSettings, DEFAULT_CUT_LIST, definitionModel, documentFromText, documentToText, serializeDocument, type CommandSession } from '../src/commands';
 import { getFace, listFaces } from '../src/kernel';
 import { findInstance, getDefinition, inheritedMaterial, shownMaterial } from '../src/scene';
 
@@ -167,7 +167,7 @@ describe('woodworking stock (step 8)', () => {
     const oak = ok(s.execute('core.addMaterial', { starter: 'oak' })).materialId;
     const sage = ok(s.execute('core.addMaterial', { starter: 'paintedSage' })).materialId;
     expect(s.doc.scene.materials.get(ply)!.stock).toEqual({ kind: 'sheet', thickness: 12, length: 1525, width: 1525, grain: true });
-    expect(s.doc.scene.materials.get(oak)!.stock).toEqual({ kind: 'solid', thickness: 18, per: 'cubicMeter', grain: true });
+    expect(s.doc.scene.materials.get(oak)!.stock).toEqual({ kind: 'solid', thickness: 18, length: 2400, per: 'cubicMeter', grain: true });
     expect(s.doc.scene.materials.get(sage)!.stock).toBeUndefined();
   });
 
@@ -191,16 +191,36 @@ describe('woodworking stock (step 8)', () => {
 
   test('cut list settings: defaults, changes, saved in the file', () => {
     const s = createSession();
-    expect(cutListSettings(s.doc)).toEqual({ waste: 0.15, currency: null, includeHidden: false });
+    const layout = { kerf: 3, trim: 10, guillotine: true, firstCut: 'best', minOffcut: 100 };
+    expect(cutListSettings(s.doc)).toEqual({ waste: 0.15, currency: null, includeHidden: false, ...layout });
     const doc = s.doc;
     ok(s.execute('core.setCutListSettings', { waste: 0.15 }));
     expect(s.doc).toBe(doc);
     ok(s.execute('core.setCutListSettings', { waste: 0.2, currency: 'eur', includeHidden: true }));
-    expect(cutListSettings(s.doc)).toEqual({ waste: 0.2, currency: 'EUR', includeHidden: true });
+    expect(cutListSettings(s.doc)).toEqual({ waste: 0.2, currency: 'EUR', includeHidden: true, ...layout });
     expect(code(s.execute('core.setCutListSettings', { currency: 'euro' }))).toBe('invalidInput');
     expect(code(s.execute('core.setCutListSettings', { waste: -0.1 }))).toBe('invalidInput');
-    expect(cutListSettings(documentFromText(documentToText(s.doc))!)).toEqual({ waste: 0.2, currency: 'EUR', includeHidden: true });
+    expect(cutListSettings(documentFromText(documentToText(s.doc))!)).toEqual({ waste: 0.2, currency: 'EUR', includeHidden: true, ...layout });
     ok(s.execute('core.setCutListSettings', { currency: null }));
     expect(cutListSettings(s.doc).currency).toBeNull();
+  });
+
+  test('cutting diagram settings (milestone 6): changed, saved, and the defaults for files without them', () => {
+    const s = createSession();
+    ok(s.execute('core.setCutListSettings', { kerf: 4, trim: 0, guillotine: false, firstCut: 'width', minOffcut: 150 }));
+    const set = { kerf: 4, trim: 0, guillotine: false, firstCut: 'width', minOffcut: 150 };
+    expect(cutListSettings(s.doc)).toMatchObject(set);
+    expect(cutListSettings(documentFromText(documentToText(s.doc))!)).toMatchObject(set);
+    const doc = s.doc;
+    ok(s.execute('core.setCutListSettings', { kerf: 4, firstCut: 'width' }));
+    expect(s.doc).toBe(doc);
+    expect(code(s.execute('core.setCutListSettings', { kerf: -1 }))).toBe('invalidInput');
+    expect(code(s.execute('core.setCutListSettings', { firstCut: 'diagonal' } as never))).toBe('invalidInput');
+    // A milestone 5 file has only waste, currency and hidden parts.
+    const saved = JSON.parse(documentToText(s.doc));
+    saved.cutList = { waste: 0.1, currency: null, includeHidden: false };
+    expect(cutListSettings(documentFromText(JSON.stringify(saved))!)).toEqual({ ...DEFAULT_CUT_LIST, waste: 0.1 });
+    saved.cutList = { ...saved.cutList, firstCut: 'diagonal' };
+    expect(documentFromText(JSON.stringify(saved))).toBeNull();
   });
 });

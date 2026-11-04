@@ -221,7 +221,7 @@ export class MaterialsPanel {
     kind.addEventListener('change', () => {
       const imperial = units.unit === 'in' || units.unit === 'in-frac' || units.unit === 'ft-in';
       if (kind.value === 'sheet') this.host.setStock(id, { kind: 'sheet', thickness: stock?.thickness ?? 18, length: 2440, width: 1220, grain: stock?.grain ?? false });
-      else if (kind.value === 'solid') this.host.setStock(id, { kind: 'solid', thickness: stock?.thickness ?? 18, per: imperial ? 'boardFoot' : 'cubicMeter', grain: true });
+      else if (kind.value === 'solid') this.host.setStock(id, { kind: 'solid', thickness: stock?.thickness ?? 18, length: 2400, per: imperial ? 'boardFoot' : 'cubicMeter', grain: true });
       else this.host.setStock(id, null);
     });
     row(t('materials.stock'), kind);
@@ -255,6 +255,24 @@ export class MaterialsPanel {
     if (stock.kind === 'sheet') {
       lengthField(t('materials.sheetLength'), stock.length, (mm) => ({ ...stock, length: mm }));
       lengthField(t('materials.sheetWidth'), stock.width, (mm) => ({ ...stock, width: mm }));
+    } else {
+      // The board length for the cutting diagrams; empty leaves solid wood out of them.
+      const board = el('input');
+      const shown = () => (stock.length === undefined ? '' : length(stock.length));
+      board.value = shown();
+      board.placeholder = t('materials.boardLengthNone');
+      board.spellcheck = false;
+      board.addEventListener('change', () => {
+        const { length: _old, ...rest } = stock;
+        if (!board.value.trim()) return this.host.setStock(id, rest);
+        const r = parseLength(board.value, units.unit);
+        if (!r.ok || r.mm <= 0) {
+          board.value = shown();
+          return this.host.flash(t('error.typeLength'), true);
+        }
+        this.host.setStock(id, { ...rest, length: r.mm });
+      });
+      row(t('materials.boardLength'), board);
     }
     const price = el('input');
     price.inputMode = 'decimal';

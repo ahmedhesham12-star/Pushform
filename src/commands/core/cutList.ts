@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { t } from '../../i18n';
 import { getDefinition, setGrain as setSceneGrain } from '../../scene';
-import { cutListSettings } from '../document';
+import { cutListSettings, type CutListSettings } from '../document';
 import type { CommandDef } from '../types';
 
 export const setCutListSettingsInput = z.strictObject({
@@ -15,22 +15,25 @@ export const setCutListSettingsInput = z.strictObject({
     .nullable()
     .optional(),
   includeHidden: z.boolean().optional(),
+  /** Cutting diagrams: saw kerf, trim off each sheet edge, and the smallest offcut kept, in mm. */
+  kerf: z.number().min(0).max(50).optional(),
+  trim: z.number().min(0).max(200).optional(),
+  minOffcut: z.number().min(0).max(999).optional(),
+  guillotine: z.boolean().optional(),
+  firstCut: z.enum(['length', 'width', 'best']).optional(),
 });
 export type SetCutListSettingsInput = z.infer<typeof setCutListSettingsInput>;
 
-/** Change the cut list's waste, currency or whether hidden parts are listed; saved in the file. */
+/** Change the cut list's settings (waste, currency, hidden parts, and the cutting diagrams'); saved in the file. */
 export const setCutListSettings: CommandDef<SetCutListSettingsInput, Record<string, never>> = {
   id: 'core.setCutListSettings',
   title: () => t('command.setCutListSettings'),
   input: setCutListSettingsInput,
   run(doc, input) {
     const old = cutListSettings(doc);
-    const next = {
-      waste: input.waste ?? old.waste,
-      currency: input.currency === undefined ? old.currency : input.currency,
-      includeHidden: input.includeHidden ?? old.includeHidden,
-    };
-    if (next.waste === old.waste && next.currency === old.currency && next.includeHidden === old.includeHidden) return { ok: true, doc, output: {} };
+    const given = Object.fromEntries(Object.entries(input).filter(([, v]) => v !== undefined));
+    const next: CutListSettings = { ...old, ...given };
+    if ((Object.keys(next) as (keyof CutListSettings)[]).every((k) => next[k] === old[k])) return { ok: true, doc, output: {} };
     return { ok: true, doc: { ...doc, cutList: next }, output: {} };
   },
 };

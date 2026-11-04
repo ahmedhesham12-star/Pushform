@@ -134,18 +134,21 @@ describe('milestone 5 acceptance: the reference cabinet cut list', () => {
     expect(list(c.s).rows.find((r) => r.name === 'Top')!.grain).toBe('red');
   });
 
+  // Milestone 6 counts sheets by their layout, not by area with waste; the counts are the same.
   test('totals at 15% waste: sheets, board volume and cost', () => {
     const totals = new Map(list(c.s).totals.map((t) => [name(c.s, t.materialId), t]));
     const m = totals.get('White melamine')!;
     expect(m.area * 1.15 / 1e6).toBeCloseTo(1.884, 3);
-    expect([m.sheets!.exact, m.sheets!.count]).toEqual([expect.closeTo(0.633, 3), 1]);
+    expect(m.sheetLayout!.sheets).toHaveLength(1);
     const p = totals.get('Birch ply')!;
     expect(p.area * 1.15 / 1e6).toBeCloseTo(2.5, 3);
-    expect([p.sheets!.exact, p.sheets!.count]).toEqual([expect.closeTo(1.075, 3), 2]);
+    expect(p.sheetLayout!.sheets).toHaveLength(2);
     const f = totals.get('White MDF')!;
     expect(f.area * 1.15 / 1e6).toBeCloseTo(0.621, 3);
-    expect([f.sheets!.exact, f.sheets!.count]).toEqual([expect.closeTo(0.208, 3), 1]);
+    expect(f.sheetLayout!.sheets).toHaveLength(1);
+    for (const x of [m, p, f]) expect(x.sheetLayout!.tooLarge).toEqual([]);
     const o = totals.get('Oak')!;
+    expect(o.boardLayout!.boards).toHaveLength(1);
     expect(o.boardVolume! / 1e9).toBeCloseTo(0.00939, 5);
     expect(o.cost).toBeCloseTo(0.0093895 * 1500, 2);
     expect([m.cost, p.cost, f.cost]).toEqual([45, 160, 38]);
@@ -162,8 +165,8 @@ describe('milestone 5 acceptance: the reference cabinet cut list', () => {
 
   test('CSV, save and reopen, and GLB with materials', async () => {
     const csv = toCsv(list(c.s), c.s.doc.scene, c.s.doc.units).split('\r\n');
-    expect(csv[0]).toBe('﻿Material,Part,Quantity,Length (mm),Width (mm),Thickness (mm),Grain,Warnings');
-    expect(csv.slice(1, 5)).toEqual(['Birch ply,Drawer bottom,3,716,426,12,,', 'Birch ply,Drawer front/back,6,716,180,12,,', 'Birch ply,Drawer side,6,450,180,12,,', 'Oak,Top,1,840,540,18,Along red,']);
+    expect(csv[0]).toBe('﻿No.,Material,Part,Quantity,Length (mm),Width (mm),Thickness (mm),Grain,Warnings');
+    expect(csv.slice(1, 5)).toEqual(['1,Birch ply,Drawer bottom,3,716,426,12,,', '2,Birch ply,Drawer front/back,6,716,180,12,,', '3,Birch ply,Drawer side,6,450,180,12,,', '4,Oak,Top,1,840,540,18,Along red,']);
     const reopened = documentFromText(documentToText(c.s.doc))!;
     expect(serializeDocument(reopened)).toEqual(serializeDocument(c.s.doc));
     expect(cutList(reopened.scene, { waste: 0.15, includeHidden: true })).toEqual(list(c.s));

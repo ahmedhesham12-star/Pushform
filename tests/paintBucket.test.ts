@@ -241,6 +241,14 @@ describe('the Materials panel', () => {
     const per = p.element.querySelectorAll<HTMLSelectElement>('.materials-editor select')[1]!;
     per.value = 'boardFoot';
     per.dispatchEvent(new Event('change'));
-    expect(s.doc.scene.materials.get(id)!.stock).toEqual({ kind: 'solid', thickness: 19.05, per: 'boardFoot', grain: true });
+    expect(s.doc.scene.materials.get(id)!.stock).toEqual({ kind: 'solid', thickness: 19.05, length: 2400, per: 'boardFoot', grain: true });
+    // The board length: typed, or cleared to leave the wood out of the diagrams.
+    field('Board length').value = "8'";
+    field('Board length').dispatchEvent(new Event('change'));
+    expect(s.doc.scene.materials.get(id)!.stock).toMatchObject({ length: 2438.4 });
+    p.sync();
+    field('Board length').value = '';
+    field('Board length').dispatchEvent(new Event('change'));
+    expect(s.doc.scene.materials.get(id)!.stock).not.toHaveProperty('length');
   });
 });

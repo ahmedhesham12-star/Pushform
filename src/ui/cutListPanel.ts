@@ -20,8 +20,9 @@ export interface CutListHost {
   flash(message: string, isError?: boolean): void;
 }
 
-type Column = 'name' | 'quantity' | 'length' | 'width' | 'thickness' | 'material' | 'grain';
+type Column = 'number' | 'name' | 'quantity' | 'length' | 'width' | 'thickness' | 'material' | 'grain';
 const COLUMNS: readonly { id: Column; label: MessageKey; numeric?: true }[] = [
+  { id: 'number', label: 'cutlist.number', numeric: true },
   { id: 'name', label: 'cutlist.part' },
   { id: 'quantity', label: 'cutlist.quantity', numeric: true },
   { id: 'length', label: 'cutlist.length', numeric: true },
@@ -125,7 +126,7 @@ export class CutListPanel {
     if (document.activeElement !== this.waste) this.waste.value = formatNumber(settings.waste * 100, 0);
     if (document.activeElement !== this.currency) this.currency.value = settings.currency ?? '';
     this.hidden.checked = settings.includeHidden;
-    this.render(scene, cutList(scene, { waste: settings.waste, includeHidden: settings.includeHidden }));
+    this.render(scene, cutList(scene, settings));
   }
 
   private render(scene: Scene, list: CutList): void {
@@ -170,7 +171,7 @@ export class CutListPanel {
         for (const r of this.sorted(list.rows.filter((x) => x.materialId === total.materialId), materialName)) {
           const tr = el('tr', 'cutlist-row');
           tr.tabIndex = 0;
-          const cells = [r.name, formatNumber(r.quantity), length(r.length), length(r.width), length(r.thickness), materialName(r.materialId), r.grain ? t(`cutlist.grain.${r.grain}` as MessageKey) : ''];
+          const cells = [formatNumber(r.number), r.name, formatNumber(r.quantity), length(r.length), length(r.width), length(r.thickness), materialName(r.materialId), r.grain ? t(`cutlist.grain.${r.grain}` as MessageKey) : ''];
           cells.forEach((text, i) => {
             const td = el('td', COLUMNS[i]!.numeric ? 'numeric' : undefined);
             const materialId = r.materialId;
@@ -228,12 +229,16 @@ export class CutListPanel {
     });
   }
 
-  /** "12 parts · 1.88 m² · 1 sheet (0.63) · 58.00": what a material needs. */
+  /** "12 parts · 1.88 m² · 1 sheet (63% used) · 58.00": what a material needs, with the sheets or boards its layout uses. */
   private totalText(total: MaterialTotal, units: UnitSettings): string {
     const parts = [tCount('cutlist.parts', total.quantity, formatNumber(total.quantity))];
     // Sheet areas read best in m² (ft² for imperial files), whatever the length unit.
     if (total.stock?.kind !== 'solid') parts.push(formatArea(total.area, isImperial(units.unit) ? { unit: 'ft-in', precision: units.precision } : { unit: 'm', precision: 2 }));
-    if (total.sheets) parts.push(tCount('cutlist.sheets', total.sheets.count, formatNumber(total.sheets.count), { exact: formatNumber(total.sheets.exact, 2) }));
+    const percent = (f: number) => formatNumber(f * 100, 0);
+    const sheets = total.sheetLayout;
+    if (sheets) parts.push(tCount('cutlist.sheets', sheets.sheets.length, formatNumber(sheets.sheets.length), { used: percent(sheets.utilization) }));
+    const boards = total.boardLayout;
+    if (boards) parts.push(tCount('cutlist.boards', boards.boards.length, formatNumber(boards.boards.length), { used: percent(boards.utilization) }));
     if (total.boardVolume !== null) {
       parts.push(
         isImperial(units.unit)
@@ -242,6 +247,8 @@ export class CutListPanel {
       );
     }
     if (total.cost !== null) parts.push(this.money(total.cost));
+    const tooLarge = (sheets?.tooLarge.length ?? 0) + (boards?.tooLarge.length ?? 0);
+    if (tooLarge) parts.push(tCount('cutlist.tooLarge', tooLarge, formatNumber(tooLarge)));
     return parts.join(t('cutlist.separator'));
   }
 

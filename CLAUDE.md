@@ -53,6 +53,7 @@ Run `npm test` and `npm run build` before every commit. Both must pass.
 - No license file until the product owner chooses one.
 - No network calls or backend. The app must work fully offline once loaded, and without AI.
 - Commit in small steps with clear messages. Ask the product owner before pushing.
+- Only work reviewed in a Claude Code session is committed to milestone branches. Changes from other tools go on their own branch and are reviewed before merging. Decisions are only recorded as the product owner's when the product owner made them in a session.
 - On Windows PowerShell 5.1, commit with `git commit -F <file>`, because quotes inside `-m` get mangled.
 
 ## Reference

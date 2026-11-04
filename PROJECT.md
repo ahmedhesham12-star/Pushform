@@ -2,7 +2,7 @@
 
 Free, open-source 3D modeling in the browser, built around push/pull modeling. Draw shapes, push and pull them into solids, and export the result. No account and no install.
 
-Last updated: 2026-11-03.
+Last updated: 2026-11-04.
 
 ## Goals
 - A fast, precise push/pull modeler that runs as a static web page.
@@ -734,6 +734,7 @@ Decisions approved for milestone 6 (2026-11-03, product owner):
    5. **Solid tools**: union, subtract and intersect for groups and components that are solids, and solid volume for groups holding other groups.
    6. **OBJ and DXF export.**
    7. **Intersecting moved geometry** with what it lands on.
+   8. **SKP import and export** (product owner, 2026-11-04), as a planned milestone after a legal and licensing check of the .skp format and any library used (e.g. openskp), and after naming in the UI is checked against Trimble's trademark. Requirements: curves, soft edges, grain and instance names survive; .pushform stays the native format; tested against files saved by real SketchUp versions, not only the library's own reader.
 2. A stretch that lands a point on another point merges the two instead of being refused.
 3. **Dimension text** (product owner, checkpoint (b) feedback): replace a dimension's value with your own text or add to it, with `<>` standing for the measured length, as in SketchUp.
 4. **Copying dimensions and text** with Move and Rotate copies, as SketchUp does.

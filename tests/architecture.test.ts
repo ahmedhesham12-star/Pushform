@@ -12,6 +12,8 @@ import { describe, expect, test } from 'vitest';
 const SRC = resolve(__dirname, '../src');
 /** Pure, DOM-free packages the kernel may use. */
 const KERNEL_PACKAGES = ['earcut'];
+/** Packages the export layer may use: the SKP writer. */
+const EXPORT_PACKAGES = ['openskp'];
 const KERNEL_MUTATIONS = [
   'createModel',
   'drawRectangle',
@@ -132,8 +134,10 @@ describe('architecture', () => {
     expect(bad.map((i) => `${i.file} -> ${i.spec}`)).toEqual([]);
   });
 
-  test('export depends only on the kernel and the scene', () => {
-    const bad = all.filter((i) => i.layer === 'export' && (i.target === null || !['export', 'scene', 'kernel'].includes(i.target)));
+  test('export depends only on the kernel, the scene and openskp', () => {
+    const bad = all.filter(
+      (i) => i.layer === 'export' && (i.target === null ? !EXPORT_PACKAGES.includes(i.spec) : !['export', 'scene', 'kernel'].includes(i.target)),
+    );
     expect(bad.map((i) => `${i.file} -> ${i.spec}`)).toEqual([]);
   });
 

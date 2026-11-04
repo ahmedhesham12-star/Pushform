@@ -1,7 +1,8 @@
 import { validateBytes } from 'gltf-validator';
+import { parseSkp } from 'openskp';
 import { describe, expect, test } from 'vitest';
 import { createSession, definitionModel, type CommandSession } from '../src/commands';
-import { exportGlb, exportStl, worldTriangles } from '../src/export';
+import { exportGlb, exportSkp, exportStl, worldTriangles } from '../src/export';
 import { faceMeshes, listFaces } from '../src/kernel';
 
 /* Model sizes in mm; STL in mm, Z up; GLB in meters, Y up. */
@@ -198,5 +199,71 @@ describe('GLB export with materials (milestone 5)', () => {
     const { s } = painted();
     // The flip mirrors the copy in place; the triangle count is unchanged.
     expect(exportStl(s.doc.scene).byteLength).toBe(exportStl(plain.s.doc.scene).byteLength);
+  });
+});
+
+describe('SKP export', () => {
+  /** A 1 x 1 PNG, so the writer has a real image to embed. */
+  const PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8DwHwAFBQIAX8jx0gAAAABJRU5ErkJggg==';
+
+  const parse = (bytes: Uint8Array) => parseSkp(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+
+  test('components, nested groups and millimeters survive as a v17 file', async () => {
+    const { s, c } = scene();
+    const copy = [...s.doc.scene.definitions.get(s.doc.scene.rootId)!.instances.keys()].find((i) => i !== c.instanceId)!;
+    ok(s.execute('core.flip', { instanceIds: [copy], axis: 'red' }));
+    const model = parse(await exportSkp(s.doc.scene));
+    expect(model.version).toMatch(/^\{17\./);
+    expect(model.root.faces).toHaveLength(6);
+    expect(model.root.instances).toHaveLength(2);
+    expect(model.definitions.size).toBe(2);
+    const drawer = [...model.definitions.values()].find((d) => d.name === 'Drawer')!;
+    const knob = [...model.definitions.values()].find((d) => d.isGroup)!;
+    expect(drawer.faces).toHaveLength(6);
+    expect(drawer.instances).toHaveLength(1);
+    expect(knob.faces).toHaveLength(6);
+    expect(knob.instances).toHaveLength(0);
+    // The loose box is 1000 x 500 x 300 mm: inches, Z up, depth into -Y.
+    const xs = model.root.vertices.map((v) => v.x);
+    const ys = model.root.vertices.map((v) => v.y);
+    const zs = model.root.vertices.map((v) => v.z);
+    expect(Math.max(...xs)).toBeCloseTo(1000 / 25.4, 5);
+    expect(Math.min(...ys)).toBeCloseTo(-500 / 25.4, 5);
+    expect(Math.max(...zs)).toBeCloseTo(300 / 25.4, 5);
+    // A mirrored copy keeps its mirror in the 3x3 matrix.
+    const det = (m: number[]) => m[0]! * (m[4]! * m[8]! - m[7]! * m[5]!) - m[3]! * (m[1]! * m[8]! - m[7]! * m[2]!) + m[6]! * (m[1]! * m[5]! - m[4]! * m[2]!);
+    expect(model.root.instances.some((i) => det(i.matrix) < 0)).toBe(true);
+  });
+
+  test('the writer refuses a model with no geometry, so the menu stays disabled', async () => {
+    await expect(exportSkp(createSession().doc.scene)).rejects.toThrow(/no geometry/);
+  });
+
+  test('face paint, a texture and a tag are written', async () => {
+    const s = createSession();
+    const faces = box(s, 0, 0, 1000, 500, 300);
+    const oak = ok(s.execute('core.addMaterial', { starter: 'oak' })).materialId;
+    const navy = ok(s.execute('core.addMaterial', { starter: 'paintedNavy' })).materialId;
+    ok(s.execute('core.setMaterialTexture', { materialId: oak, texture: { data: PNG, mime: 'image/png', width: 400, height: 200 } }));
+    ok(s.execute('core.paint', { faceIds: [faces[0]!], materialId: oak }));
+    ok(s.execute('core.paint', { faceIds: [faces[1]!], sides: ['back'], materialId: navy }));
+    const group = ok(s.execute('core.makeGroup', { faceIds: faces }));
+    const tag = ok(s.execute('core.addTag', { name: 'Case', color: '#4f81bd' })).tagId;
+    ok(s.execute('core.setTag', { instanceIds: [group.instanceId], tagId: tag }));
+    const model = parse(await exportSkp(s.doc.scene));
+    const nameOf = (id: number | null) => (id === null ? null : model.materialsById.get(id)?.name ?? null);
+    const groupDef = [...model.definitions.values()].find((d) => d.isGroup)!;
+    expect(groupDef.faces.some((f) => nameOf(f.materialId) === 'Oak')).toBe(true);
+    expect(groupDef.faces.some((f) => nameOf(f.backMaterialId) === 'Painted navy')).toBe(true);
+    const placed = model.root.instances.find((i) => i.layer === 'Case');
+    expect(placed).toBeDefined();
+    expect(model.materials.find((m) => m.name === 'Oak')!.texture).not.toBeNull();
+  });
+
+  test('a loose edge is kept', async () => {
+    const s = createSession();
+    ok(s.execute('core.drawLine', { start: [0, 0, 0], direction: [1, 0, 0], length: 1000 }));
+    const model = parse(await exportSkp(s.doc.scene));
+    expect(model.root.edges).toHaveLength(1);
   });
 });

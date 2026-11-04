@@ -162,7 +162,7 @@ describe('Entity Info', () => {
   test('without an edge band in the file, a hint says where to make one', () => {
     const info = new EntityInfo(host());
     info.show(data(field([])));
-    expect(info.element.querySelector('.entity-info-hint')!.textContent).toBe('No edge band in this file yet. In Materials, set a material to be bought as Edge band.');
+    expect(info.element.querySelector('.entity-info-hint')!.textContent).toBe('No edge band in this file yet. Add White ABS or Oak veneer edge band from the Starter set in Materials, or set a material to be bought as Edge band.');
   });
 });
 

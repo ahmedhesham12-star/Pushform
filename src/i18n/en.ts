@@ -474,7 +474,7 @@ export const en = {
   'info.grain': 'Grain',
   'info.grainLongest': 'Longest side',
   'info.edgeBanding': 'Edge banding',
-  'info.edgesNone': 'No edge band in this file yet. In Materials, set a material to be bought as Edge band.',
+  'info.edgesNone': 'No edge band in this file yet. Add White ABS or Oak veneer edge band from the Starter set in Materials, or set a material to be bought as Edge band.',
   'info.edgeNone': 'None',
   'info.edgeMissing': 'No straight face at this edge',
   'info.tagMixed': 'Mixed',

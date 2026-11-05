@@ -1,7 +1,8 @@
 import { t } from '../i18n';
 import { shownMaterial, type InstanceId } from '../scene';
 import { bucketCursor } from './cursors';
-import { edgeOf, isBandChoice, partAt, setEdgeBand } from './edgeBanding';
+import { EDGES } from '../cutlist';
+import { edgeOf, isBandChoice, partAt, setEdgeBand, worldFaces } from './edgeBanding';
 import { fillFor, paintTargets } from './paintTargets';
 import { isMac } from './shortcuts';
 import type { Tool, ToolContext } from './tool';
@@ -17,7 +18,8 @@ import type { Tool, ToolContext } from './tool';
  *
  * With an edge band (milestone 6), a click bands the edge of the part under
  * it, open or closed: the side face clicked and the others on that edge. A
- * click on an edge that has that band takes it off.
+ * click on an edge that has that band takes it off. Hovering a part shows
+ * its banded edges and the edge a click bands.
  */
 export function createPaintBucketTool(ctx: ToolContext): Tool {
   const vp = () => ctx.viewport;
@@ -56,6 +58,28 @@ export function createPaintBucketTool(ctx: ToolContext): Tool {
     const same = 'materialId' in choice && part.edges[edge].band === choice.materialId;
     const id = setEdgeBand(ctx.session, part, edge, same ? null : choice, ctx);
     if (id && 'starter' in choice) ctx.paint.set({ materialId: id });
+    showBands();
+  };
+
+  /**
+   * With an edge band: the part under the pointer shows its banded edges
+   * filled and the edge a click bands outlined, since a band can look just
+   * like the part (white on white).
+   */
+  let showing = false;
+  const showBands = () => {
+    const scene = ctx.session.doc.scene;
+    const face = isBandChoice(scene, ctx.paint.current()) ? vp().faceUnderCursor() : null;
+    const part = face && partAt(scene, face.path);
+    if (!face || !part) {
+      if (showing) vp().clearPreview();
+      showing = false;
+      return;
+    }
+    const under = edgeOf(part, face.faceId);
+    const faces = EDGES.flatMap((e) => worldFaces(part, part.edges[e].faceIds).map((f) => ({ ...f, filled: !!part.edges[e].band, outlined: e === under })));
+    vp().showFacesPreview(faces.filter((f) => f.filled || f.outlined));
+    showing = true;
   };
 
   return {
@@ -82,8 +106,8 @@ export function createPaintBucketTool(ctx: ToolContext): Tool {
       if (faces.has(face.faceId)) return paint({ faceIds: [...faces], sides: [face.side], instanceIds: [...instances] });
       paint({ faceIds: paintTargets(face.model, face.faceId, face.side, fillFor(e, isMac())), sides: [face.side] });
     },
-    // No hover highlight, as in SketchUp: it would hide the material about to be painted over.
-    move() {},
+    // No hover highlight when painting, as in SketchUp: it would hide the material about to be painted over.
+    move: () => showBands(),
     reset: () => false,
   };
 }

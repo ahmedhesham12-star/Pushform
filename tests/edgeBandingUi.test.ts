@@ -220,6 +220,8 @@ describe('the Paint Bucket with an edge band', () => {
     let choice: PaintChoice = { starter: 'whiteAbsBand' };
     let under: { id: string; path: string[] } | null = null;
     const flash = vi.fn();
+    const showFacesPreview = vi.fn();
+    const clearPreview = vi.fn();
     const ctx = {
       session: s,
       selection: { faces: new Set(), edges: new Set(), instances: new Set(), guides: new Set(), annotations: new Set(), hovered: null },
@@ -233,6 +235,8 @@ describe('the Paint Bucket with an edge band', () => {
         frame: Frame.ROOT,
         pick: () => under && { kind: 'instance', id: under.path[0]!, point: new Vector3() },
         faceUnderCursor: () => under && { path: under.path, faceId: under.id, side: 'front', model: definitionModel(s.doc, findInstance(s.doc.scene, under.path.at(-1)!)!.instance.definitionId)! },
+        showFacesPreview,
+        clearPreview,
       },
     } as unknown as ToolContext;
     const tool = createPaintBucketTool(ctx);
@@ -240,7 +244,12 @@ describe('the Paint Bucket with an edge band', () => {
       under = { id, path };
       tool.down!({ shiftKey: false, ctrlKey: false, altKey: false, metaKey: false } as PointerEvent);
     };
-    return { s, shelf, side, drawer, click, flash, tool, choice: () => choice };
+    const hover = (id: string | null, path: string[] = []) => {
+      under = id ? { id, path } : null;
+      tool.move!({} as PointerEvent);
+    };
+    const paintWith = (c: PaintChoice) => (choice = c);
+    return { s, shelf, side, drawer, click, hover, paintWith, flash, tool, showFacesPreview, clearPreview, choice: () => choice };
   }
   const faces = (s: CommandSession, definitionId: string) => listFaces(s.doc.scene.definitions.get(definitionId)!.model);
 
@@ -269,6 +278,25 @@ describe('the Paint Bucket with an edge band', () => {
     click(end, [drawer.instanceId, side.instanceId]);
     expect(flash).toHaveBeenLastCalledWith('Drawer side: Width edge 2 banded with White ABS edge band.');
     expect(s.doc.scene.materials.size).toBe(1);
+  });
+
+  test('hovering a part shows its banded edges filled and the edge a click bands outlined', () => {
+    const { s, shelf, click, hover, paintWith, showFacesPreview, clearPreview } = setup();
+    const front = faces(s, shelf.definitionId).find((f) => f.normal[2] > 0.99)!.id;
+    const end = faces(s, shelf.definitionId).find((f) => f.normal[0] > 0.99)!.id;
+    click(front, [shelf.instanceId]);
+    hover(end, [shelf.instanceId]);
+    const shown = showFacesPreview.mock.lastCall![0] as { points: Vector3[]; filled: boolean; outlined: boolean }[];
+    expect(shown.map((f) => [f.filled, f.outlined])).toEqual([[true, false], [false, true]]);
+    // In world coordinates: the banded front face is at z = 300 (the shelf is 300 deep).
+    expect(shown[0]!.points.every((p) => Math.abs(p.z - 300) < 1e-6)).toBe(true);
+    hover(null);
+    expect(clearPreview).toHaveBeenCalledTimes(1);
+    // Painting with a plain material shows nothing, as in SketchUp.
+    paintWith({ materialId: null });
+    showFacesPreview.mockClear();
+    hover(end, [shelf.instanceId]);
+    expect(showFacesPreview).not.toHaveBeenCalled();
   });
 });
 

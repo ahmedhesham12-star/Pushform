@@ -1,4 +1,3 @@
-import { Vector3 } from 'three';
 import {
   createSession,
   cutListSettings,
@@ -43,11 +42,9 @@ import {
   type Point3,
 } from './kernel';
 import {
-  applyNormal,
   applyPoint,
   isEdgeBand,
   multiply,
-  pathTransform,
   definitionBounds,
   determinant,
   dimensionLength,
@@ -72,6 +69,7 @@ import {
   shortcutFor,
   TOOL_SHORTCUTS,
   partAt,
+  worldFaces,
   setEdgeBand,
   type BandChoice,
   type PaintChoice,
@@ -343,6 +341,8 @@ export class App {
       choose: (choice) => {
         this.setPaintChoice(choice);
         if (this.tool.id !== 'paintBucket') this.setTool('paintBucket');
+        // A material picked is the next step, so its hint (how to band, for an edge band) replaces an older message.
+        this.status.showHint();
       },
       add: () => {
         const r = this.session.execute('core.addMaterial', {});
@@ -1050,22 +1050,9 @@ export class App {
   /** Show the selected part's side faces in the view, from Entity Info's edge rows: filled when one face, outlined when several. */
   private previewEdge(faceIds: readonly string[] | null): void {
     const id = [...this.selection.instances][0];
-    if (!faceIds || !id) return this.viewport.clearPreview();
-    const scene = this.session.doc.scene;
-    const path = [...this.context, id];
-    const def = pathDefinition(scene, path);
-    if (!def) return;
-    const world = pathTransform(scene, path);
-    const faces = faceIds.flatMap((f) => {
-      const face = getFace(def.model, f);
-      if (!face) return [];
-      const normal = new Vector3(...applyNormal(world, face.normal));
-      return [{ points: face.outer.map((p) => new Vector3(...applyPoint(world, p))), normal }];
-    });
-    const [only] = faces;
-    if (faces.length === 1 && only) return this.viewport.showShapePreview(only.points, only.normal);
-    // Lifted off the faces a little, so the outlines are not hidden in them.
-    this.viewport.showGuides(faces.map((f) => ({ points: f.points.map((p) => p.clone().addScaledVector(f.normal, 0.5)), closed: true })));
+    const part = id && partAt(this.session.doc.scene, [...this.context, id]);
+    if (!faceIds || !part) return this.viewport.clearPreview();
+    this.viewport.showFacesPreview(worldFaces(part, faceIds).map((f) => ({ ...f, filled: true, outlined: true })));
   }
 
   /** Save the cut list as CSV. */

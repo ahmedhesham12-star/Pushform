@@ -1,8 +1,9 @@
 import { STARTER_MATERIALS, type CommandError, type CommandSession, type StarterMaterial } from '../commands';
 import { EDGES, partAxes, partEdges, type Edge, type PartEdge } from '../cutlist';
 import { t, type MessageKey } from '../i18n';
-import { faceArea, listFaces } from '../kernel';
-import { isEdgeBand, pathDefinition, pathTransform, type Definition, type InstanceId, type MaterialId, type Scene } from '../scene';
+import { Vector3 } from 'three';
+import { faceArea, getFace, listFaces } from '../kernel';
+import { applyNormal, applyPoint, isEdgeBand, pathDefinition, pathTransform, type Affine, type Definition, type InstanceId, type MaterialId, type Scene } from '../scene';
 
 /** An edge band to put on: one in the file, or a starter one, copied into the file first. */
 export type BandChoice = { readonly materialId: MaterialId } | { readonly starter: StarterMaterial };
@@ -17,21 +18,33 @@ export interface PlacedPart {
   readonly definition: Definition;
   readonly name: string;
   readonly edges: Record<Edge, PartEdge>;
+  /** Where it is placed, in world coordinates. */
+  readonly world: Affine;
 }
 
 /** The part placed at the end of a path, with its four edges; null for the root or an assembly. */
 export function partAt(scene: Scene, path: readonly InstanceId[]): PlacedPart | null {
   const definition = pathDefinition(scene, path);
   if (!path.length || !definition || definition.instances.size) return null;
-  const axes = partAxes(definition.model, definition.grain ?? null, pathTransform(scene, path));
+  const world = pathTransform(scene, path);
+  const axes = partAxes(definition.model, definition.grain ?? null, world);
   if (!axes) return null;
   const instance = pathDefinition(scene, path.slice(0, -1))?.instances.get(path[path.length - 1]!);
   const name = instance?.name || definition.name || t('scene.group');
-  return { definition, name, edges: partEdges(scene, definition.model, axes) };
+  return { definition, name, edges: partEdges(scene, definition.model, axes), world };
 }
 
 /** The edge a side face of a part is on; null for its broad faces (and anything else). */
 export const edgeOf = (part: PlacedPart, faceId: string): Edge | null => EDGES.find((e) => part.edges[e].faceIds.includes(faceId)) ?? null;
+
+/** Faces of a placed part in world coordinates, for previews. */
+export function worldFaces(part: PlacedPart, faceIds: readonly string[]): { points: Vector3[]; normal: Vector3 }[] {
+  return faceIds.flatMap((id) => {
+    const face = getFace(part.definition.model, id);
+    if (!face) return [];
+    return [{ points: face.outer.map((p) => new Vector3(...applyPoint(part.world, p))), normal: new Vector3(...applyNormal(part.world, face.normal)) }];
+  });
+}
 
 /**
  * Band one edge of a part (paint its side faces with the band), or take the

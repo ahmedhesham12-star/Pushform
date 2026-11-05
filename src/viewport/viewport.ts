@@ -65,6 +65,8 @@ const INTERSECT_PX = 24;
 
 const previewFill = themedColor(new MeshBasicMaterial({ transparent: true, opacity: 0.22, side: DoubleSide, depthWrite: false }), (p) => p.preview);
 const previewLine = themedColor(new LineBasicMaterial(), (p) => p.preview);
+// Stronger, as it marks faces that may look just like the part (a white band on a white part).
+const facesFill = themedColor(new MeshBasicMaterial({ transparent: true, opacity: 0.55, side: DoubleSide, depthWrite: false }), (p) => p.preview);
 /** An arc tangent to an edge, as SketchUp shows it. */
 const tangentLine = themedColor(new LineBasicMaterial(), (p) => p.tangent);
 
@@ -829,6 +831,25 @@ export class Viewport {
     for (let i = 1; i + 1 < c.length; i++) fan.push(c[0]!, c[i]!, c[i + 1]!);
     this.preview.add(new Mesh(new BufferGeometry().setFromPoints(fan), previewFill));
     this.preview.add(new LineLoop(new BufferGeometry().setFromPoints(c), previewLine));
+    this.requestRender();
+  }
+
+  /**
+   * Faces lifted off the model a little, each with a light fill, an outline
+   * in the accent color, or both (edge banding: the banded edges, the one a
+   * click bands). The fill is a fan, as the faces are a part's sides.
+   */
+  showFacesPreview(faces: readonly { points: Vector3[]; normal: Vector3; filled?: boolean; outlined?: boolean }[]): void {
+    this.clearPreview();
+    for (const f of faces) {
+      const c = f.points.map((p) => p.clone().addScaledVector(f.normal, 0.5));
+      if (f.filled) {
+        const fan: Vector3[] = [];
+        for (let i = 1; i + 1 < c.length; i++) fan.push(c[0]!, c[i]!, c[i + 1]!);
+        this.preview.add(new Mesh(new BufferGeometry().setFromPoints(fan), facesFill));
+      }
+      if (f.outlined) this.preview.add(new LineLoop(new BufferGeometry().setFromPoints(c), previewLine));
+    }
     this.requestRender();
   }
 

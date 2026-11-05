@@ -18,6 +18,13 @@ export class StatusBar {
     this.element.textContent = this.currentHint();
   }
 
+  /** Show the active tool's hint now, in place of a message still showing. */
+  showHint(): void {
+    clearTimeout(this.flashTimer);
+    this.flashTimer = 0;
+    this.hint();
+  }
+
   flash(message: string, isError = false): void {
     clearTimeout(this.flashTimer);
     this.element.textContent = message;

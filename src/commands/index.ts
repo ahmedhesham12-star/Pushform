@@ -10,6 +10,7 @@ import { CommandSession } from './session';
 export * from './types';
 export * from './document';
 export * from './workspaces';
+export { libraryItem, readItem } from './library';
 export { CommandRegistry } from './registry';
 export { applyAmendValues, matchTypedValues, type AmendValues } from './amend';
 export * from './session';

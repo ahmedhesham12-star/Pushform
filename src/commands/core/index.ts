@@ -13,6 +13,7 @@ import {
 import { clearModel, type ClearModelInput } from './clearModel';
 import { insertMesh, type InsertMeshInput, type InsertMeshOutput } from './meshes';
 import { setHardware, type SetHardwareInput } from './hardware';
+import { insertItem, type InsertItemInput, type InsertItemOutput } from './library';
 import { drawArc, drawArcCenter, drawPie, type DrawArcCenterInput, type DrawArcInput, type DrawArcOutput } from './drawArc';
 import { drawLine, type DrawLineInput, type DrawLineOutput } from './drawLine';
 import { drawRectangle, type DrawRectangleInput, type DrawRectangleOutput } from './drawRectangle';
@@ -163,6 +164,7 @@ declare module '../types' {
     'core.setWorkspace': { input: SetWorkspaceInput; output: Record<string, never> };
     'core.insertMesh': { input: InsertMeshInput; output: InsertMeshOutput };
     'core.setHardware': { input: SetHardwareInput; output: Record<string, never> };
+    'core.insertItem': { input: InsertItemInput; output: InsertItemOutput };
   }
 }
 
@@ -182,6 +184,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
   registry.register(makeComponent);
   registry.register(insertMesh);
   registry.register(setHardware);
+  registry.register(insertItem);
   registry.register(explode);
   registry.register(makeUnique);
   registry.register(renameDefinition);

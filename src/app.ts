@@ -14,6 +14,7 @@ import {
   WORKSPACE_STARTERS,
   WORKSPACE_TOOL_GROUPS,
   WORKSPACES,
+  libraryItem,
   type CommandError,
   type CommandSession,
   type MakeInstanceOutput,
@@ -92,6 +93,8 @@ import { applyTheme, THEMES, type Theme } from './ui/theme';
 import { flipMessage } from './ui/messages';
 import { MaterialsPanel } from './ui/materialsPanel';
 import { TagsPanel } from './ui/tagsPanel';
+import { LibraryPanel } from './ui/libraryPanel';
+import { deviceLibrary, type LibraryEntry } from './library';
 import { Tray } from './ui/tray';
 import { TextEditor } from './ui/textEditor';
 import { Outliner } from './ui/outliner';
@@ -131,6 +134,7 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
   meshNotEditable: 'error.meshNotEditable',
   invalidMesh: 'error.invalidMesh',
   hardwareNeedsComponent: 'error.hardwareNeedsComponent',
+  invalidItem: 'error.invalidItem',
   scaleWouldSkew: 'error.scaleWouldSkew',
   scaleTooSmall: 'error.scaleTooSmall',
   arcRadiusTooSmall: 'error.arcRadiusTooSmall',
@@ -173,6 +177,10 @@ export class App {
   private readonly outliner: Outliner;
   private readonly tags: TagsPanel;
   private readonly materials: MaterialsPanel;
+  private readonly libraryPanel: LibraryPanel;
+  /** The personal library on this device, and its items once read. */
+  private readonly library = deviceLibrary();
+  private libraryItems: LibraryEntry[] | null = null;
   private readonly tray: Tray;
   /** What the Paint Bucket paints with (the Materials panel chooses it); Default (no paint) to start. */
   private paintChoice: PaintChoice = { materialId: null };
@@ -375,6 +383,15 @@ export class App {
     tray.add('outliner', this.outliner.element);
     tray.add('tags', this.tags.element);
     tray.add('materials', this.materials.element);
+    this.libraryPanel = new LibraryPanel({
+      items: () => this.libraryItems,
+      saveName: () => this.librarySaveName(),
+      save: () => void this.saveToLibrary(),
+      insert: (id) => this.insertFromLibrary(id),
+      remove: (id) => void this.removeFromLibrary(id),
+    });
+    tray.add('library', this.libraryPanel.element);
+    void this.loadLibrary();
 
     root.append(top, this.toolbar.element, view, tray.element, footer, this.menu.element);
     this.viewport = new Viewport(view);
@@ -475,6 +492,7 @@ export class App {
     const c = this.paintChoice;
     if ('materialId' in c && c.materialId !== null && !this.session.doc.scene.materials.has(c.materialId)) this.paintChoice = { materialId: null };
     this.materials.sync();
+    this.libraryPanel.sync();
     this.cutListPanel.sync();
   }
 
@@ -890,6 +908,71 @@ export class App {
     this.run(this.session.execute('core.setHardware', { definitionId, hardware: { manufacturer: details.manufacturer, partNumber: details.partNumber, price, link } }));
   }
 
+  /* ---------- library ---------- */
+
+  private async loadLibrary(): Promise<void> {
+    try {
+      this.libraryItems = await this.library.list();
+    } catch {
+      this.libraryItems = [];
+      this.status.flash(t('library.unreadable'), true);
+    }
+    this.libraryPanel.sync();
+  }
+
+  /** The one component or imported model selected, which Save to Library keeps. */
+  private librarySelection(): { definitionId: string; name: string; material?: string } | null {
+    const { instances, faces, edges, guides, annotations } = this.selection;
+    if (instances.size !== 1 || faces.size || edges.size || guides.size || annotations.size) return null;
+    const scene = this.session.doc.scene;
+    const i = pathDefinition(scene, this.context)?.instances.get([...instances][0]!);
+    const def = i && scene.definitions.get(i.definitionId);
+    if (!def || (def.kind !== 'component' && def.kind !== 'mesh')) return null;
+    return { definitionId: def.id, name: def.name || t('scene.component'), ...(i.material ? { material: i.material } : {}) };
+  }
+
+  private librarySaveName(): string | null {
+    return this.librarySelection()?.name ?? null;
+  }
+
+  private async saveToLibrary(): Promise<void> {
+    const chosen = this.librarySelection();
+    if (!chosen) return this.status.flash(t('library.saveHint'), true);
+    try {
+      await this.library.save(chosen.name, libraryItem(this.session.doc, chosen.definitionId, chosen.material));
+      this.status.flash(t('library.saved', { name: chosen.name }));
+    } catch {
+      this.status.flash(t('library.notSaved'), true);
+    }
+    await this.loadLibrary();
+  }
+
+  /** Place a copy of a library item on the pointer, as an import is placed. */
+  private insertFromLibrary(id: string): void {
+    const entry = this.libraryItems?.find((e) => e.id === id);
+    if (!entry) return;
+    this.startPlacing({
+      name: entry.name,
+      insert: (at, commit) => {
+        const input = { ...at, item: entry.text };
+        const r = commit ? this.session.execute('core.insertItem', input) : this.session.preview('core.insertItem', input);
+        if (!r.ok) return r;
+        return { ok: true, doc: 'doc' in r ? r.doc : this.session.doc, instanceId: r.output.instanceId };
+      },
+    });
+  }
+
+  private async removeFromLibrary(id: string): Promise<void> {
+    const entry = this.libraryItems?.find((e) => e.id === id);
+    try {
+      await this.library.remove(id);
+      if (entry) this.status.flash(t('library.removed', { name: entry.name }));
+    } catch {
+      this.status.flash(t('library.notSaved'), true);
+    }
+    await this.loadLibrary();
+  }
+
   /** Explode the selected instances; their contents become the selection. */
   private explodeSelected(): void {
     const instanceIds = [...this.selection.instances];
@@ -995,6 +1078,7 @@ export class App {
       },
       { label: t('menu.explode'), enabled: this.selection.instances.size > 0, run: () => this.explodeSelected() },
       { label: t('menu.makeUnique'), enabled: this.canMakeUnique(), run: () => this.makeUniqueSelected() },
+      { label: t('menu.saveToLibrary'), enabled: this.librarySaveName() !== null, run: () => void this.saveToLibrary() },
       { label: t('menu.tag'), enabled: any, run: () => this.tagMenu(x, y) },
       { label: t('menu.paintBack'), enabled: faces.size > 0, run: () => this.paintBack() },
       null,

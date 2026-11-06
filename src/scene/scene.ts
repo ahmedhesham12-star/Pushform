@@ -12,6 +12,7 @@
 import { bounds, type Bounds, type Model } from '../kernel';
 import type { Annotation, AnnotationId } from './annotations';
 import type { Guide, GuideId } from './guides';
+import type { Hardware } from './hardware';
 import type { Material, MaterialId } from './materials';
 import type { MeshData } from './mesh';
 import type { Tag, TagId } from './tags';
@@ -48,6 +49,8 @@ export interface Definition {
   readonly grain?: GrainAxis;
   /** A reference mesh's triangles (kind 'mesh', whose model stays empty and which holds no instances). */
   readonly mesh?: MeshData;
+  /** Hardware details (components and meshes): it is bought, not cut. */
+  readonly hardware?: Hardware;
 }
 
 /** One of a definition's own axes, as SketchUp names them: red (x), green (our -z), blue (y, up). */
@@ -213,6 +216,14 @@ export function setGrain(s: Scene, id: DefinitionId, grain: GrainAxis | null): S
   return withDefinition(s, grain ? { ...rest, grain } : rest);
 }
 
+/** Set or clear (null) a definition's hardware details; the same scene when unchanged. */
+export function setHardware(s: Scene, id: DefinitionId, hardware: Hardware | null): Scene {
+  const d = s.definitions.get(id);
+  if (!d || JSON.stringify(d.hardware ?? null) === JSON.stringify(hardware)) return s;
+  const { hardware: _old, ...rest } = d;
+  return withDefinition(s, hardware ? { ...rest, hardware } : rest);
+}
+
 /** Drop definitions that no instance uses any more (never the root). */
 export function pruneDefinitions(s: Scene): Scene {
   const used = new Set<DefinitionId>([s.rootId]);
@@ -246,7 +257,7 @@ export function duplicateDefinition(s: Scene, id: DefinitionId, patch: Partial<P
     [iid, next] = newId(next, 'i');
     instances.set(iid, { ...i, id: iid, definitionId });
   }
-  const extra = { ...(d.grain ? { grain: d.grain } : {}), ...(d.mesh ? { mesh: d.mesh } : {}) };
+  const extra = { ...(d.grain ? { grain: d.grain } : {}), ...(d.mesh ? { mesh: d.mesh } : {}), ...(d.hardware ? { hardware: d.hardware } : {}) };
   return addDefinition(next, { kind: d.kind, name: d.name, model: d.model, instances, guides: d.guides, annotations: d.annotations, ...extra, ...patch });
 }
 

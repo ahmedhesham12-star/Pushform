@@ -462,6 +462,17 @@ input {
   margin-block-start: 4px;
   font-weight: 600;
 }
+.entity-info .entity-info-wide {
+  grid-column: 1 / -1;
+}
+.entity-info .entity-info-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.entity-info .entity-info-check input {
+  inline-size: auto;
+}
 .entity-info .entity-info-hint {
   grid-column: 1 / -1;
   color: var(--ink-2);

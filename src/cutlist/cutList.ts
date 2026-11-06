@@ -10,11 +10,12 @@
  * size and its length the largest, unless a grain direction picks the
  * length. Its material is the one most of its painted face area shows, edge
  * band aside: bands on its side faces band its edges (milestone 6). Identical
- * parts are one row with a quantity.
+ * parts are one row with a quantity. Hardware (milestone 6) is left out with
+ * everything inside it, and listed on its own by definition.
  */
 import { faceArea, listFaces, solidVolume, type Model } from '../kernel';
 import { t } from '../i18n';
-import { inheritedMaterial, isEdgeBand, placedInstances, tagShown, type GrainAxis, type InstanceId, type MaterialId, type Scene, type Stock } from '../scene';
+import { inheritedMaterial, isEdgeBand, placedInstances, tagShown, type DefinitionId, type GrainAxis, type Instance, type InstanceId, type MaterialId, type Scene, type Stock } from '../scene';
 import { layoutBoards, type BoardLayout } from './boardLayouts';
 import { bandsOf, cutSize, EDGES, partAxes, partEdges, type Bands } from './edges';
 import { DEFAULT_LAYOUT, layoutSheets, type LayoutSettings, type Piece, type SheetLayout } from './sheetLayouts';
@@ -78,8 +79,24 @@ export interface BandTotal {
   readonly cost: number | null;
 }
 
+/** Hardware of one definition: how many are placed, and their cost. */
+export interface HardwareRow {
+  readonly definitionId: DefinitionId;
+  readonly name: string;
+  readonly manufacturer: string;
+  readonly partNumber: string;
+  readonly link: string;
+  readonly quantity: number;
+  /** Per piece, and for all of them; null without a price. */
+  readonly price: number | null;
+  readonly cost: number | null;
+  readonly paths: readonly (readonly InstanceId[])[];
+}
+
 export interface CutList {
   readonly rows: readonly CutListRow[];
+  /** Hardware by name, each counted where it is placed (not inside other hardware). */
+  readonly hardware: readonly HardwareRow[];
   readonly totals: readonly MaterialTotal[];
   /** Per edge band, by name. */
   readonly bands: readonly BandTotal[];
@@ -117,7 +134,11 @@ const round = (mm: number) => Math.round(mm * 1000) / 1000;
 
 export function cutList(scene: Scene, options: CutListOptions): CutList {
   const hidden = (i: { readonly tag?: string }) => !tagShown(scene, i.tag);
-  const placed = placedInstances(scene, scene.rootId, undefined, [], options.includeHidden ? undefined : hidden);
+  // Hardware is placed, not cut: it and everything inside it are left out of the parts.
+  const isHardware = (i: Instance) => !!scene.definitions.get(i.definitionId)?.hardware;
+  const shown = placedInstances(scene, scene.rootId, undefined, [], options.includeHidden ? undefined : hidden);
+  const placed = placedInstances(scene, scene.rootId, undefined, [], (i) => (!options.includeHidden && hidden(i)) || isHardware(i));
+  const hardware = hardwareRows(scene, shown);
   const rows = new Map<string, Omit<CutListRow, 'quantity'> & { paths: (readonly InstanceId[])[] }>();
   const looseInAssemblies: { name: string; path: readonly InstanceId[] }[] = [];
   const nameOf = (p: (typeof placed)[number]) => {
@@ -183,9 +204,9 @@ export function cutList(scene: Scene, options: CutListOptions): CutList {
 
   let hiddenLeftOut = 0;
   if (!options.includeHidden) {
-    const all = placedInstances(scene);
-    const shown = new Set(placed.map((p) => p.path.join('/')));
-    hiddenLeftOut = all.filter((p) => !shown.has(p.path.join('/')) && isPart(scene, p.instance.definitionId)).length;
+    const all = placedInstances(scene, scene.rootId, undefined, [], isHardware);
+    const listed = new Set(placed.map((p) => p.path.join('/')));
+    hiddenLeftOut = all.filter((p) => !listed.has(p.path.join('/')) && isPart(scene, p.instance.definitionId)).length;
   }
   const layout: LayoutSettings = {
     kerf: options.kerf ?? DEFAULT_LAYOUT.kerf,
@@ -194,7 +215,28 @@ export function cutList(scene: Scene, options: CutListOptions): CutList {
     firstCut: options.firstCut ?? DEFAULT_LAYOUT.firstCut,
     minOffcut: options.minOffcut ?? DEFAULT_LAYOUT.minOffcut,
   };
-  return { rows: out, totals: totals(scene, out, options.waste, layout, options.cutSize ?? false), bands: bandTotals(scene, out, options.waste), hiddenLeftOut, looseInAssemblies };
+  return { rows: out, hardware, totals: totals(scene, out, options.waste, layout, options.cutSize ?? false), bands: bandTotals(scene, out, options.waste), hiddenLeftOut, looseInAssemblies };
+}
+
+/** Hardware by definition among the placed instances, not counting hardware inside hardware. */
+function hardwareRows(scene: Scene, placed: ReturnType<typeof placedInstances>): HardwareRow[] {
+  const by = new Map<DefinitionId, (readonly InstanceId[])[]>();
+  const outer = new Set<string>();
+  for (const p of placed) {
+    const def = scene.definitions.get(p.instance.definitionId)!;
+    if (!def.hardware) continue;
+    if (p.path.some((_, k) => outer.has(p.path.slice(0, k).join('/')))) continue;
+    outer.add(p.path.join('/'));
+    by.set(def.id, [...(by.get(def.id) ?? []), p.path]);
+  }
+  return [...by]
+    .map(([definitionId, paths]) => {
+      const def = scene.definitions.get(definitionId)!;
+      const h = def.hardware!;
+      const quantity = paths.length;
+      return { definitionId, name: def.name, manufacturer: h.manufacturer, partNumber: h.partNumber, link: h.link, quantity, price: h.price, cost: h.price === null ? null : h.price * quantity, paths };
+    })
+    .sort((a, b) => collator.compare(a.name, b.name));
 }
 
 /** Each edge band's banded edges, end to end: a length edge is the part's length, a width edge its width. */

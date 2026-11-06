@@ -57,6 +57,7 @@ import {
   transformBounds,
   triangleCount,
   saveMesh,
+  validLink,
   union,
   type InstanceId,
 } from './scene';
@@ -82,7 +83,7 @@ import {
   type ToolId,
 } from './tools';
 import { ContextMenu, type MenuEntry } from './ui/contextMenu';
-import { EntityInfo, type EdgesField, type EntityInfoData, type TagField } from './ui/entityInfo';
+import { EntityInfo, type EdgesField, type EntityInfoData, type HardwareField, type TagField } from './ui/entityInfo';
 import { CutListPanel } from './ui/cutListPanel';
 import { NameDialog } from './ui/nameDialog';
 import { ImportDialog, type ImportChoice } from './ui/importDialog';
@@ -129,6 +130,7 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
   explodeWouldSkew: 'error.explodeWouldSkew',
   meshNotEditable: 'error.meshNotEditable',
   invalidMesh: 'error.invalidMesh',
+  hardwareNeedsComponent: 'error.hardwareNeedsComponent',
   scaleWouldSkew: 'error.scaleWouldSkew',
   scaleTooSmall: 'error.scaleTooSmall',
   arcRadiusTooSmall: 'error.arcRadiusTooSmall',
@@ -308,6 +310,7 @@ export class App {
       renameInstance: (instanceId, name) => this.run(this.session.execute('core.renameInstance', { instanceId, name })),
       setTag: (tagId) => this.tagSelected(tagId),
       setGrain: (definitionId, grain) => this.run(this.session.execute('core.setGrain', { definitionId, grain })),
+      setHardware: (definitionId, details) => this.setHardware(definitionId, details),
       setEdgeBand: (edge, band) => this.setEdgeBand(edge, band),
       previewEdge: (faceIds) => this.previewEdge(faceIds),
     });
@@ -527,6 +530,7 @@ export class App {
           material: i.material ? (doc.scene.materials.get(i.material)?.name ?? t('materials.default')) : t('materials.default'),
           ...(showsWoodworking(doc.workspace) && !def.mesh ? { grain: def.grain ?? null } : {}),
           ...(def.mesh ? { triangles: formatNumber(triangleCount(def.mesh), 0) } : {}),
+          ...(showsWoodworking(doc.workspace) && def.kind !== 'group' ? { hardware: def.hardware ? { ...def.hardware, price: def.hardware.price === null ? '' : formatNumber(def.hardware.price, 2) } : null } : {}),
           ...(showsWoodworking(doc.workspace) ? this.edgesField([...this.context, id]) : {}),
         };
       }
@@ -867,6 +871,23 @@ export class App {
       this.status.flash(t('message.placed', { name: item.name }));
     });
     this.status.showHint();
+  }
+
+  /** Hardware details from Entity Info: the price typed as a plain number (a comma for the point is fine), the link an http or https address. */
+  private setHardware(definitionId: string, details: HardwareField | null): void {
+    if (!details) return this.run(this.session.execute('core.setHardware', { definitionId, hardware: null }));
+    const text = details.price.trim();
+    const price = text ? Number(text.replace(',', '.')) : null;
+    if (price !== null && (!Number.isFinite(price) || price < 0)) {
+      this.status.flash(t('error.typePrice'), true);
+      return this.refresh();
+    }
+    const link = details.link.trim();
+    if (!validLink(link)) {
+      this.status.flash(t('error.typeLink'), true);
+      return this.refresh();
+    }
+    this.run(this.session.execute('core.setHardware', { definitionId, hardware: { manufacturer: details.manufacturer, partNumber: details.partNumber, price, link } }));
   }
 
   /** Explode the selected instances; their contents become the selection. */

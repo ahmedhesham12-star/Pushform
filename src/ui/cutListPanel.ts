@@ -1,5 +1,5 @@
 import type { CutListSettings } from '../commands';
-import { boardFeet, cutList, warningText, type BandTotal, type CutList, type CutListRow, type MaterialTotal } from '../cutlist';
+import { boardFeet, cutList, warningText, type BandTotal, type CutList, type CutListRow, type HardwareRow, type MaterialTotal } from '../cutlist';
 import { localeTag, t, tCount, type MessageKey } from '../i18n';
 import type { InstanceId, MaterialId, Scene } from '../scene';
 import { formatArea, formatLength, formatNumber, isImperial, type UnitSettings } from '../units';
@@ -23,7 +23,7 @@ export interface CutListHost extends LabelsHost {
   flash(message: string, isError?: boolean): void;
 }
 
-type View = 'parts' | 'diagrams' | 'labels';
+type View = 'parts' | 'diagrams' | 'labels' | 'hardware';
 type Column = 'number' | 'name' | 'quantity' | 'length' | 'width' | 'thickness' | 'cutLength' | 'cutWidth' | 'material' | 'grain';
 interface ColumnSpec {
   readonly id: Column;
@@ -54,11 +54,13 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'bas
  * selects its parts. The settings
  * (waste, currency, hidden parts, cut sizes) are saved in the file. CSV and Print.
  * The Diagrams view (milestone 6) shows the cutting diagrams instead, and
- * the Labels view the part labels; Print prints the view shown.
+ * the Labels view the part labels, and the Hardware view the hardware with
+ * its cost; Print prints the view shown (the parts with the hardware).
  */
 export class CutListPanel {
   readonly element = el('section', 'cutlist');
   private readonly body = el('div', 'cutlist-body');
+  private readonly hardwareBody = el('div', 'cutlist-body');
   private readonly waste = el('input');
   private readonly currency = el('input');
   private readonly hidden = el('input');
@@ -94,6 +96,7 @@ export class CutListPanel {
       ['parts', t('cutlist.view.parts')],
       ['diagrams', t('cutlist.view.diagrams')],
       ['labels', t('cutlist.view.labels')],
+      ['hardware', t('cutlist.view.hardware')],
     ] as const) {
       const b = el('button', 'cutlist-tab', label);
       b.type = 'button';
@@ -145,7 +148,7 @@ export class CutListPanel {
     settings.append(c);
     this.diagrams = new DiagramsView(host);
     this.labels = new LabelsView(host);
-    this.element.append(head, settings, this.diagrams.controls, this.labels.controls, this.body, this.diagrams.body, this.labels.body);
+    this.element.append(head, settings, this.diagrams.controls, this.labels.controls, this.body, this.diagrams.body, this.labels.body, this.hardwareBody);
     this.setView('parts');
   }
 
@@ -156,6 +159,7 @@ export class CutListPanel {
     this.body.hidden = view !== 'parts';
     this.diagrams.controls.hidden = this.diagrams.body.hidden = view !== 'diagrams';
     this.labels.controls.hidden = this.labels.body.hidden = view !== 'labels';
+    this.hardwareBody.hidden = view !== 'hardware';
     this.sync();
   }
 
@@ -183,6 +187,7 @@ export class CutListPanel {
     const list = cutList(scene, settings);
     if (this.view === 'diagrams') this.diagrams.render(scene, list);
     else if (this.view === 'labels') this.labels.render(scene, list);
+    else if (this.view === 'hardware') this.hardwareBody.replaceChildren(...this.hardwareTable(list));
     else this.render(scene, list);
   }
 
@@ -309,12 +314,87 @@ export class CutListPanel {
         table.append(tbody);
       }
       this.body.append(table);
-      const cost = [...list.totals, ...list.bands].reduce<number | null>((s, x) => (x.cost === null ? s : (s ?? 0) + x.cost), null);
+      if (list.hardware.length) this.body.append(el('p', 'cutlist-note', this.hardwareText(list.hardware)));
+      const cost = [...list.totals, ...list.bands, ...list.hardware].reduce<number | null>((s, x) => (x.cost === null ? s : (s ?? 0) + x.cost), null);
       if (cost !== null) this.body.append(el('p', 'cutlist-grand', t('cutlist.totalCost', { cost: this.money(cost) })));
     }
     if (list.rows.some((r) => r.warnings.includes('severalBoards'))) this.body.append(el('p', 'cutlist-note cutlist-tip', t('cutlist.tip.severalBoards')));
     if (list.hiddenLeftOut) this.body.append(el('p', 'cutlist-note', tCount('cutlist.hiddenLeftOut', list.hiddenLeftOut, formatNumber(list.hiddenLeftOut))));
     for (const a of list.looseInAssemblies) this.body.append(el('p', 'cutlist-note cutlist-warning', t('cutlist.looseInAssembly', { name: a.name })));
+  }
+
+  /**
+   * The hardware: each definition with its manufacturer, part number, how
+   * many are placed, the price of one and the cost of all, and its link; a
+   * click on a row selects them. Then the count and cost of all of it.
+   */
+  private hardwareTable(list: CutList): HTMLElement[] {
+    if (!list.hardware.length) return [el('p', 'cutlist-empty', t('cutlist.noHardware'))];
+    const table = el('table');
+    const head = el('tr');
+    const columns: [MessageKey, boolean][] = [
+      ['cutlist.hardware', false],
+      ['hardware.manufacturer', false],
+      ['hardware.partNumber', false],
+      ['cutlist.quantity', true],
+      ['hardware.price', true],
+      ['hardware.cost', true],
+      ['hardware.link', false],
+    ];
+    for (const [label, numeric] of columns) {
+      const th = el('th', numeric ? 'numeric cutlist-plain' : 'cutlist-plain', t(label));
+      th.scope = 'col';
+      head.append(th);
+    }
+    const thead = el('thead');
+    thead.append(head);
+    const tbody = el('tbody');
+    for (const h of list.hardware) {
+      const tr = el('tr', 'cutlist-row');
+      tr.tabIndex = 0;
+      const money = (v: number | null) => (v === null ? '' : this.money(v));
+      for (const [text, numeric] of [
+        [h.name, false],
+        [h.manufacturer, false],
+        [h.partNumber, false],
+        [formatNumber(h.quantity), true],
+        [money(h.price), true],
+        [money(h.cost), true],
+      ] as const) {
+        tr.append(el('td', numeric ? 'numeric' : undefined, text));
+      }
+      const link = el('td');
+      if (h.link) {
+        // A link the user typed in; it opens in a new tab only when clicked.
+        const a = el('a', undefined, t('hardware.open'));
+        a.href = h.link;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.title = h.link;
+        a.addEventListener('click', (e) => e.stopPropagation());
+        link.append(a);
+      }
+      tr.append(link);
+      tr.addEventListener('click', () => this.host.select(h.paths));
+      tr.addEventListener('keydown', (e) => {
+        if (e.target === tr && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          this.host.select(h.paths);
+        }
+      });
+      tbody.append(tr);
+    }
+    table.append(thead, tbody);
+    return [table, el('p', 'cutlist-grand', this.hardwareText(list.hardware))];
+  }
+
+  /** "Hardware: 6 pieces · 75.00". */
+  private hardwareText(rows: readonly HardwareRow[]): string {
+    const pieces = rows.reduce((n, h) => n + h.quantity, 0);
+    const cost = rows.reduce<number | null>((s, h) => (h.cost === null ? s : (s ?? 0) + h.cost), null);
+    const parts = [t('cutlist.hardwareTotal', { pieces: tCount('cutlist.pieces', pieces, formatNumber(pieces)) })];
+    if (cost !== null) parts.push(this.money(cost));
+    return parts.join(t('cutlist.separator'));
   }
 
   /** Rows of one material in the chosen order (by name, then length, when values tie). */
@@ -382,7 +462,13 @@ export class CutListPanel {
   private print(): void {
     const root = el('div', `print-root print-${this.view}`);
     if (this.view === 'labels') root.append(this.labels.body.cloneNode(true));
-    else root.append(el('h1', undefined, t(this.view === 'parts' ? 'panel.cutList' : 'diagrams.title')), (this.view === 'parts' ? this.body : this.diagrams.body).cloneNode(true));
+    else if (this.view === 'diagrams') root.append(el('h1', undefined, t('diagrams.title')), this.diagrams.body.cloneNode(true));
+    else {
+      // The parts print with the hardware, a full bill of materials.
+      const list = cutList(this.host.scene(), this.host.settings());
+      if (this.view === 'parts') root.append(el('h1', undefined, t('panel.cutList')), this.body.cloneNode(true));
+      if (list.hardware.length || this.view === 'hardware') root.append(el('h1', undefined, t('cutlist.hardware')), ...this.hardwareTable(list));
+    }
     document.body.append(root);
     document.body.classList.add('printing');
     const done = () => {

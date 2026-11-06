@@ -22,6 +22,14 @@ export interface EdgesField {
 
 const TYPE_NAMES = { group: 'scene.group', component: 'scene.component', mesh: 'scene.mesh' } as const;
 
+export interface HardwareField {
+  readonly manufacturer: string;
+  readonly partNumber: string;
+  /** Formatted, or empty without a price. */
+  readonly price: string;
+  readonly link: string;
+}
+
 /** What Entity Info shows; the app builds it from the selection. Values are already formatted. */
 export type EntityInfoData =
   | { kind: 'none' }
@@ -49,6 +57,8 @@ export type EntityInfoData =
       edges?: EdgesField | 'assembly';
       /** A reference mesh's triangle count, formatted. */
       triangles?: string;
+      /** Its hardware details (components and meshes in the Woodworking workspace), price formatted; null when it is not hardware. */
+      hardware?: HardwareField | null;
     }
   | { kind: 'dimension'; length: string; tag: TagField }
   | { kind: 'text'; text: string; tag: TagField }
@@ -78,6 +88,8 @@ export interface EntityInfoHost {
   setEdgeBand(edge: Edge, band: string | null): void;
   /** Outline side faces of the selected part in the view, or stop (null). */
   previewEdge(faceIds: readonly string[] | null): void;
+  /** Mark a component or mesh as hardware with these details (typed text), or as not hardware (null). */
+  setHardware(definitionId: DefinitionId, details: HardwareField | null): void;
 }
 
 /**
@@ -120,6 +132,7 @@ export class EntityInfo {
         if (data.grain !== undefined) this.grainRow(data.definitionId, data.grain);
         if (data.edges) this.edgeRows(data.edges);
         if (data.triangles) this.row(t('info.triangles'), data.triangles);
+        if (data.hardware !== undefined) this.hardwareRows(data.definitionId, data.hardware);
         if (data.volume) this.row(t('info.volume'), data.volume);
         if (data.scale) this.row(t('info.scale'), data.scale);
         if (data.stretched) this.body.append(el('dd', 'entity-info-warning', t('info.stretched')));
@@ -146,6 +159,30 @@ export class EntityInfo {
   }
 
   /** The grain direction menu: the longest side, or along one of the part's own axes. */
+  /**
+   * Hardware (milestone 6): a check to mark it bought, not cut (left out of
+   * the cut list, listed under Hardware), and then its details.
+   */
+  private hardwareRows(definitionId: DefinitionId, field: HardwareField | null): void {
+    this.body.append(el('dt', 'entity-info-section', t('info.hardware')));
+    const box = el('input');
+    box.type = 'checkbox';
+    box.checked = field !== null;
+    const none: HardwareField = { manufacturer: '', partNumber: '', price: '', link: '' };
+    box.addEventListener('change', () => this.host.setHardware(definitionId, box.checked ? none : null));
+    const label = el('label', 'entity-info-check');
+    label.append(box, t('info.hardwareOn'));
+    const dd = el('dd', 'entity-info-wide');
+    dd.append(label);
+    this.body.append(dd);
+    if (!field) return;
+    const set = (patch: Partial<HardwareField>) => this.host.setHardware(definitionId, { ...field, ...patch });
+    this.input(t('hardware.manufacturer'), field.manufacturer, (v) => set({ manufacturer: v }), true);
+    this.input(t('hardware.partNumber'), field.partNumber, (v) => set({ partNumber: v }), true);
+    this.input(t('hardware.price'), field.price, (v) => set({ price: v }), true);
+    this.input(t('hardware.link'), field.link, (v) => set({ link: v }), true);
+  }
+
   private grainRow(definitionId: DefinitionId, grain: GrainAxis | null): void {
     const id = `entity-info-${this.body.children.length}`;
     const dt = el('dt');

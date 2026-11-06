@@ -3,7 +3,7 @@
  * the scene, and CSV; the sheet and board layouts for the cutting diagrams
  * (milestone 6), edge banding and part labels. Pure: the kernel, the scene, units and i18n only.
  */
-export { boardFeet, cutList, type BandTotal, type CutList, type CutListOptions, type CutListRow, type MaterialTotal, type PartWarning } from './cutList';
+export { boardFeet, cutList, type BandTotal, type CutList, type CutListOptions, type CutListRow, type HardwareRow, type MaterialTotal, type PartWarning } from './cutList';
 export { bandsOf, cutSize, EDGES, partAxes, partEdges, type Bands, type Edge, type PartAxes, type PartEdge } from './edges';
 export { toCsv, warningText, WARNING_KEYS } from './csv';
 export {

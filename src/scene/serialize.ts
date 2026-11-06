@@ -1,6 +1,7 @@
 import { deserialize, listFaces, serialize, type Model, type SerializedTopology } from '../kernel';
 import { MATERIAL_COLOR, validStock, type Material, type Stock } from './materials';
 import { loadMesh, saveMesh, type SerializedMesh } from './mesh';
+import { validHardware, type Hardware } from './hardware';
 import type { Anchor, AnchorRef, Annotation } from './annotations';
 import { guideLine, guidePoint, type Guide } from './guides';
 import { contains, createScene, type Definition, type DefinitionKind, type GrainAxis, type Instance, type Scene } from './scene';
@@ -33,7 +34,7 @@ export type SerializedAnnotation = (
  * instance, guide and annotation that has one; and materials, with the
  * material of each painted instance (faces carry theirs in the model).
  * Version 6 (milestone 6) adds mesh definitions, which hold a reference
- * mesh and an empty model.
+ * mesh and an empty model, and hardware details on components and meshes.
  */
 export interface SerializedScene {
   root: string;
@@ -51,6 +52,7 @@ export interface SerializedScene {
       annotations?: Record<string, SerializedAnnotation>;
       grain?: GrainAxis;
       mesh?: SerializedMesh;
+      hardware?: Hardware;
     }
   >;
 }
@@ -68,7 +70,7 @@ export function serializeScene(s: Scene): SerializedScene {
         ...(i.material ? { material: i.material } : {}),
       };
     }
-    definitions[id] = { kind: d.kind, name: d.name, model: serialize(d.model), instances, ...(d.grain ? { grain: d.grain } : {}), ...(d.mesh ? { mesh: saveMesh(d.mesh) } : {}) };
+    definitions[id] = { kind: d.kind, name: d.name, model: serialize(d.model), instances, ...(d.grain ? { grain: d.grain } : {}), ...(d.mesh ? { mesh: saveMesh(d.mesh) } : {}), ...(d.hardware ? { hardware: { ...d.hardware } } : {}) };
     if (d.guides.size) {
       const guides: Record<string, SerializedGuide> = {};
       for (const [gid, g] of d.guides) {
@@ -254,7 +256,20 @@ export function deserializeScene(data: unknown): Scene | null {
     // A mesh definition holds its mesh and nothing else; no other kind holds one.
     const mesh = raw.kind === 'mesh' ? loadMesh(raw.mesh) : null;
     if (raw.kind === 'mesh' ? !mesh || listFaces(model).length || instances.size : raw.mesh !== undefined) return null;
-    definitions.set(id, { id, kind: raw.kind as DefinitionKind, name: raw.name, model, instances, guides, annotations, ...(raw.grain ? { grain: raw.grain as GrainAxis } : {}), ...(mesh ? { mesh } : {}) });
+    const hardware = raw.hardware === undefined ? null : validHardware(raw.hardware);
+    if (raw.hardware !== undefined && (!hardware || (raw.kind !== 'component' && raw.kind !== 'mesh'))) return null;
+    definitions.set(id, {
+      id,
+      kind: raw.kind as DefinitionKind,
+      name: raw.name,
+      model,
+      instances,
+      guides,
+      annotations,
+      ...(raw.grain ? { grain: raw.grain as GrainAxis } : {}),
+      ...(mesh ? { mesh } : {}),
+      ...(hardware ? { hardware } : {}),
+    });
   }
   const root = definitions.get(data.root);
   if (!root || root.kind !== 'root') return null;

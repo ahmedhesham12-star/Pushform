@@ -114,7 +114,7 @@ describe('Entity Info and the tool bar follow the workspace', () => {
   });
 
   test('the grain menu shows only when the data has a grain (Woodworking)', () => {
-    const info = new EntityInfo({ renameDefinition: () => {}, renameInstance: () => {}, setTag: () => {}, setGrain: () => {}, setEdgeBand: () => {}, previewEdge: () => {} });
+    const info = new EntityInfo({ renameDefinition: () => {}, renameInstance: () => {}, setTag: () => {}, setGrain: () => {}, setEdgeBand: () => {}, previewEdge: () => {}, setHardware: () => {} });
     const labels = () => [...info.element.querySelectorAll('dt, label')].map((x) => x.textContent);
     info.show(instance(null));
     expect(labels()).toContain('Grain');

@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { cutList, partAxes, partEdges, partLabels, toCsv, type CutList, type CutListOptions } from '../src/cutlist';
 import { listFaces } from '../src/kernel';
-import { pathTransform } from '../src/scene';
+import { buildMesh, pathTransform, saveMesh } from '../src/scene';
 import { buildCabinet, ok } from './helpers/cabinet';
 
 /*
@@ -10,7 +10,9 @@ import { buildCabinet, ok } from './helpers/cabinet';
  * sides and bottom and on all four edges of the fronts. Expected (approved
  * with the plan): 8.336 m of band, 9.586 m with 15% waste, cost 4.79; the
  * diagrams with melamine on 1 sheet, birch ply 2, MDF 1 and oak 1 board; 23
- * labels. The hardware figures come with checkpoint (d).
+ * labels. Checkpoint (d) adds two 450 x 45 x 12.7 mm drawer slides (12.50
+ * each), imported as a reference mesh inside the Drawer component, which is
+ * placed three times: 6 slides for 75.00, and the parts as before.
  */
 
 function bandedCabinet() {
@@ -93,5 +95,30 @@ describe('milestone 6 acceptance: edge banding and labels on the reference cabin
     const csv = toCsv(list, c.s.doc.scene, c.s.doc.units).split('\r\n');
     const front = csv.find((l) => l.includes(',Front,'))!;
     expect(front.split('White ABS edge band')).toHaveLength(5);
+  });
+});
+
+describe('milestone 6 acceptance: the drawer slides as hardware', () => {
+  /** A 450 x 45 x 12.7 mm box as a mesh, as an imported slide would be. */
+  const slideMesh = () => {
+    const c = (i: number) => [i & 1 ? 450 : 0, i & 2 ? 45 : 0, i & 4 ? 12.7 : 0];
+    const quads = [[0, 4, 6, 2], [1, 3, 7, 5], [0, 1, 5, 4], [2, 6, 7, 3], [0, 2, 3, 1], [4, 5, 7, 6]];
+    return buildMesh([{ positions: quads.flatMap(([a, b, e, f]) => [...c(a!), ...c(b!), ...c(e!), ...c(a!), ...c(e!), ...c(f!)]), color: '#a7abb0' }])!;
+  };
+  const c = bandedCabinet();
+  const before = cutList(c.s.doc.scene, OPTIONS);
+  const slide = ok(c.s.execute('core.insertMesh', { definitionId: c.drawer.definitionId, name: 'Drawer slide', mesh: saveMesh(slideMesh()), position: [0, 20, 10] }));
+  ok(c.s.execute('core.copyInstances', { instanceIds: [slide.instanceId], translation: [0, 0, 400] }));
+  ok(c.s.execute('core.setHardware', { definitionId: slide.definitionId, hardware: { manufacturer: '', partNumber: '', price: 12.5, link: '' } }));
+  const list = cutList(c.s.doc.scene, OPTIONS);
+
+  test('6 slides for 75.00', () => {
+    expect(list.hardware.map((h) => [h.name, h.quantity, h.cost])).toEqual([['Drawer slide', 6, 75]]);
+  });
+
+  test('the parts, totals and labels are as before', () => {
+    expect(list.rows).toEqual(before.rows);
+    expect(list.bands).toEqual(before.bands);
+    expect(partLabels(c.s.doc.scene, list, {})).toHaveLength(23);
   });
 });

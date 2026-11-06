@@ -112,7 +112,7 @@ describe('the Cut List panel', () => {
 });
 
 describe('Entity Info', () => {
-  const host = (): EntityInfoHost => ({ renameDefinition: vi.fn(), renameInstance: vi.fn(), setTag: vi.fn(), setGrain: vi.fn(), setEdgeBand: vi.fn(), previewEdge: vi.fn() });
+  const host = (): EntityInfoHost => ({ renameDefinition: vi.fn(), renameInstance: vi.fn(), setTag: vi.fn(), setGrain: vi.fn(), setEdgeBand: vi.fn(), previewEdge: vi.fn(), setHardware: vi.fn() });
   const data = (edges: EdgesField): EntityInfoData => ({
     kind: 'instance',
     type: 'component',
@@ -172,7 +172,7 @@ describe('Entity Info', () => {
 });
 
 describe('Entity Info, more', () => {
-  const host = (): EntityInfoHost => ({ renameDefinition: vi.fn(), renameInstance: vi.fn(), setTag: vi.fn(), setGrain: vi.fn(), setEdgeBand: vi.fn(), previewEdge: vi.fn() });
+  const host = (): EntityInfoHost => ({ renameDefinition: vi.fn(), renameInstance: vi.fn(), setTag: vi.fn(), setGrain: vi.fn(), setEdgeBand: vi.fn(), previewEdge: vi.fn(), setHardware: vi.fn() });
   const instance = (edges: Extract<EntityInfoData, { kind: 'instance' }>['edges']): EntityInfoData => ({
     kind: 'instance',
     type: 'component',

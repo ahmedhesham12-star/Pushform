@@ -32,6 +32,15 @@ export const MAX_MESH_TRIANGLES = 1_000_000;
 const WELD = 1e-3;
 /** Edges where the faces turn more than this many degrees show and snap (approved decision). */
 export const FEATURE_ANGLE = 30;
+/**
+ * A mesh with more feature edges than this (a scan, a noisy surface) is too
+ * detailed to snap to its edges: every pointer move looks at every snap
+ * point, and half a million edges took a second. Points on its faces still snap.
+ */
+export const SNAP_EDGE_LIMIT = 20_000;
+
+/** Whether a mesh's edges are snapped to (see SNAP_EDGE_LIMIT). */
+export const snapsToEdges = (m: MeshData): boolean => m.edges.length / 2 <= SNAP_EDGE_LIMIT;
 
 /**
  * A mesh from triangle soups (nine coordinates per triangle, in mm), one per
@@ -40,46 +49,66 @@ export const FEATURE_ANGLE = 30;
  * when none is left.
  */
 export function buildMesh(soups: readonly { positions: ArrayLike<number>; color: string }[]): MeshData | null {
-  const index = new Map<string, number>();
-  const positions: number[] = [];
-  const triangles: number[] = [];
-  const parts: MeshPart[] = [];
+  const corners = soups.reduce((n, soup) => n + Math.floor(soup.positions.length / 9) * 3, 0);
+  // Welding looks corners up in a hash table of their coordinates in WELD steps: a million triangles weld in well under a second.
+  const size = tableSize(corners);
+  const slots = new Int32Array(size).fill(-1);
+  const steps = new Float64Array(corners * 3);
+  const positions = new Float64Array(corners * 3);
+  let vertices = 0;
   const vertex = (x: number, y: number, z: number): number => {
-    const key = `${Math.round(x / WELD)},${Math.round(y / WELD)},${Math.round(z / WELD)}`;
-    let i = index.get(key);
-    if (i === undefined) {
-      index.set(key, (i = positions.length / 3));
-      positions.push(x, y, z);
+    const qx = Math.round(x / WELD);
+    const qy = Math.round(y / WELD);
+    const qz = Math.round(z / WELD);
+    for (let h = hash3(qx, qy, qz) & (size - 1); ; h = (h + 1) & (size - 1)) {
+      const v = slots[h]!;
+      if (v === -1) {
+        slots[h] = vertices;
+        steps.set([qx, qy, qz], vertices * 3);
+        positions.set([x, y, z], vertices * 3);
+        return vertices++;
+      }
+      if (steps[3 * v] === qx && steps[3 * v + 1] === qy && steps[3 * v + 2] === qz) return v;
     }
-    return i;
   };
+  const triangles = new Uint32Array(corners);
+  let used = 0;
+  const parts: MeshPart[] = [];
   for (const soup of soups) {
     const p = soup.positions;
-    const before = triangles.length;
+    const before = used;
     for (let t = 0; t + 8 < p.length; t += 9) {
       const a = vertex(p[t]!, p[t + 1]!, p[t + 2]!);
       const b = vertex(p[t + 3]!, p[t + 4]!, p[t + 5]!);
       const c = vertex(p[t + 6]!, p[t + 7]!, p[t + 8]!);
       if (a === b || b === c || a === c || !normalOf(positions, a, b, c)) continue;
-      triangles.push(a, b, c);
+      triangles.set([a, b, c], used);
+      used += 3;
     }
-    const count = (triangles.length - before) / 3;
+    const count = (used - before) / 3;
     if (count) parts.push({ triangles: count, color: soup.color.toLowerCase() });
   }
-  if (!triangles.length) return null;
+  if (!used) return null;
   // Corners of dropped triangles only are left out, renumbering the rest.
-  const renumber = new Int32Array(positions.length / 3).fill(-1);
-  const kept: number[] = [];
-  for (let i = 0; i < triangles.length; i++) {
-    const v = triangles[i]!;
+  const renumber = new Int32Array(vertices).fill(-1);
+  const kept = new Float32Array(vertices * 3);
+  let n = 0;
+  const out = triangles.subarray(0, used);
+  for (let i = 0; i < used; i++) {
+    const v = out[i]!;
     if (renumber[v] === -1) {
-      renumber[v] = kept.length / 3;
-      kept.push(positions[3 * v]!, positions[3 * v + 1]!, positions[3 * v + 2]!);
+      renumber[v] = n;
+      kept.set([positions[3 * v]!, positions[3 * v + 1]!, positions[3 * v + 2]!], 3 * n++);
     }
-    triangles[i] = renumber[v]!;
+    out[i] = renumber[v]!;
   }
-  return meshFrom(new Float32Array(kept), new Uint32Array(triangles), parts);
+  return meshFrom(kept.slice(0, 3 * n), out.slice(), parts);
 }
+
+/** A power of two at least twice `entries`, for an open-addressing table. */
+const tableSize = (entries: number) => 1 << Math.max(4, Math.ceil(Math.log2(entries * 2 + 1)));
+/** Hashes of integer pairs and triples (their low 32 bits are enough to spread them). */
+const hash3 = (a: number, b: number, c: number) => Math.imul(a | 0, 73856093) ^ Math.imul(b | 0, 19349663) ^ Math.imul(c | 0, 83492791);
 
 /** A mesh with its feature edges and bounds worked out. */
 function meshFrom(positions: Float32Array, triangles: Uint32Array, parts: readonly MeshPart[]): MeshData {
@@ -97,30 +126,40 @@ function normalOf(p: ArrayLike<number>, a: number, b: number, c: number): Point3
 
 /** Edges used by one triangle only, by more than two, or between two that turn more than FEATURE_ANGLE. */
 export function featureEdges(positions: Float32Array, triangles: Uint32Array): Uint32Array {
-  const n = positions.length / 3;
+  const count = triangles.length / 3;
   const cos = Math.cos((FEATURE_ANGLE * Math.PI) / 180);
   const normals: (Point3 | null)[] = [];
   for (let t = 0; t < triangles.length; t += 3) normals.push(normalOf(positions, triangles[t]!, triangles[t + 1]!, triangles[t + 2]!));
-  // Per edge: the first triangle on it, how many use it, and whether two of them turn sharply.
-  const seen = new Map<number, { first: number; count: number; sharp: boolean }>();
-  for (let t = 0; t < triangles.length / 3; t++) {
+  // Per edge, in a hash table by its two vertices: the first triangle on it, how many use it, and whether two turn sharply.
+  const size = tableSize(triangles.length);
+  const low = new Int32Array(size).fill(-1);
+  const high = new Int32Array(size);
+  const first = new Int32Array(size);
+  const uses = new Uint8Array(size);
+  const sharp = new Uint8Array(size);
+  for (let t = 0; t < count; t++) {
     for (let k = 0; k < 3; k++) {
-      const a = triangles[3 * t + k]!;
-      const b = triangles[3 * t + ((k + 1) % 3)]!;
-      const key = Math.min(a, b) * n + Math.max(a, b);
-      const e = seen.get(key);
-      if (!e) {
-        seen.set(key, { first: t, count: 1, sharp: false });
+      const u = triangles[3 * t + k]!;
+      const v = triangles[3 * t + ((k + 1) % 3)]!;
+      const a = Math.min(u, v);
+      const b = Math.max(u, v);
+      let h = hash3(a, b, 0) & (size - 1);
+      while (low[h] !== -1 && (low[h] !== a || high[h] !== b)) h = (h + 1) & (size - 1);
+      if (low[h] === -1) {
+        low[h] = a;
+        high[h] = b;
+        first[h] = t;
+        uses[h] = 1;
         continue;
       }
-      e.count++;
-      const p = normals[e.first];
+      uses[h] = Math.min(uses[h]! + 1, 3);
+      const p = normals[first[h]!];
       const q = normals[t];
-      if (!p || !q || p[0] * q[0] + p[1] * q[1] + p[2] * q[2] < cos) e.sharp = true;
+      if (!p || !q || p[0] * q[0] + p[1] * q[1] + p[2] * q[2] < cos) sharp[h] = 1;
     }
   }
   const out: number[] = [];
-  for (const [key, e] of seen) if (e.count !== 2 || e.sharp) out.push(Math.floor(key / n), key % n);
+  for (let h = 0; h < size; h++) if (low[h] !== -1 && (uses[h] !== 2 || sharp[h])) out.push(low[h]!, high[h]!);
   return new Uint32Array(out);
 }
 
@@ -171,8 +210,16 @@ export interface SerializedMesh {
 
 const bytesOf = (a: Float32Array | Uint32Array) => new Uint8Array(a.buffer, a.byteOffset, a.byteLength);
 
+/**
+ * Each mesh's saved form, made once: every autosave writes the whole file,
+ * and encoding a large mesh each time would hold up every edit.
+ */
+const saved = new WeakMap<MeshData, SerializedMesh>();
+
 export function saveMesh(m: MeshData): SerializedMesh {
-  return { positions: toBase64(bytesOf(m.positions)), triangles: toBase64(bytesOf(m.triangles)), parts: m.parts.map((p) => ({ ...p })), edges: toBase64(bytesOf(m.edges)) };
+  let s = saved.get(m);
+  if (!s) saved.set(m, (s = { positions: toBase64(bytesOf(m.positions)), triangles: toBase64(bytesOf(m.triangles)), parts: m.parts.map((p) => ({ ...p })), edges: toBase64(bytesOf(m.edges)) }));
+  return { ...s, parts: s.parts.map((p) => ({ ...p })) };
 }
 
 /** A mesh from a file, or null when it is not a valid one. */
@@ -204,7 +251,9 @@ export function loadMesh(v: unknown): MeshData | null {
     total += count as number;
   }
   if (total !== triangles.length / 3) return null;
-  return { positions, triangles, parts, edges, bounds: meshBounds(positions) };
+  const mesh: MeshData = { positions, triangles, parts, edges, bounds: meshBounds(positions) };
+  saved.set(mesh, { positions: x.positions, triangles: x.triangles, parts: parts.map((p) => ({ ...p })), edges: x.edges });
+  return mesh;
 }
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';

@@ -11,6 +11,8 @@ import {
   MESH_EDGE,
   saveMesh,
   shownBounds,
+  SNAP_EDGE_LIMIT,
+  snapsToEdges,
   toBase64,
   triangleCount,
   worldEdges,
@@ -112,6 +114,20 @@ describe('reference meshes in the scene', () => {
     const edges = worldEdges(s.doc.scene).filter((e) => e.path[0] === instanceId);
     expect(edges).toHaveLength(12);
     expect(edges.every((e) => e.edgeId.startsWith(MESH_EDGE) && e.a[0] >= 100)).toBe(true);
+  });
+
+  test('a mesh with more feature edges than the limit draws them but is not snapped to by them', () => {
+    // 7,000 loose triangles: 21,000 boundary edges.
+    const soup: number[] = [];
+    for (let t = 0; t < 7000; t++) soup.push(t * 3, 0, 0, t * 3 + 1, 0, 0, t * 3, 1, 0);
+    const mesh = buildMesh([{ positions: soup, color: '#808080' }])!;
+    expect(mesh.edges.length / 2).toBeGreaterThan(SNAP_EDGE_LIMIT);
+    expect(snapsToEdges(mesh)).toBe(false);
+    const s = createSession();
+    placed(s, mesh);
+    expect(worldSnapPoints(s.doc.scene)).toHaveLength(0);
+    expect(worldEdges(s.doc.scene)).toHaveLength(0);
+    expect(snapsToEdges(box())).toBe(true);
   });
 
   test('cannot be edited or exploded; copies share the mesh', () => {

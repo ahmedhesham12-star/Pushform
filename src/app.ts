@@ -57,6 +57,7 @@ import {
   tagShown,
   transformBounds,
   triangleCount,
+  snapsToEdges,
   saveMesh,
   validLink,
   union,
@@ -547,7 +548,7 @@ export class App {
           tag: this.tagField([i]),
           material: i.material ? (doc.scene.materials.get(i.material)?.name ?? t('materials.default')) : t('materials.default'),
           ...(showsWoodworking(doc.workspace) && !def.mesh ? { grain: def.grain ?? null } : {}),
-          ...(def.mesh ? { triangles: formatNumber(triangleCount(def.mesh), 0) } : {}),
+          ...(def.mesh ? { triangles: formatNumber(triangleCount(def.mesh), 0), noEdgeSnaps: !snapsToEdges(def.mesh) } : {}),
           ...(showsWoodworking(doc.workspace) && def.kind !== 'group' ? { hardware: def.hardware ? { ...def.hardware, price: def.hardware.price === null ? '' : formatNumber(def.hardware.price, 2) } : null } : {}),
           ...(showsWoodworking(doc.workspace) ? this.edgesField([...this.context, id]) : {}),
         };

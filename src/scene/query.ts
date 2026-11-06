@@ -8,7 +8,7 @@
 import { listEdges, snapPoints, type Bounds, type Model, type Point3, type SnapKind } from '../kernel';
 import { dimensionLength, transformAnnotation, type Annotation, type AnnotationId } from './annotations';
 import { transformGuide, type Guide, type GuideId } from './guides';
-import { meshSnapPoints, meshPoint, type MeshData } from './mesh';
+import { meshSnapPoints, meshPoint, snapsToEdges, type MeshData } from './mesh';
 import { ownBounds, placedInstances, rootDefinition, transformBounds, union, type Definition, type InstanceId, type Scene } from './scene';
 import { tagShown } from './tags';
 import { AFFINE_IDENTITY, applyPoint, type Affine } from './transform';
@@ -75,7 +75,7 @@ export function worldSnapPoints(s: Scene, context: readonly InstanceId[] = []): 
   for (const p of placements(s, context)) {
     const mesh = p.definition.mesh;
     if (mesh) {
-      if (!meshes.has(mesh)) meshes.set(mesh, meshSnapPoints(mesh));
+      if (!meshes.has(mesh)) meshes.set(mesh, snapsToEdges(mesh) ? meshSnapPoints(mesh) : []);
       for (const sp of meshes.get(mesh)!) out.push({ point: applyPoint(p.world, sp.point), kind: sp.kind, path: p.path });
       continue;
     }
@@ -93,7 +93,7 @@ export function worldEdges(s: Scene, context: readonly InstanceId[] = []): World
   for (const p of placements(s, context)) {
     const mesh = p.definition.mesh;
     if (mesh) {
-      for (let e = 0; e < mesh.edges.length; e += 2) {
+      for (let e = 0; snapsToEdges(mesh) && e < mesh.edges.length; e += 2) {
         out.push({ edgeId: MESH_EDGE + e / 2, a: applyPoint(p.world, meshPoint(mesh, mesh.edges[e]!)), b: applyPoint(p.world, meshPoint(mesh, mesh.edges[e + 1]!)), path: p.path });
       }
       continue;

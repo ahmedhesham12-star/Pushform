@@ -509,6 +509,7 @@ export const en = {
   'info.none': 'Nothing selected.',
   'info.type': 'Type',
   'info.triangles': 'Triangles',
+  'info.noEdgeSnaps': 'Too detailed to snap to its edges; points on its faces still snap.',
   'info.hardware': 'Hardware',
   'info.hardwareOn': 'Bought, not cut: list it under Hardware',
   'info.definition': 'Definition',

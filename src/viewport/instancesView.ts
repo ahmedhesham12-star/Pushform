@@ -19,6 +19,7 @@ import {
   type Scene,
 } from '../scene';
 import { FACE_COLOR, FADED_OPACITY, faceMaterial, faceUVs, MaterialLibrary } from './materials';
+import { MeshBvh } from './meshBvh';
 import { edgeColor, type EdgeHighlight } from './modelView';
 import { themedColor } from './palette';
 
@@ -101,6 +102,8 @@ interface ReferenceGeometry {
   readonly geometry: BufferGeometry;
   readonly edges: BufferGeometry;
   readonly colors: readonly number[];
+  /** For picking, made on the first pick. */
+  bvh: MeshBvh | null;
 }
 
 function buildReference(mesh: MeshData): ReferenceGeometry {
@@ -131,7 +134,7 @@ function buildReference(mesh: MeshData): ReferenceGeometry {
   for (const v of mesh.edges) ep.push(p[3 * v]!, p[3 * v + 1]!, p[3 * v + 2]!);
   const edges = new BufferGeometry();
   edges.setAttribute('position', new Float32BufferAttribute(ep, 3));
-  return { geometry, edges, colors: mesh.parts.map((x) => parseInt(x.color.slice(1), 16)) };
+  return { geometry, edges, colors: mesh.parts.map((x) => parseInt(x.color.slice(1), 16)), bvh: null };
 }
 
 /** What a picked mesh belongs to. */
@@ -240,7 +243,11 @@ export class InstancesView {
       o.userData = { placement: p, relation, reference: true };
       this.group.add(o);
     }
-    this.pickables.push(front, back);
+    // One mesh picks both sides, through the tree.
+    const positions = g.geometry.getAttribute('position').array as Float32Array;
+    const geometry = g;
+    front.raycast = (raycaster, out) => (geometry.bvh ??= new MeshBvh(positions)).raycast(front, raycaster, out);
+    this.pickables.push(front);
   }
 
   /** The placement a raycast hit belongs to, or null when the hit is not on one of these meshes. */

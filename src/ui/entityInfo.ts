@@ -57,6 +57,8 @@ export type EntityInfoData =
       edges?: EdgesField | 'assembly';
       /** A reference mesh's triangle count, formatted. */
       triangles?: string;
+      /** A reference mesh too detailed to snap to its edges. */
+      noEdgeSnaps?: boolean;
       /** Its hardware details (components and meshes in the Woodworking workspace), price formatted; null when it is not hardware. */
       hardware?: HardwareField | null;
     }
@@ -132,6 +134,7 @@ export class EntityInfo {
         if (data.grain !== undefined) this.grainRow(data.definitionId, data.grain);
         if (data.edges) this.edgeRows(data.edges);
         if (data.triangles) this.row(t('info.triangles'), data.triangles);
+        if (data.noEdgeSnaps) this.body.append(el('dd', 'entity-info-hint', t('info.noEdgeSnaps')));
         if (data.hardware !== undefined) this.hardwareRows(data.definitionId, data.hardware);
         if (data.volume) this.row(t('info.volume'), data.volume);
         if (data.scale) this.row(t('info.scale'), data.scale);

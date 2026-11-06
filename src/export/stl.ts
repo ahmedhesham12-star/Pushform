@@ -1,5 +1,5 @@
 import { faceMeshes, type Model, type Point3 } from '../kernel';
-import { applyPoint, determinant, placements, type Scene } from '../scene';
+import { applyPoint, determinant, meshPoint, placements, type Scene } from '../scene';
 
 /**
  * Pushform is Y-up; STL readers (slicers, CAD) take Z as up. A quarter turn
@@ -12,10 +12,17 @@ export function worldTriangles(scene: Scene): Point3[][] {
   const local = new Map<Model, ReturnType<typeof faceMeshes>>();
   const out: Point3[][] = [];
   for (const p of placements(scene)) {
+    // A mirrored placement turns each triangle's winding around: take its corners the other way.
+    const mirrored = determinant(p.world) < 0;
+    const mesh = p.definition.mesh;
+    if (mesh) {
+      const t = mesh.triangles;
+      for (let i = 0; i < t.length; i += 3) out.push((mirrored ? [0, 2, 1] : [0, 1, 2]).map((k) => applyPoint(p.world, meshPoint(mesh, t[i + k]!))));
+      continue;
+    }
     const m = p.definition.model;
     if (!local.has(m)) local.set(m, faceMeshes(m));
-    // A mirrored placement turns each triangle's winding around: take its corners the other way.
-    const order = determinant(p.world) < 0 ? [0, 6, 3] : [0, 3, 6];
+    const order = mirrored ? [0, 6, 3] : [0, 3, 6];
     for (const mesh of local.get(m)!) {
       const q = mesh.positions;
       for (let i = 0; i < q.length; i += 9) {

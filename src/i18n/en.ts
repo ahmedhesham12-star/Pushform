@@ -199,6 +199,8 @@ export const en = {
   'error.scaleWouldSkew': 'A group or component would be skewed. Scale it along its own axes, or the same in every direction.',
   'error.scaleTooSmall': 'That scale would shrink an edge to nothing.',
   'error.typeScale': 'Type a factor, like 2, 0.5 or -1 to mirror, or a length with units, like 600mm. Give one value for each direction scaled, separated by commas.',
+  'error.invalidMesh': 'This file holds no triangles that can be shown.',
+  'error.meshNotEditable': 'A reference mesh cannot be edited or exploded. Draw over it, or replace it with a modeled part.',
   'error.explodeWouldSkew': 'This group is stretched and holds a turned group or component, which would be skewed. Make it uniform or explode the inner one first.',
   'error.textNoTyping': 'Click where the text goes first; then write it in place.',
   'error.typeDistanceOrArray': 'Type a distance, x5 for 5 copies, or /4 to divide the distance into 4.',
@@ -242,6 +244,7 @@ export const en = {
   'command.makeGroup': 'Make group',
   'command.makeComponent': 'Make component',
   'command.explode': 'Explode',
+  'command.insertMesh': 'Import',
   'command.makeUnique': 'Make unique',
   'command.rename': 'Rename',
   'command.copy': 'Copy',
@@ -452,6 +455,7 @@ export const en = {
 
   'scene.component': 'Component',
   'scene.group': 'Group',
+  'scene.mesh': 'Reference mesh',
 
   'panel.entityInfo': 'Entity Info',
   'panel.outliner': 'Outliner',
@@ -460,6 +464,7 @@ export const en = {
   'panel.cutList': 'Cut list',
   'info.none': 'Nothing selected.',
   'info.type': 'Type',
+  'info.triangles': 'Triangles',
   'info.definition': 'Definition',
   'info.instance': 'Instance',
   'info.copies': 'Copies',

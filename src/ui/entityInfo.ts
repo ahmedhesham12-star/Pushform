@@ -20,12 +20,14 @@ export interface EdgesField {
   readonly options: readonly { value: string; name: string }[];
 }
 
+const TYPE_NAMES = { group: 'scene.group', component: 'scene.component', mesh: 'scene.mesh' } as const;
+
 /** What Entity Info shows; the app builds it from the selection. Values are already formatted. */
 export type EntityInfoData =
   | { kind: 'none' }
   | {
       kind: 'instance';
-      type: 'group' | 'component';
+      type: 'group' | 'component' | 'mesh';
       definitionId: DefinitionId;
       instanceId: InstanceId;
       definitionName: string;
@@ -45,6 +47,8 @@ export type EntityInfoData =
       grain?: GrainAxis | null;
       /** Its edge banding, for a part in the Woodworking workspace, or 'assembly' for one holding parts; absent otherwise. */
       edges?: EdgesField | 'assembly';
+      /** A reference mesh's triangle count, formatted. */
+      triangles?: string;
     }
   | { kind: 'dimension'; length: string; tag: TagField }
   | { kind: 'text'; text: string; tag: TagField }
@@ -105,8 +109,8 @@ export class EntityInfo {
         this.body.append(el('dd', 'entity-info-empty', t('info.none')));
         break;
       case 'instance':
-        this.row(t('info.type'), t(data.type === 'component' ? 'scene.component' : 'scene.group'));
-        if (data.type === 'component') {
+        this.row(t('info.type'), t(TYPE_NAMES[data.type]));
+        if (data.type !== 'group') {
           this.input(t('info.definition'), data.definitionName, (name) => this.host.renameDefinition(data.definitionId, name), false);
           this.row(t('info.copies'), t('info.copiesValue', { count: data.copies }));
         }
@@ -115,6 +119,7 @@ export class EntityInfo {
         this.row(t('info.material'), data.material);
         if (data.grain !== undefined) this.grainRow(data.definitionId, data.grain);
         if (data.edges) this.edgeRows(data.edges);
+        if (data.triangles) this.row(t('info.triangles'), data.triangles);
         if (data.volume) this.row(t('info.volume'), data.volume);
         if (data.scale) this.row(t('info.scale'), data.scale);
         if (data.stretched) this.body.append(el('dd', 'entity-info-warning', t('info.stretched')));

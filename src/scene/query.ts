@@ -5,10 +5,11 @@
  * hides is left out; the open editing context (and the instances leading to
  * it) is always shown, so it can still be edited.
  */
-import { bounds, listEdges, snapPoints, type Bounds, type Model, type Point3, type SnapKind } from '../kernel';
+import { listEdges, snapPoints, type Bounds, type Model, type Point3, type SnapKind } from '../kernel';
 import { dimensionLength, transformAnnotation, type Annotation, type AnnotationId } from './annotations';
 import { transformGuide, type Guide, type GuideId } from './guides';
-import { placedInstances, rootDefinition, transformBounds, union, type Definition, type InstanceId, type Scene } from './scene';
+import { meshSnapPoints, meshPoint, type MeshData } from './mesh';
+import { ownBounds, placedInstances, rootDefinition, transformBounds, union, type Definition, type InstanceId, type Scene } from './scene';
 import { tagShown } from './tags';
 import { AFFINE_IDENTITY, applyPoint, type Affine } from './transform';
 
@@ -34,7 +35,7 @@ export function placements(s: Scene, context: readonly InstanceId[] = []): Place
 /** The box around everything shown, for Zoom extents: what a hidden tag hides is left out, as in SketchUp. */
 export function shownBounds(s: Scene, context: readonly InstanceId[] = []): Bounds | null {
   let out: Bounds | null = null;
-  for (const p of placements(s, context)) out = union(out, transformBounds(p.world, bounds(p.definition.model)));
+  for (const p of placements(s, context)) out = union(out, transformBounds(p.world, ownBounds(p.definition)));
   return out;
 }
 
@@ -56,6 +57,9 @@ export interface WorldSnap {
   readonly vertex?: string;
 }
 
+/** Edge ids of a reference mesh's feature edges start with this; they name no kernel edge. */
+export const MESH_EDGE = 'mesh:';
+
 export interface WorldEdge {
   readonly edgeId: string;
   readonly a: Point3;
@@ -63,11 +67,18 @@ export interface WorldEdge {
   readonly path: readonly InstanceId[];
 }
 
-/** Endpoints and midpoints of the visible edges of every placement, in world coordinates. */
+/** Endpoints and midpoints of the visible edges of every placement (feature edges for reference meshes), in world coordinates. */
 export function worldSnapPoints(s: Scene, context: readonly InstanceId[] = []): WorldSnap[] {
   const local = new Map<Model, ReturnType<typeof snapPoints>>();
+  const meshes = new Map<MeshData, ReturnType<typeof meshSnapPoints>>();
   const out: WorldSnap[] = [];
   for (const p of placements(s, context)) {
+    const mesh = p.definition.mesh;
+    if (mesh) {
+      if (!meshes.has(mesh)) meshes.set(mesh, meshSnapPoints(mesh));
+      for (const sp of meshes.get(mesh)!) out.push({ point: applyPoint(p.world, sp.point), kind: sp.kind, path: p.path });
+      continue;
+    }
     const m = p.definition.model;
     if (!local.has(m)) local.set(m, snapPoints(m));
     for (const sp of local.get(m)!) out.push({ point: applyPoint(p.world, sp.point), kind: sp.kind, path: p.path, ...(sp.vertex ? { vertex: sp.vertex } : {}) });
@@ -75,11 +86,18 @@ export function worldSnapPoints(s: Scene, context: readonly InstanceId[] = []): 
   return out;
 }
 
-/** The visible (not soft) edges of every placement, in world coordinates. */
+/** The visible (not soft) edges of every placement, and the feature edges of reference meshes, in world coordinates. */
 export function worldEdges(s: Scene, context: readonly InstanceId[] = []): WorldEdge[] {
   const local = new Map<Model, ReturnType<typeof listEdges>>();
   const out: WorldEdge[] = [];
   for (const p of placements(s, context)) {
+    const mesh = p.definition.mesh;
+    if (mesh) {
+      for (let e = 0; e < mesh.edges.length; e += 2) {
+        out.push({ edgeId: MESH_EDGE + e / 2, a: applyPoint(p.world, meshPoint(mesh, mesh.edges[e]!)), b: applyPoint(p.world, meshPoint(mesh, mesh.edges[e + 1]!)), path: p.path });
+      }
+      continue;
+    }
     const m = p.definition.model;
     if (!local.has(m)) local.set(m, listEdges(m).filter((e) => !e.soft));
     for (const e of local.get(m)!) out.push({ edgeId: e.id, a: applyPoint(p.world, e.a), b: applyPoint(p.world, e.b), path: p.path });

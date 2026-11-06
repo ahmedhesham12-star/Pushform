@@ -55,6 +55,7 @@ import {
   shownBounds,
   tagShown,
   transformBounds,
+  triangleCount,
   union,
   type InstanceId,
 } from './scene';
@@ -123,6 +124,8 @@ const ERROR_MESSAGES: Partial<Record<string, MessageKey>> = {
   offsetNotChain: 'error.offsetNotChain',
   moveCrosses: 'error.moveCrosses',
   explodeWouldSkew: 'error.explodeWouldSkew',
+  meshNotEditable: 'error.meshNotEditable',
+  invalidMesh: 'error.invalidMesh',
   scaleWouldSkew: 'error.scaleWouldSkew',
   scaleTooSmall: 'error.scaleTooSmall',
   arcRadiusTooSmall: 'error.arcRadiusTooSmall',
@@ -498,7 +501,7 @@ export class App {
       if (instances.size === 1 && !faces.size && !edges.size && !guides.size && !annotations.size && i && def && def.kind !== 'root') {
         // Volume is only shown for geometry without nested groups or components.
         // A scaled instance holds that much more (or less): the volume grows with the scale's determinant.
-        const local = def.instances.size ? null : solidVolume(def.model);
+        const local = def.instances.size || def.mesh ? null : solidVolume(def.model);
         const volume = local === null ? null : local * Math.abs(determinant(i.transform));
         const [sx, sy, sz] = i.transform.scale;
         const size = (v: number) => formatNumber(v, 2);
@@ -512,13 +515,14 @@ export class App {
           definitionName: def.name,
           instanceName: i.name,
           copies: instanceCount(doc.scene, def.id),
-          volume: def.instances.size ? null : volume === null ? t('info.notSolid') : formatVolume(volume, doc.units),
+          volume: def.instances.size || def.mesh ? null : volume === null ? t('info.notSolid') : formatVolume(volume, doc.units),
           // Red, green and blue are the instance's own x, z and y.
           scale: scaled ? t('info.scaleValue', { red: size(sx), green: size(sz), blue: size(sy) }) : null,
           stretched: !even(sx, sy) || !even(sx, sz),
           tag: this.tagField([i]),
           material: i.material ? (doc.scene.materials.get(i.material)?.name ?? t('materials.default')) : t('materials.default'),
-          ...(showsWoodworking(doc.workspace) ? { grain: def.grain ?? null } : {}),
+          ...(showsWoodworking(doc.workspace) && !def.mesh ? { grain: def.grain ?? null } : {}),
+          ...(def.mesh ? { triangles: formatNumber(triangleCount(def.mesh), 0) } : {}),
           ...(showsWoodworking(doc.workspace) ? this.edgesField([...this.context, id]) : {}),
         };
       }
@@ -527,7 +531,7 @@ export class App {
     const placed = pathDefinition(doc.scene, this.context)?.instances;
     const kinds = [...instances].map((id) => doc.scene.definitions.get(placed?.get(id)?.definitionId ?? '')?.kind);
     const groups = kinds.filter((k) => k === 'group').length;
-    const components = kinds.filter((k) => k === 'component').length;
+    const components = kinds.filter((k) => k === 'component' || k === 'mesh').length;
     const counts = [
       { label: t('info.groups'), count: groups },
       { label: t('info.components'), count: components },
@@ -618,8 +622,11 @@ export class App {
     this.status.hint();
   }
 
-  /** Open a group or component placed in the current context for editing. */
+  /** Open a group or component placed in the current context for editing; a reference mesh says it cannot be. */
   private openContext(instanceId: InstanceId): void {
+    const scene = this.session.doc.scene;
+    const definitionId = pathDefinition(scene, this.context)?.instances.get(instanceId)?.definitionId;
+    if (definitionId && scene.definitions.get(definitionId)?.mesh) return this.flashError({ code: 'meshNotEditable', detail: instanceId });
     this.setContext([...this.context, instanceId]);
   }
 
@@ -904,7 +911,7 @@ export class App {
       null,
       {
         label: t(singleKind === 'component' ? 'menu.editComponent' : 'menu.editGroup'),
-        enabled: single !== null,
+        enabled: single !== null && singleKind !== 'mesh',
         run: () => single && this.openContext(single),
       },
       {

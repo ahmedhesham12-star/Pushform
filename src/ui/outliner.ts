@@ -24,6 +24,11 @@ const GROUP_ICON =
 const COMPONENT_ICON =
   '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="2" y="2" width="4.2" height="4.2"/><rect x="7.8" y="2" width="4.2" height="4.2"/><rect x="2" y="7.8" width="4.2" height="4.2"/><rect x="7.8" y="7.8" width="4.2" height="4.2"/></svg>';
 
+/** A reference mesh: a triangle. */
+const MESH_ICON =
+  '<svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M7 2 12.5 12h-11Z"/><path d="M7 2v10"/></svg>';
+const ICONS = { group: GROUP_ICON, component: COMPONENT_ICON, mesh: MESH_ICON, root: GROUP_ICON } as const;
+
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
 
 /**
@@ -82,8 +87,8 @@ export class Outliner {
       const def = scene.definitions.get(i.definitionId)!;
       const open = path.length === context.length && path.every((id, k) => id === context[k]);
       const label = this.label(scene, i);
-      const count = def.kind === 'component' ? t('outliner.count', { count: instanceCount(scene, def.id) }) : '';
-      const row = this.row(label.text, label.detail, def.kind === 'component' ? COMPONENT_ICON : GROUP_ICON, depth, inContext && selected.has(i.id), open, count);
+      const count = def.kind === 'group' ? '' : t('outliner.count', { count: instanceCount(scene, def.id) });
+      const row = this.row(label.text, label.detail, ICONS[def.kind], depth, inContext && selected.has(i.id), open, count);
       // Hidden by a tag (its own or a parent's): listed, greyed, as in SketchUp.
       const isHidden = hidden || !tagShown(scene, i.tag);
       if (isHidden) row.li.classList.add('outliner-hidden');
@@ -132,10 +137,10 @@ export class Outliner {
     return out;
   }
 
-  /** The instance name, or the component's name, or "Group"; with the definition name as detail when named. */
+  /** The instance name, or the component's (or mesh's) name, or "Group"; with the definition name as detail when named. */
   private label(scene: Scene, i: Instance): { text: string; detail: string } {
     const def = scene.definitions.get(i.definitionId)!;
-    const kindName = def.kind === 'component' ? def.name : t('scene.group');
+    const kindName = def.kind === 'group' ? t('scene.group') : def.name;
     return i.name ? { text: i.name, detail: kindName } : { text: kindName, detail: '' };
   }
 

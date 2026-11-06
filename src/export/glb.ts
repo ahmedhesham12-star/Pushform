@@ -1,5 +1,5 @@
 import { faceMeshes, faceTextureFrame, getFace, type FaceMesh, type Model } from '../kernel';
-import { rootDefinition, tagShown, type Definition, type Instance, type MaterialId, type Scene } from '../scene';
+import { fromBase64, rootDefinition, tagShown, type Definition, type Instance, type MaterialId, type MeshData, type Scene } from '../scene';
 
 /** glTF is in meters; Pushform in millimeters. Both are Y-up and right-handed. */
 const M = 0.001;
@@ -19,25 +19,6 @@ interface GltfNode {
 function linear(hex: string): number[] {
   const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255);
   return [...c.map((v) => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)), 1].map((v) => Math.round(v * 1e4) / 1e4);
-}
-
-const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-/** Base64 to bytes, written out here because this layer imports nothing outside the kernel and the scene. */
-function fromBase64(text: string): Uint8Array {
-  const clean = text.replace(/[^A-Za-z0-9+/]/g, '');
-  const out = new Uint8Array(Math.floor((clean.length * 3) / 4));
-  let bits = 0;
-  let value = 0;
-  let at = 0;
-  for (const ch of clean) {
-    value = (value << 6) | ALPHABET.indexOf(ch);
-    bits += 6;
-    if (bits >= 8) {
-      bits -= 8;
-      out[at++] = (value >> bits) & 0xff;
-    }
-  }
-  return out.subarray(0, at);
 }
 
 /** Texture coordinates of a face mesh in tiles of a texture: along each face's texture frame, v going down the image. */
@@ -77,7 +58,7 @@ export function exportGlb(scene: Scene, name = ''): Uint8Array<ArrayBuffer> {
   const materials: object[] = [];
   const images: object[] = [];
   const textures: object[] = [];
-  const materialOf = new Map<MaterialId | null, number>();
+  const materialOf = new Map<string | null, number>();
   const meshOf = new Map<string, number | null>();
 
   /** Append bytes as a buffer view starting on a 4-byte boundary (as glTF needs); returns its index. */
@@ -111,6 +92,33 @@ export function exportGlb(scene: Scene, name = ''): Uint8Array<ArrayBuffer> {
   };
 
   /** The glTF material for a scene material (null: the default), made once. */
+  /** A plain glTF material in a mesh part's color, made once per color. */
+  const colorMaterial = (color: string): number => {
+    const key = `color:${color}`;
+    if (!materialOf.has(key)) {
+      materials.push({ name: color, pbrMetallicRoughness: { baseColorFactor: linear(color), metallicFactor: 0, roughnessFactor: 1 }, doubleSided: true });
+      materialOf.set(key, materials.length - 1);
+    }
+    return materialOf.get(key)!;
+  };
+
+  /** A reference mesh: one primitive per part in its color, or all in the material its instance passes down. */
+  const referenceMesh = (data: MeshData, inherited: MaterialId | null) => {
+    const primitives: object[] = [];
+    let first = 0;
+    const runs = inherited ? [{ triangles: data.triangles.length / 3, color: '' }] : data.parts;
+    for (const part of runs) {
+      const positions = new Float32Array(part.triangles * 9);
+      for (let k = 0; k < part.triangles * 3; k++) {
+        const v = data.triangles[first * 3 + k]!;
+        positions.set([data.positions[3 * v]! * M, data.positions[3 * v + 1]! * M, data.positions[3 * v + 2]! * M], k * 3);
+      }
+      first += part.triangles;
+      primitives.push({ attributes: { POSITION: accessor(positions, 'VEC3', true) }, material: inherited ? gltfMaterial(inherited) : colorMaterial(part.color) });
+    }
+    return primitives;
+  };
+
   const gltfMaterial = (id: MaterialId | null): number => {
     if (materialOf.has(id)) return materialOf.get(id)!;
     const m = id === null ? undefined : scene.materials.get(id);
@@ -131,6 +139,11 @@ export function exportGlb(scene: Scene, name = ''): Uint8Array<ArrayBuffer> {
   const mesh = (def: Definition, inherited: MaterialId | null): number | null => {
     const key = `${def.id}|${inherited ?? ''}`;
     if (meshOf.has(key)) return meshOf.get(key)!;
+    if (def.mesh) {
+      meshes.push({ name: def.name || undefined, primitives: referenceMesh(def.mesh, inherited) });
+      meshOf.set(key, meshes.length - 1);
+      return meshes.length - 1;
+    }
     const groups = new Map<MaterialId | null, FaceMesh[]>();
     for (const f of faceMeshes(def.model)) {
       if (!f.positions.length) continue;

@@ -11,6 +11,7 @@ import {
   type EditTextInput,
 } from './annotations';
 import { clearModel, type ClearModelInput } from './clearModel';
+import { insertMesh, type InsertMeshInput, type InsertMeshOutput } from './meshes';
 import { drawArc, drawArcCenter, drawPie, type DrawArcCenterInput, type DrawArcInput, type DrawArcOutput } from './drawArc';
 import { drawLine, type DrawLineInput, type DrawLineOutput } from './drawLine';
 import { drawRectangle, type DrawRectangleInput, type DrawRectangleOutput } from './drawRectangle';
@@ -159,6 +160,7 @@ declare module '../types' {
     'core.setCutListSettings': { input: SetCutListSettingsInput; output: Record<string, never> };
     'core.setGrain': { input: SetGrainInput; output: Record<string, never> };
     'core.setWorkspace': { input: SetWorkspaceInput; output: Record<string, never> };
+    'core.insertMesh': { input: InsertMeshInput; output: InsertMeshOutput };
   }
 }
 
@@ -176,6 +178,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
   registry.register(setDisplayUnits);
   registry.register(makeGroup);
   registry.register(makeComponent);
+  registry.register(insertMesh);
   registry.register(explode);
   registry.register(makeUnique);
   registry.register(renameDefinition);

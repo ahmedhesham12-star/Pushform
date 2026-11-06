@@ -1,5 +1,6 @@
 import { deserialize, listFaces, serialize, type Model, type SerializedTopology } from '../kernel';
 import { MATERIAL_COLOR, validStock, type Material, type Stock } from './materials';
+import { loadMesh, saveMesh, type SerializedMesh } from './mesh';
 import type { Anchor, AnchorRef, Annotation } from './annotations';
 import { guideLine, guidePoint, type Guide } from './guides';
 import { contains, createScene, type Definition, type DefinitionKind, type GrainAxis, type Instance, type Scene } from './scene';
@@ -31,6 +32,8 @@ export type SerializedAnnotation = (
  * (milestone 5) adds tags, in the order they were made, and the tag of each
  * instance, guide and annotation that has one; and materials, with the
  * material of each painted instance (faces carry theirs in the model).
+ * Version 6 (milestone 6) adds mesh definitions, which hold a reference
+ * mesh and an empty model.
  */
 export interface SerializedScene {
   root: string;
@@ -47,6 +50,7 @@ export interface SerializedScene {
       guides?: Record<string, SerializedGuide>;
       annotations?: Record<string, SerializedAnnotation>;
       grain?: GrainAxis;
+      mesh?: SerializedMesh;
     }
   >;
 }
@@ -64,7 +68,7 @@ export function serializeScene(s: Scene): SerializedScene {
         ...(i.material ? { material: i.material } : {}),
       };
     }
-    definitions[id] = { kind: d.kind, name: d.name, model: serialize(d.model), instances, ...(d.grain ? { grain: d.grain } : {}) };
+    definitions[id] = { kind: d.kind, name: d.name, model: serialize(d.model), instances, ...(d.grain ? { grain: d.grain } : {}), ...(d.mesh ? { mesh: saveMesh(d.mesh) } : {}) };
     if (d.guides.size) {
       const guides: Record<string, SerializedGuide> = {};
       for (const [gid, g] of d.guides) {
@@ -129,7 +133,7 @@ function saveAnnotation(a: Annotation): SerializedAnnotation {
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const numbers = (v: unknown, n: number): v is number[] =>
   Array.isArray(v) && v.length === n && v.every((x) => typeof x === 'number' && Number.isFinite(x));
-const KINDS: readonly DefinitionKind[] = ['root', 'group', 'component'];
+const KINDS: readonly DefinitionKind[] = ['root', 'group', 'component', 'mesh'];
 /** Smaller scales (in size) would flatten an instance. */
 const MIN_SCALE = 1e-6;
 
@@ -247,7 +251,10 @@ export function deserializeScene(data: unknown): Scene | null {
       }
     }
     if (raw.grain !== undefined && raw.grain !== 'red' && raw.grain !== 'green' && raw.grain !== 'blue') return null;
-    definitions.set(id, { id, kind: raw.kind as DefinitionKind, name: raw.name, model, instances, guides, annotations, ...(raw.grain ? { grain: raw.grain as GrainAxis } : {}) });
+    // A mesh definition holds its mesh and nothing else; no other kind holds one.
+    const mesh = raw.kind === 'mesh' ? loadMesh(raw.mesh) : null;
+    if (raw.kind === 'mesh' ? !mesh || listFaces(model).length || instances.size : raw.mesh !== undefined) return null;
+    definitions.set(id, { id, kind: raw.kind as DefinitionKind, name: raw.name, model, instances, guides, annotations, ...(raw.grain ? { grain: raw.grain as GrainAxis } : {}), ...(mesh ? { mesh } : {}) });
   }
   const root = definitions.get(data.root);
   if (!root || root.kind !== 'root') return null;

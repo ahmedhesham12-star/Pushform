@@ -214,7 +214,7 @@ export interface ExplodeOutput {
  * Replace instances by their contents: the geometry merges into the parent's
  * geometry (coplanar faces join, crossing edges split), and nested instances
  * guides and dimensions move up to the parent, scaled and mirrored as the
- * instance was. Refused (`explodeWouldSkew`) when a stretched instance holds
+ * instance was. A reference mesh is refused (`meshNotEditable`). Refused (`explodeWouldSkew`) when a stretched instance holds
  * a turned one, which no transform could keep. Definitions no longer used are removed.
  */
 export const explode: CommandDef<ExplodeInput, ExplodeOutput> = {
@@ -232,6 +232,7 @@ export const explode: CommandDef<ExplodeInput, ExplodeOutput> = {
       exploded++;
       const { instance, parent } = found;
       const def = getDefinition(scene, instance.definitionId)!;
+      if (def.mesh) return { ok: false, error: { code: 'meshNotEditable', detail: id } };
       const T = instance.transform;
       // Nested instances keep their own transform only when the stretch does not skew them.
       const nested: [Instance, Transform][] = [];

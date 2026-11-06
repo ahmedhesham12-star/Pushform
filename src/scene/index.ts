@@ -10,4 +10,5 @@ export * from './guides';
 export * from './annotations';
 export * from './tags';
 export * from './materials';
+export * from './mesh';
 export { deserializeScene, sceneFromModel, serializeScene, type SerializedScene, type SerializedTransform } from './serialize';

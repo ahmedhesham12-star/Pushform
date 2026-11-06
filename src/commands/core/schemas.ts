@@ -19,6 +19,8 @@ export const definitionId = z.string().min(1).optional();
 
 /** The geometry a command edits, or the error to return when the definition does not exist. */
 export function targetModel(doc: PushformDocument, id: string | undefined): { ok: true; model: Model } | { ok: false; error: CommandError } {
+  // A reference mesh cannot be edited: it has triangles, not geometry.
+  if (id && doc.scene.definitions.get(id)?.mesh) return { ok: false, error: { code: 'meshNotEditable', detail: id } };
   const model = definitionModel(doc, id);
   return model ? { ok: true, model } : { ok: false, error: { code: 'noSuchDefinition', detail: id ?? '' } };
 }

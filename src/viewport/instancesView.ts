@@ -14,6 +14,7 @@ import {
   toMatrix,
   type Affine,
   type InstanceId,
+  type MeshData,
   type Placement,
   type Scene,
 } from '../scene';
@@ -95,6 +96,44 @@ function buildGeometry(model: Model): DefinitionGeometry {
   return { front: buildSide(model, 'front'), back: buildSide(model, 'back'), normals: new Map(listFaces(model).map((f) => [f.id, f.normal])), edges };
 }
 
+/** A reference mesh's triangles (flat shaded, a draw group per part) and feature edges, shared by its instances. */
+interface ReferenceGeometry {
+  readonly geometry: BufferGeometry;
+  readonly edges: BufferGeometry;
+  readonly colors: readonly number[];
+}
+
+function buildReference(mesh: MeshData): ReferenceGeometry {
+  const p = mesh.positions;
+  const t = mesh.triangles;
+  const positions = new Float32Array(t.length * 3);
+  const normals = new Float32Array(t.length * 3);
+  for (let i = 0; i < t.length; i += 3) {
+    const [a, b, c] = [t[i]!, t[i + 1]!, t[i + 2]!];
+    const u = [p[3 * b]! - p[3 * a]!, p[3 * b + 1]! - p[3 * a + 1]!, p[3 * b + 2]! - p[3 * a + 2]!];
+    const v = [p[3 * c]! - p[3 * a]!, p[3 * c + 1]! - p[3 * a + 1]!, p[3 * c + 2]! - p[3 * a + 2]!];
+    const n = [u[1]! * v[2]! - u[2]! * v[1]!, u[2]! * v[0]! - u[0]! * v[2]!, u[0]! * v[1]! - u[1]! * v[0]!];
+    const len = Math.hypot(n[0]!, n[1]!, n[2]!) || 1;
+    for (let k = 0; k < 3; k++) {
+      positions.set([p[3 * t[i + k]!]!, p[3 * t[i + k]! + 1]!, p[3 * t[i + k]! + 2]!], (i + k) * 3);
+      normals.set([n[0]! / len, n[1]! / len, n[2]! / len], (i + k) * 3);
+    }
+  }
+  const geometry = new BufferGeometry();
+  geometry.setAttribute('position', new Float32BufferAttribute(positions, 3));
+  geometry.setAttribute('normal', new Float32BufferAttribute(normals, 3));
+  let first = 0;
+  mesh.parts.forEach((part, group) => {
+    geometry.addGroup(first * 3, part.triangles * 3, group);
+    first += part.triangles;
+  });
+  const ep: number[] = [];
+  for (const v of mesh.edges) ep.push(p[3 * v]!, p[3 * v + 1]!, p[3 * v + 2]!);
+  const edges = new BufferGeometry();
+  edges.setAttribute('position', new Float32BufferAttribute(ep, 3));
+  return { geometry, edges, colors: mesh.parts.map((x) => parseInt(x.color.slice(1), 16)) };
+}
+
 /** What a picked mesh belongs to. */
 export interface PlacementHit {
   readonly placement: Placement;
@@ -116,6 +155,7 @@ export class InstancesView {
   readonly group = new Group();
   pickables: Mesh[] = [];
   private readonly cache = new Map<Model, DefinitionGeometry>();
+  private readonly references = new Map<MeshData, ReferenceGeometry>();
   private boxes: LineSegments | null = null;
 
   constructor(private readonly library = new MaterialLibrary()) {}
@@ -126,10 +166,15 @@ export class InstancesView {
     this.boxes?.geometry.dispose();
     this.boxes = null;
     this.pickables = [];
-    const used = new Set<Model>();
+    const used = new Set<Model | MeshData>();
     for (const p of placements(scene, context)) {
       const relation = contextRelation(p.path, context);
       if (relation === 'context') continue;
+      if (p.definition.mesh) {
+        used.add(p.definition.mesh);
+        this.addReference(scene, p, relation, p.definition.mesh, colorByTag);
+        continue;
+      }
       const model = p.definition.model;
       used.add(model);
       let g = this.cache.get(model);
@@ -155,6 +200,12 @@ export class InstancesView {
       }
       this.pickables.push(front, back);
     }
+    for (const [mesh, g] of this.references) {
+      if (used.has(mesh)) continue;
+      g.geometry.dispose();
+      g.edges.dispose();
+      this.references.delete(mesh);
+    }
     for (const [model, g] of this.cache) {
       if (used.has(model)) continue;
       g.front.geometry.dispose();
@@ -166,9 +217,40 @@ export class InstancesView {
     this.group.updateMatrixWorld(true);
   }
 
+  /**
+   * A reference mesh placed once: front and back in each part's color, or in
+   * the material its instances pass down (or its tag's color), and its feature edges.
+   */
+  private addReference(scene: Scene, p: Placement, relation: 'inside' | 'outside', mesh: MeshData, colorByTag: boolean): void {
+    let g = this.references.get(mesh);
+    if (!g) this.references.set(mesh, (g = buildReference(mesh)));
+    const faded = relation === 'outside';
+    const inherited = scene.materials.get(inheritedMaterial(scene, p.path) ?? '');
+    const looks = (side: FaceSide) =>
+      g.colors.map((color) => {
+        if (colorByTag) return colorFaces(tagColor(scene, p.path), faded)[side === 'front' ? 0 : 1];
+        return inherited ? this.library.get(inherited, side, faded) : colorFaces(color, faded)[side === 'front' ? 0 : 1];
+      });
+    const front = new Mesh(g.geometry, looks('front'));
+    const back = new Mesh(g.geometry, looks('back'));
+    const lines = new LineSegments(g.edges, EDGES[faded ? 'faded' : 'normal']);
+    for (const o of [front, back, lines]) {
+      o.matrixAutoUpdate = false;
+      o.matrix.fromArray(toMatrix(p.world));
+      o.userData = { placement: p, relation, reference: true };
+      this.group.add(o);
+    }
+    this.pickables.push(front, back);
+  }
+
   /** The placement a raycast hit belongs to, or null when the hit is not on one of these meshes. */
   placementOf(hit: Intersection): PlacementHit | null {
-    const data = hit.object.userData as { placement?: Placement; relation?: 'inside' | 'outside'; geometry?: DefinitionGeometry; side?: SideGeometry | null };
+    const data = hit.object.userData as { placement?: Placement; relation?: 'inside' | 'outside'; geometry?: DefinitionGeometry; side?: SideGeometry | null; reference?: boolean };
+    // A reference mesh has no faces: the hit triangle gives the normal.
+    if (data.reference && data.placement && data.relation && hit.face) {
+      const n = hit.face.normal;
+      return { placement: data.placement, relation: data.relation, normal: applyNormal(data.placement.world, [n.x, n.y, n.z]), faceId: null };
+    }
     if (!data.placement || !data.relation || !data.geometry || !data.side || hit.faceIndex == null) return null;
     const faceId = data.side.triangleFaces[hit.faceIndex];
     const local = (faceId && data.geometry.normals.get(faceId)) || ([0, 1, 0] as Vec3);

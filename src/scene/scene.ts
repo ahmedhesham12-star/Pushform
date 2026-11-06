@@ -5,19 +5,21 @@
  * the instances placed inside it. The root definition is the model itself.
  * Geometry in different definitions never merges or splits each other.
  * Components share one definition between many instances; a group is a
- * definition used by a single instance. Scenes are immutable: updates return
+ * definition used by a single instance; a mesh definition holds imported
+ * triangles instead of geometry (reference meshes). Scenes are immutable: updates return
  * a new scene that shares everything unchanged, including Model objects.
  */
 import { bounds, type Bounds, type Model } from '../kernel';
 import type { Annotation, AnnotationId } from './annotations';
 import type { Guide, GuideId } from './guides';
 import type { Material, MaterialId } from './materials';
+import type { MeshData } from './mesh';
 import type { Tag, TagId } from './tags';
 import { AFFINE_IDENTITY, applyPoint, multiply, type Affine, type AnyTransform, type Transform } from './transform';
 
 export type DefinitionId = string;
 export type InstanceId = string;
-export type DefinitionKind = 'root' | 'group' | 'component';
+export type DefinitionKind = 'root' | 'group' | 'component' | 'mesh';
 
 export interface Instance {
   readonly id: InstanceId;
@@ -44,6 +46,8 @@ export interface Definition {
   readonly annotations: ReadonlyMap<AnnotationId, Annotation>;
   /** The grain direction of a part (cut list): its length runs along this axis of its own. */
   readonly grain?: GrainAxis;
+  /** A reference mesh's triangles (kind 'mesh', whose model stays empty and which holds no instances). */
+  readonly mesh?: MeshData;
 }
 
 /** One of a definition's own axes, as SketchUp names them: red (x), green (our -z), blue (y, up). */
@@ -242,14 +246,18 @@ export function duplicateDefinition(s: Scene, id: DefinitionId, patch: Partial<P
     [iid, next] = newId(next, 'i');
     instances.set(iid, { ...i, id: iid, definitionId });
   }
-  return addDefinition(next, { kind: d.kind, name: d.name, model: d.model, instances, guides: d.guides, annotations: d.annotations, ...(d.grain ? { grain: d.grain } : {}), ...patch });
+  const extra = { ...(d.grain ? { grain: d.grain } : {}), ...(d.mesh ? { mesh: d.mesh } : {}) };
+  return addDefinition(next, { kind: d.kind, name: d.name, model: d.model, instances, guides: d.guides, annotations: d.annotations, ...extra, ...patch });
 }
+
+/** Bounds of a definition's own geometry (or mesh) in its local space, not counting nested instances. */
+export const ownBounds = (d: Definition): Bounds | null => d.mesh?.bounds ?? bounds(d.model);
 
 /** Bounds of a definition's geometry and nested instances in its local space, or null when it is empty. */
 export function definitionBounds(s: Scene, id: DefinitionId): Bounds | null {
   const d = s.definitions.get(id);
   if (!d) return null;
-  let out = bounds(d.model);
+  let out = ownBounds(d);
   for (const i of d.instances.values()) out = union(out, transformBounds(i.transform, definitionBounds(s, i.definitionId)));
   return out;
 }

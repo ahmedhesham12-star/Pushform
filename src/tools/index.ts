@@ -17,10 +17,12 @@ import { createPushPullTool } from './pushPull';
 import { createRectangleTool } from './rectangle';
 import { createSelectTool } from './select';
 import { createTapeTool } from './tape';
+import { createPlaceTool, type PlaceTool } from './place';
 import type { Tool, ToolContext, ToolId } from './tool';
 
 export type { PaintChoice, Selection, Tool, ToolContext, ToolId } from './tool';
 export { arrayBeforeCopy } from './transformSelection';
+export type { PlaceItem, PlaceTool } from './place';
 export { edgeOf, isBandChoice, partAt, setEdgeBand, worldFaces, type BandChoice, type PlacedPart } from './edgeBanding';
 export {
   ACTION_SHORTCUTS,
@@ -33,7 +35,7 @@ export {
   type SelectionMode,
 } from './shortcuts';
 
-export function createTools(ctx: ToolContext): Record<ToolId, Tool> {
+export function createTools(ctx: ToolContext): Record<Exclude<ToolId, 'place'>, Tool> & { place: PlaceTool } {
   return {
     select: createSelectTool(ctx),
     move: createMoveTool(ctx),
@@ -57,5 +59,6 @@ export function createTools(ctx: ToolContext): Record<ToolId, Tool> {
     paintBucket: createPaintBucketTool(ctx),
     orbit: createOrbitTool(),
     pan: createPanTool(),
+    place: createPlaceTool(ctx),
   };
 }

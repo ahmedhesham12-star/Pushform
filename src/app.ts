@@ -56,10 +56,11 @@ import {
   tagShown,
   transformBounds,
   triangleCount,
+  saveMesh,
   union,
   type InstanceId,
 } from './scene';
-import { baseName, openFile, saveFile, type FileHandle, type FileType } from './files';
+import { baseName, openFile, openFileBytes, saveFile, type FileHandle, type FileType } from './files';
 import { loadViewSettings, saveAutosave, saveFileState, saveViewSettings, type FileState } from './storage';
 import {
   ACTION_SHORTCUTS,
@@ -73,6 +74,7 @@ import {
   worldFaces,
   setEdgeBand,
   type BandChoice,
+  type PlaceItem,
   type PaintChoice,
   type Selection,
   type Tool,
@@ -83,6 +85,7 @@ import { ContextMenu, type MenuEntry } from './ui/contextMenu';
 import { EntityInfo, type EdgesField, type EntityInfoData, type TagField } from './ui/entityInfo';
 import { CutListPanel } from './ui/cutListPanel';
 import { NameDialog } from './ui/nameDialog';
+import { ImportDialog, type ImportChoice } from './ui/importDialog';
 import { WorkspaceDialog } from './ui/workspaceDialog';
 import { applyTheme, THEMES, type Theme } from './ui/theme';
 import { flipMessage } from './ui/messages';
@@ -148,7 +151,7 @@ export class App {
   };
   /** The open editing context: instance ids from the root down ([] is the root). */
   private context: readonly InstanceId[] = [];
-  private readonly tools: Record<ToolId, Tool>;
+  private readonly tools: ReturnType<typeof createTools>;
   private tool: Tool;
   private readonly status: StatusBar;
   private readonly measure: MeasurementsBox;
@@ -174,6 +177,7 @@ export class App {
   private readonly cutListPanel: CutListPanel;
   /** Asks for a new component's name, as SketchUp's Create Component. */
   private readonly nameDialog = new NameDialog();
+  private readonly importDialog = new ImportDialog();
   /** Asks what a new model is for. */
   private readonly workspaceDialog = new WorkspaceDialog();
   private readonly fileButton = el('button', 'file-button', t('file.menu'));
@@ -237,7 +241,7 @@ export class App {
       return k === ' ' ? { keyLabel: t('key.spaceSymbol'), keyName: t('key.space') } : { keyLabel: k.toUpperCase(), keyName: k.toUpperCase() };
     };
     // Grouped as in SketchUp's large tool set: select and erase, draw, arcs, edit, construction, view.
-    const spec = (id: ToolId, group: ToolGroup): ToolButtonSpec<ToolId> => ({ id, label: `tool.${id}`, icon: id, group, ...key(id) });
+    const spec = (id: Exclude<ToolId, 'place'>, group: ToolGroup): ToolButtonSpec<ToolId> => ({ id, label: `tool.${id}`, icon: id, group, ...key(id) });
     const toolSpecs: ToolButtonSpec<ToolId>[] = [
       spec('select', 'select'),
       spec('erase', 'select'),
@@ -282,7 +286,7 @@ export class App {
         this.cutListPanel.sync();
       },
     });
-    view.append(this.cutListPanel.element, this.nameDialog.element, this.workspaceDialog.element);
+    view.append(this.cutListPanel.element, this.nameDialog.element, this.importDialog.element, this.workspaceDialog.element);
 
     const footer = el('footer', 'status');
     this.status = new StatusBar(() => this.tool.hint());
@@ -817,6 +821,54 @@ export class App {
     this.status.flash(kind === 'group' ? t('message.groupMade') : t('message.componentMade', { name }));
   }
 
+  /**
+   * File > Import: read an OBJ, STL or GLB file, ask for its units and which
+   * axis is up, showing the size it gets, then place it on the pointer.
+   */
+  private async importFile(): Promise<void> {
+    const opened = await openFileBytes(t('file.typeImport'), ['.obj', '.stl', '.glb']);
+    if (!opened) return;
+    const im = await import('./import');
+    const format = im.formatOf(opened.name);
+    if (!format) return this.status.flash(t('import.unsupported'), true);
+    const file = await im.readImport(format, opened.bytes);
+    if ('error' in file) return this.status.flash(t(`import.${file.error}`), true);
+    const units = this.session.doc.units;
+    const suggested = units.unit === 'mm' || units.unit === 'cm' || units.unit === 'm' ? 'mm' : 'in';
+    const size = (c: ImportChoice) => {
+      const [x, y, z] = im.importSize(file, c.unit, c.zUp).map((v) => formatLength(v, units));
+      return t('import.dimensions', { width: x!, depth: z!, height: y! });
+    };
+    const question = { name: opened.name, triangles: formatNumber(file.triangles, 0), unit: file.unit, suggested, zUp: format === 'glb' ? null : file.zUp } as const;
+    this.importDialog.open(question, size, (choice) => {
+      const mesh = choice && im.importMesh(file, choice.unit, choice.zUp);
+      if (!choice) return;
+      if (!mesh) return this.status.flash(t('import.empty'), true);
+      const saved = saveMesh(mesh);
+      const name = baseName(opened.name);
+      this.startPlacing({
+        name,
+        insert: (at, commit) => {
+          const input = { ...at, name, mesh: saved };
+          const r = commit ? this.session.execute('core.insertMesh', input) : this.session.preview('core.insertMesh', input);
+          if (!r.ok) return r;
+          return { ok: true, doc: 'doc' in r ? r.doc : this.session.doc, instanceId: r.output.instanceId };
+        },
+      });
+    });
+  }
+
+  /** Place an item on the pointer with the Place tool; afterwards it is selected, with Select. */
+  private startPlacing(item: PlaceItem): void {
+    this.setTool('place');
+    this.tools.place.start(item, (id) => {
+      this.setTool('select');
+      this.selectOnly([], [id]);
+      this.status.flash(t('message.placed', { name: item.name }));
+    });
+    this.status.showHint();
+  }
+
   /** Explode the selected instances; their contents become the selection. */
   private explodeSelected(): void {
     const instanceIds = [...this.selection.instances];
@@ -1182,6 +1234,7 @@ export class App {
       { label: t('file.open'), shortcut: t('key.open'), enabled: true, run: () => void this.openFile() },
       { label: t('file.save'), shortcut: t('key.save'), enabled: true, run: () => void this.saveFile(false) },
       { label: t('file.saveAs'), shortcut: t('key.saveAs'), enabled: true, run: () => void this.saveFile(true) },
+      { label: t('file.import'), enabled: true, run: () => void this.importFile() },
       null,
       { label: t('file.workspace', { name: t(`workspace.${this.session.doc.workspace}`) }), enabled: true, run: () => this.workspaceMenu() },
       null,
@@ -1524,6 +1577,7 @@ export class App {
         return;
       }
       if (e.key === 'Escape') {
+        if (this.tool.id === 'place') return this.setTool('select');
         if (this.tool.busy() || this.tool.active?.()) this.cancel();
         else if (this.hasSelection()) {
           this.clearSelection();

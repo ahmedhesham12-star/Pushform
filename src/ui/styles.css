@@ -1498,6 +1498,32 @@ li[aria-expanded='true'] > .outliner-row .outliner-toggle svg {
 .workspace-dialog {
   max-inline-size: 360px;
 }
+.import-dialog {
+  max-inline-size: 380px;
+}
+.import-dialog-body {
+  display: grid;
+  gap: 6px;
+}
+.import-dialog-body p {
+  margin: 0;
+}
+.import-dialog-note {
+  color: var(--ink-2);
+}
+.import-dialog-body select {
+  padding-block: 3px;
+  font: inherit;
+}
+.name-dialog .import-dialog-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+}
+.import-dialog-size {
+  font-weight: 600;
+}
 .workspace-prompt {
   margin: 0;
   color: var(--ink-2);

@@ -25,7 +25,8 @@ export type ToolId =
   | 'dimension'
   | 'text'
   | 'orbit'
-  | 'pan';
+  | 'pan'
+  | 'place';
 
 export interface EntityRef {
   kind: 'face' | 'edge' | 'instance' | 'guide' | 'annotation';

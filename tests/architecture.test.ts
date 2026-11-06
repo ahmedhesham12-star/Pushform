@@ -137,6 +137,11 @@ describe('architecture', () => {
     expect(bad.map((i) => `${i.file} -> ${i.spec}`)).toEqual([]);
   });
 
+  test('import depends only on three.js, the kernel and the scene', () => {
+    const bad = all.filter((i) => i.layer === 'import' && !i.spec.startsWith('three') && (i.target === null || !['import', 'scene', 'kernel'].includes(i.target)));
+    expect(bad.map((i) => `${i.file} -> ${i.spec}`)).toEqual([]);
+  });
+
   test('the cut list depends only on the kernel, the scene, units and i18n, and uses no DOM', () => {
     const bad = all.filter((i) => i.layer === 'cutlist' && (i.target === null || !['cutlist', 'kernel', 'scene', 'units', 'i18n'].includes(i.target)));
     expect(bad.map((i) => `${i.file} -> ${i.spec}`)).toEqual([]);

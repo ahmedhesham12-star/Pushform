@@ -43,6 +43,40 @@ export interface OpenedFile {
   handle: FileHandle | null;
 }
 
+/** A file read as bytes: its name with its extension. */
+export interface OpenedBytes {
+  name: string;
+  bytes: ArrayBuffer;
+}
+
+/** Ask for a file with one of `extensions` ('.stl') to read as bytes (imports). Null when the user cancels. */
+export async function openFileBytes(description: string, extensions: readonly string[]): Promise<OpenedBytes | null> {
+  const p = pickers();
+  if (p.showOpenFilePicker) {
+    try {
+      const [handle] = await p.showOpenFilePicker({ types: [{ description, accept: { 'application/octet-stream': [...extensions] } }], multiple: false });
+      if (!handle) return null;
+      const file = await handle.getFile();
+      return { name: file.name, bytes: await file.arrayBuffer() };
+    } catch (e) {
+      if (cancelled(e)) return null;
+      throw e;
+    }
+  }
+  return new Promise((resolve, reject) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = extensions.join(',');
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      if (!file) return resolve(null);
+      file.arrayBuffer().then((bytes) => resolve({ name: file.name, bytes }), reject);
+    });
+    input.addEventListener('cancel', () => resolve(null));
+    input.click();
+  });
+}
+
 /** Ask for a file to open. Null when the user cancels. */
 export async function openFile(type: FileType): Promise<OpenedFile | null> {
   const p = pickers();
